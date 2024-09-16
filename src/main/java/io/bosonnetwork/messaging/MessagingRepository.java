@@ -1,0 +1,127 @@
+package io.bosonnetwork.messaging;
+
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+
+import io.bosonnetwork.Id;
+import io.bosonnetwork.messaging.Channel.Member;
+import io.bosonnetwork.messaging.Channel.Role;
+import io.bosonnetwork.utils.Json;
+
+public interface MessagingRepository {
+	public void putConfig(String key, byte[] config) throws RepositoryException;
+
+	public byte[] getConfig(String key) throws RepositoryException;
+
+	public default void putConfig(String key, Object config) throws RepositoryException {
+		putConfig(key, config == null ? null : Json.toBytes(config));
+	}
+
+	public default <T> T getConfig(String key, Class<T> type) throws RepositoryException {
+		byte[] config = getConfig(key);
+		return config != null ? Json.parse(config, type) : null;
+	}
+
+	public default <T> T getConfig(String key, TypeReference<T> type) throws RepositoryException {
+		byte[] config = getConfig(key);
+		return config != null ? Json.parse(config, type) : null;
+	}
+
+	public default void putMessage(Message message) throws RepositoryException {
+		putMessages(Arrays.asList(message));
+	}
+
+	public void putMessages(Collection<Message> messages) throws RepositoryException;
+
+	public void updateMessageTimestamp(Message message) throws RepositoryException;
+
+	// TODO: sid is a implementation detail, should be Message?
+	public default void removeMessage(long sid) throws RepositoryException {
+		removeMessages(Arrays.asList(sid));
+	}
+
+	// TODO: sid is a implementation detail, should be Message?
+	public void removeMessages(Collection<Long> sids) throws RepositoryException;
+
+	public void removeMessages(Id conversationId) throws RepositoryException;
+
+	public List<Message> getMessages(Id conversationId, long begin, long end) throws RepositoryException;
+
+	public List<Message> getMessages(Id conversationId, long since, int limit, int offset) throws RepositoryException;
+
+	public Conversation getConversaion(Id conversationId) throws RepositoryException;
+
+	public List<Conversation> getAllConversaions() throws RepositoryException;
+
+	public default void removeConversation(Id conversationId) throws RepositoryException {
+		removeConversations(Arrays.asList(conversationId));
+	}
+
+	public void removeConversations(Collection<Id> conversationIds) throws RepositoryException;
+
+	public default void putContact(Contact contact) throws RepositoryException {
+		putContacts(Arrays.asList(contact));
+	}
+
+	public void putContacts(Collection<Contact> contacts) throws RepositoryException;
+
+	public Contact getContact(Id contactId) throws RepositoryException;
+
+	public List<Contact> getAllContacts() throws RepositoryException;
+
+	public List<Contact> getAllContacts(int type) throws RepositoryException;
+
+	public default boolean existsContact(Id contactId) throws RepositoryException {
+		return getContact(contactId) != null;
+	}
+
+	public default void removeContact(Id contactId) throws RepositoryException {
+		removeContacts(Arrays.asList(contactId));
+	}
+
+	public void removeContacts(Collection<Id> contactIds) throws RepositoryException;
+
+	public void refillContacts(Collection<Contact> contacts) throws RepositoryException;
+
+	public void removeAllContacts() throws RepositoryException;
+
+	public default Channel getChannel(Id channelId) throws RepositoryException {
+		Contact contact = getContact(channelId);
+		if (contact != null && contact instanceof Channel ch)
+			return ch;
+		else
+			return null;
+	}
+
+	public default List<Channel> getAllChannels() throws RepositoryException {
+		List<Contact> contacts = getAllContacts(Contact.Types.CHANNEL);
+		return contacts.stream().map(c -> (Channel) c).toList();
+	}
+
+	public default void putChannelMember(Id channelId, Member member) throws RepositoryException {
+		putChannelMembers(channelId, Arrays.asList(member));
+	}
+
+	public void putChannelMembers(Id channelId, Collection<Member> members) throws RepositoryException;
+
+	public void refillChannelMembers(Id channelId, Collection<Member> members) throws RepositoryException;
+
+	public List<Member> getAllChannelMembers(Id channelId) throws RepositoryException;
+
+	public default void removeChannelMember(Id channelId, Id memberId) throws RepositoryException {
+		removeChannelMembers(channelId, Arrays.asList(memberId));
+	}
+
+	public void removeChannelMembers(Id channelId, Collection<Id> memberIds) throws RepositoryException;
+
+	public void removeAllChannelMembers(Id channelId) throws RepositoryException;
+
+	public default void setChannelMemberRole(Id channelId, Id memberId, Role role) throws RepositoryException {
+		setChannelMembersRole(channelId, Arrays.asList(memberId), role);
+	}
+
+	public void setChannelMembersRole(Id channelId, List<Id> memberIds, Role role) throws RepositoryException;
+}

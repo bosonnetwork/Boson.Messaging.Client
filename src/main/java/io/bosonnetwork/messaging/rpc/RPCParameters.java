@@ -1,6 +1,6 @@
 package io.bosonnetwork.messaging.rpc;
 
-import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -8,43 +8,40 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import io.bosonnetwork.Id;
-import io.bosonnetwork.crypto.Signature;
+import io.bosonnetwork.messaging.Channel;
 import io.bosonnetwork.messaging.Contact;
-import io.bosonnetwork.messaging.Group;
+
 
 public class RPCParameters {
-	public static class DeviceId {
-		@JsonProperty(value = "d", required = true)
-		private Id deviceId;
+	public static class UserProfile {
+		@JsonProperty("n")
+		private String name;	// null to clear the name
 
-		public DeviceId(Id deviceId) {
-			this.deviceId = deviceId;
+		public UserProfile(String name) {
+			this.name = name;
 		}
 
-		public Id getDeviceId() {
-			return deviceId;
-		}
-	}
-
-	public static class UserId {
-		@JsonProperty(value = "u", required = true)
-		private Id userId;
-
-		public UserId(Id userId) {
-			this.userId = userId;
-		}
-
-		public Id getUserId() {
-			return userId;
+		public String getName() {
+			return name;
 		}
 	}
 
-	public static class ContactList {
-		@JsonProperty(value = "cs", required = true)
+	public static class ContactPut {
+		@JsonProperty("s")
+		@JsonInclude(Include.NON_EMPTY)
+		private String sequenceId;
+
+		@JsonProperty("c")
+		@JsonInclude(Include.NON_EMPTY)
 		private List<Contact> contacts;
 
-		public ContactList(List<Contact> contacts) {
-			this.contacts = contacts;
+		public ContactPut(String sequenceId, List<Contact> contacts) {
+			this.sequenceId = sequenceId;
+			this.contacts = contacts == null ? Collections.emptyList() : contacts;
+		}
+
+		public String getSequenceId() {
+			return sequenceId;
 		}
 
 		public List<Contact> getContacts() {
@@ -52,50 +49,48 @@ public class RPCParameters {
 		}
 	}
 
-	public static class ContactIdList {
-		@JsonProperty(value = "ids", required = true)
-		private List<Id> contactIds;
+	public static class ContactRemove {
+		@JsonProperty("s")
+		@JsonInclude(Include.NON_EMPTY)
+		private String sequenceId;
 
-		public ContactIdList(List<Id> contactIds) {
-			this.contactIds = contactIds;
+		@JsonProperty("c")
+		@JsonInclude(Include.NON_EMPTY)
+		private List<Id> contacts;
+
+		public ContactRemove(String sequenceId, List<Id> contacts) {
+			this.sequenceId = sequenceId;
+			this.contacts = contacts == null ? Collections.emptyList() : contacts;
 		}
 
-		public List<Id> getContactIds() {
-			return contactIds;
+		public String getSequenceId() {
+			return sequenceId;
+		}
+
+		public List<Id> getContacts() {
+			return contacts;
 		}
 	}
 
-	public static class GroupCreation {
-		@JsonProperty(value = "k", required = true)
-		private byte[] memberPublicKey;
-
+	public static class ChannelCreate {
 		@JsonProperty(value = "p", required = true)
-		private Group.Permission permission;
+		private Channel.Permission permission;
 
 		@JsonProperty("n")
 		@JsonInclude(Include.NON_EMPTY)
 		private String name;
 
-		@JsonProperty("t")
+		@JsonProperty("nt")
 		@JsonInclude(Include.NON_EMPTY)
 		private String notice;
 
-		public GroupCreation(Signature.PublicKey memberPublicKey, Group.Permission permission, String name, String notice) {
-			this.memberPublicKey = memberPublicKey.bytes();
+		public ChannelCreate(Channel.Permission permission, String name, String notice) {
 			this.permission = permission;
 			this.name = name;
 			this.notice = notice;
 		}
 
-		public GroupCreation(Signature.PublicKey memberPublicKey, Group.Permission permission) {
-			this(memberPublicKey, permission, null, null);
-		}
-
-		public Signature.PublicKey getMemberPublicKey() {
-			return Signature.PublicKey.fromBytes(memberPublicKey);
-		}
-
-		public Group.Permission getPermission() {
+		public Channel.Permission getPermission() {
 			return permission;
 		}
 
@@ -108,124 +103,24 @@ public class RPCParameters {
 		}
 	}
 
-	public static class GroupInfo {
-		@JsonProperty("n")
-		@JsonInclude(Include.NON_EMPTY)
-		private String name;
-
-		@JsonProperty("t")
-		@JsonInclude(Include.NON_EMPTY)
-		private String notice;
-
-		public GroupInfo(String name, String notice) {
-			this.name = name;
-			this.notice = notice;
-		}
-
-		public String getName() {
-			return name;
-		}
-
-		public String getNotice() {
-			return notice;
-		}
-	}
-
-	public static class GroupMemberRole {
-		@JsonProperty(value = "i", required = true)
-		private Id member;
-
-		@JsonProperty(value = "r", required = true)
-		private Group.Role role;
-
-		public GroupMemberRole(Id member, Group.Role role) {
-			this.member = member;
-			this.role = role;
-		}
-
-		public Id getMember() {
-			return member;
-		}
-
-		public Group.Role getRole() {
-			return role;
-		}
-	}
-
-	public static class GroupMemberList {
-		@JsonProperty(value = "ids", required = true)
+	public static class ChannelMemberRole {
+		@JsonProperty(value = "id", required = true)
 		private List<Id> members;
 
-		public GroupMemberList(List<Id> members) {
+		@JsonProperty(value = "r", required = true)
+		private Channel.Role role;
+
+		public ChannelMemberRole(List<Id> members, Channel.Role role) {
 			this.members = members;
+			this.role = role;
 		}
 
 		public List<Id> getMembers() {
 			return members;
 		}
-	}
 
-	public static class Ticket {
-		@JsonProperty(value = "i", required = true)
-		private Id inviter;
-
-		@JsonProperty(value = "o")
-		@JsonInclude(Include.NON_EMPTY)
-		private boolean openToAnyone;
-
-		@JsonProperty(value = "e")
-		@JsonInclude(Include.NON_EMPTY)
-		private long expire;
-
-		@JsonProperty(value = "s", required = true)
-		private byte[] sig;
-
-		public Ticket(Id inviter, boolean openToAnyone, long expire, byte[] sig) {
-			this.inviter = inviter;
-			this.openToAnyone = openToAnyone;
-			this.expire = expire;
-			this.sig = sig;
-		}
-
-		public Id getInviter() {
-			return inviter;
-		}
-
-		public boolean isExpired() {
-			return expire < System.currentTimeMillis();
-		}
-
-		public boolean isValid(Id invitee) {
-			int size = Id.BYTES + Byte.BYTES + (openToAnyone ? 0 : Id.BYTES) + Long.BYTES;
-			byte[] data = new byte[size];
-
-			ByteBuffer buf = ByteBuffer.wrap(data);
-			buf.put(inviter.bytes());
-			buf.put((byte)(openToAnyone ? 1 : 0));
-			if (!openToAnyone)
-				buf.put(invitee.bytes());
-			buf.putLong(expire);
-
-			Signature.PublicKey pk = Signature.PublicKey.fromBytes(inviter.bytes());
-			return pk.verify(data, sig);
-		}
-	}
-
-	public static class GroupJoin {
-		@JsonProperty("t")
-		@JsonInclude(Include.NON_NULL)
-		private Ticket ticket;
-
-		public GroupJoin(Ticket ticket) {
-			this.ticket = ticket;
-		}
-
-		public GroupJoin() {
-			this(null);
-		}
-
-		public Ticket getTicket() {
-			return ticket;
+		public Channel.Role getRole() {
+			return role;
 		}
 	}
 }

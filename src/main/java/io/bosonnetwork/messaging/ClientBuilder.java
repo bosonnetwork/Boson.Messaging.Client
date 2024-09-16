@@ -2,21 +2,19 @@ package io.bosonnetwork.messaging;
 
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.nio.charset.Charset;
+import java.nio.file.Path;
 import java.text.Normalizer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.bosonnetwork.BosonException;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.Identity;
 import io.bosonnetwork.LookupOption;
@@ -24,63 +22,60 @@ import io.bosonnetwork.Network;
 import io.bosonnetwork.Node;
 import io.bosonnetwork.NodeInfo;
 import io.bosonnetwork.PeerInfo;
-import io.bosonnetwork.crypto.CryptoBox.Nonce;
 import io.bosonnetwork.crypto.CryptoIdentity;
 import io.bosonnetwork.crypto.Signature.KeyPair;
-import io.bosonnetwork.utils.Base58;
-import io.bosonnetwork.utils.Hex;
-import io.bosonnetwork.utils.ThreadLocals;
+import io.bosonnetwork.messaging.impl.APIClient.MessagingServiceId;
+import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
-import io.vertx.core.Promise;
-import io.vertx.core.Vertx;
-import io.vertx.core.VertxOptions;
-import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpVersion;
-import io.vertx.core.json.JsonObject;
-import io.vertx.ext.web.client.HttpResponse;
-import io.vertx.ext.web.client.WebClient;
-import io.vertx.ext.web.client.WebClientOptions;
 
-public class ClientBuilder {
-	private static final Charset UTF8 = Charset.forName("UTF-8");
+public abstract class ClientBuilder {
+	// Vertx options
+	protected boolean nativeTransport;
 
-	private Vertx vertx;
+	// User
+	protected CryptoIdentity user;	// optional, mandatory when need to register user
+	protected String userName;		// optional
+	protected String passphrase;	// optional, mandatory when need to register user
 
-	// Messaging API service URL
-	private URL apiURL;
+	// Device
+	protected Identity device;
+	protected Node deviceNode;		// either deviceNode or apiURL is mandatory
+	protected String deviceName;	// optional, mandatory when need to register device
+	protected String appName;		// optional, mandatory when need to register device
 
-	private Node node;
+	protected boolean registerUserAndDevice;
+	protected boolean registerDevice;
 
-	// Messaging peer info
-	private Id peerId;
-	private int tcpPort;
-	private int sslPort;
-	private String sslCert;
+	// Handler for device registration(to acquires the user key)
+	protected Function<String, Boolean> registrationRequestHandler;
 
-	// Device(node) and user identities
-	private	Identity user;
-	private Identity device;
+	// Messaging peer information
+	protected Id peerId; 					// optional
+	protected Id nodeId;					// optional
+	protected URL apiURL;					// either deviceNode or apiURL is mandatory
 
-	// Messaging client listener
-	private MessageListener listener;
+	protected MessagingRepository repository;
+	protected Path repositoryDb;
 
-	private boolean registerDevice;
-	private String deviceName;
-	private String appName;
-	private Function<String, CompletableFuture<String>> registrationRequestHandler;
+	protected List<ConnectionListener> connectionListeners;
+	protected List<MessageListener> messageListeners;
+	protected List<ChannelListener> channelListeners;
+	protected List<ContactListener> contactListeners;
 
-	private Map<String, Object> exportConfig;
-
-	private WebClient webClient;
+	protected UserAgent userAgent;
 
 	private static final Logger log = LoggerFactory.getLogger(ClientBuilder.class);
 
 	protected ClientBuilder() {
-		VertxOptions options = new VertxOptions();
-		options.setPreferNativeTransport(true);
-		// options.setBlockedThreadCheckIntervalUnit(TimeUnit.SECONDS);
-		// options.setBlockedThreadCheckInterval(300);
-		this.vertx = Vertx.vertx(options);
+		this.connectionListeners = new ArrayList<>();
+		this.messageListeners = new ArrayList<>();
+		this.channelListeners = new ArrayList<>();
+		this.contactListeners = new ArrayList<>();
+	}
+
+	public ClientBuilder nativeTransport(boolean eanbled) {
+		this.nativeTransport = eanbled;
+		return this;
 	}
 
 	public ClientBuilder userKey(KeyPair userKeyPair) {
@@ -94,8 +89,17 @@ public class ClientBuilder {
 		return userKey(KeyPair.fromPrivateKey(userPrivateKey));
 	}
 
-	public ClientBuilder randomUserKey() {
+	public ClientBuilder newUserKey() {
 		return userKey(KeyPair.random());
+	}
+
+	public ClientBuilder userName(String userName) {
+		if (userName != null)
+			this.userName = Normalizer.normalize(userName, Normalizer.Form.NFC);
+		else
+			this.userName = null;
+
+		return this;
 	}
 
 	public ClientBuilder deviceKey(KeyPair deviceKeyPair) {
@@ -109,20 +113,59 @@ public class ClientBuilder {
 		return deviceKey(KeyPair.fromPrivateKey(devicePrivateKey));
 	}
 
-	public ClientBuilder randomDeviceKey() {
+	public ClientBuilder newDeviceKey() {
 		return deviceKey(KeyPair.random());
 	}
 
 	public ClientBuilder deviceNode(Node node) {
 		Objects.requireNonNull(node, "node");
-		this.node = node;
+		this.deviceNode = node;
 		this.device = node;
+		return this;
+	}
+
+	public ClientBuilder deviceName(String deviceName) {
+		Objects.requireNonNull(deviceName, "deviceName");
+		this.deviceName = Normalizer.normalize(deviceName, Normalizer.Form.NFC);
+		return this;
+	}
+
+	public ClientBuilder appName(String appName) {
+		Objects.requireNonNull(appName, "appName");
+		this.appName = Normalizer.normalize(appName, Normalizer.Form.NFC);
+		return this;
+	}
+
+	public ClientBuilder registerUserAndDevice(String passphrase) {
+		Objects.requireNonNull(passphrase, "passphrase");
+		this.passphrase = Normalizer.normalize(passphrase, Normalizer.Form.NFC);;
+		this.registerUserAndDevice = true;
+		return this;
+	}
+
+	public ClientBuilder registerDevice(String passphrase) {
+		Objects.requireNonNull(passphrase, "passphrase");
+		this.passphrase = Normalizer.normalize(passphrase, Normalizer.Form.NFC);;
+		this.registerDevice = true;
+		return this;
+	}
+
+	public ClientBuilder regiesterDevice(Function<String, Boolean> registrationRequestHandler) {
+		Objects.requireNonNull(registrationRequestHandler, "registrationRequestHandler");
+		this.registrationRequestHandler = registrationRequestHandler;
+		this.registerDevice = true;
 		return this;
 	}
 
 	public ClientBuilder peerId(Id peerId) {
 		Objects.requireNonNull(peerId, "peerId");
 		this.peerId = peerId;
+		return this;
+	}
+
+	public ClientBuilder nodeId(Id nodeId) {
+		Objects.requireNonNull(nodeId, "nodeId");
+		this.nodeId = nodeId;
 		return this;
 	}
 
@@ -143,463 +186,252 @@ public class ClientBuilder {
 		return this;
 	}
 
-	public ClientBuilder regiesterDevice(String deviceName, String appName) {
-		Objects.requireNonNull(deviceName, "deviceName");
-		Objects.requireNonNull(appName, "appName");
-
-		this.deviceName = Normalizer.normalize(deviceName, Normalizer.Form.NFC);
-		this.appName = Normalizer.normalize(appName, Normalizer.Form.NFC);
-		this.registerDevice = true;
+	public ClientBuilder messagingRepository(MessagingRepository repository) {
+		Objects.requireNonNull(repository, "repository");
+		this.repository = repository;
 		return this;
 	}
 
-	// The function will get the registration id, and return a {@code CompletableFuture}
-	// to notify the {@code ClientBuilder} the registration request already handled by the user
-	public ClientBuilder regiesterationRequestHandler(Function<String, CompletableFuture<String>> handler) {
-		Objects.requireNonNull(registrationRequestHandler, "registrationRequestHandler");
-		this.registrationRequestHandler = handler;
+	public ClientBuilder messagingRepository(Path repository) {
+		Objects.requireNonNull(repository, "repository");
+		this.repositoryDb = repository;
 		return this;
 	}
 
-	// export config if the build the messaging client successfully
-	public ClientBuilder exportConfig(Map<String, Object> config) {
-		Objects.requireNonNull(config, "config");
-		this.exportConfig = config;
+	public ClientBuilder connectionListeners(List<ConnectionListener> connectionListeners) {
+		Objects.requireNonNull(connectionListeners, "connectionListeners");
+		this.connectionListeners.addAll(connectionListeners);
 		return this;
 	}
 
-	public ClientBuilder config(Map<String, Object> config) {
-		Objects.requireNonNull(config);
-		JsonObject json = new JsonObject(config);
-
-		try {
-			String v = json.getString("userPrivateKey");
-			if (v == null)
-				throw new IllegalArgumentException("Missing user key");
-			KeyPair keyPair = KeyPair.fromPrivateKey(v.startsWith("0x") ? Hex.decode(v) : Base58.decode(v));
-			user = new CryptoIdentity(keyPair);
-
-			v = json.getString("devicePrivateKey");
-			if (v != null) {
-				keyPair = KeyPair.fromPrivateKey(v.startsWith("0x") ? Hex.decode(v) : Base58.decode(v));
-				device = new CryptoIdentity(keyPair);
-			}
-
-			v = json.getString("apiURL");
-			if (v == null)
-				throw new IllegalArgumentException("Missing API service URL");
-			this.apiURL = new URL(v);
-
-			v = json.getString("peerId");
-			if (v == null)
-				throw new IllegalArgumentException("Missing peer id");
-			this.peerId = Id.of(v);
-
-			this.sslPort = json.getInteger("sslPort", 0);
-			this.tcpPort = json.getInteger("tcpPort", 0);
-			if (this.sslPort == 0 && this.tcpPort == 0)
-				throw new IllegalArgumentException("Missing messaging service port ");
-
-			this.sslCert = json.getString("sslCert");
-		} catch (Exception e) {
-			throw new IllegalArgumentException("config", e);
-		}
-
+	public ClientBuilder connectionListener(ConnectionListener connectionListener) {
+		Objects.requireNonNull(connectionListeners, "connectionListeners");
+		this.connectionListeners.add(connectionListener);
 		return this;
 	}
 
-	private void saveConfig() {
-		if (exportConfig == null)
-			return;
-
-		exportConfig.put("userPrivateKey", Base58.encode(
-				((CryptoIdentity)user).getKeyPair().privateKey().bytes()));
-
-		if (device instanceof CryptoIdentity)
-			exportConfig.put("devicePrivateKey", Base58.encode(
-					((CryptoIdentity)device).getKeyPair().privateKey().bytes()));
-
-		exportConfig.put("apiURL", apiURL.toString());
-		exportConfig.put("peerId", peerId.toBase58String());
-		exportConfig.put("sslPort", sslPort);
-		exportConfig.put("tcpPort",tcpPort);
-		if (sslCert != null)
-			exportConfig.put("sslCert", sslCert);
-	}
-
-	public ClientBuilder listener(MessageListener listener) {
-		this.listener = listener;
+	public ClientBuilder messageListeners(List<MessageListener> messageListeners) {
+		Objects.requireNonNull(messageListeners, "messageListeners");
+		this.messageListeners.addAll(messageListeners);
 		return this;
 	}
 
-	private Future<List<URL>> lookupPeer(Id peerId) {
-		return Future.fromCompletionStage(node.findPeer(peerId, 0, LookupOption.ARBITRARY))
-				.map((pil) -> {
-					if (pil.isEmpty()) {
-						log.error("Can not found peer {}", peerId);
-						throw new CompletionException("Can not find peerId for federation: " + peerId, null);
+	public ClientBuilder messageListener(MessageListener messageListener) {
+		Objects.requireNonNull(messageListener, "messageListener");
+		this.messageListeners.add(messageListener);
+		return this;
+	}
+
+	public ClientBuilder channelListeners(List<ChannelListener> channelListeners) {
+		Objects.requireNonNull(channelListeners, "channelListeners");
+		this.channelListeners.addAll(channelListeners);
+		return this;
+	}
+
+	public ClientBuilder channelListener(ChannelListener channelListener) {
+		Objects.requireNonNull(channelListener, "channelListener");
+		this.channelListeners.add(channelListener);
+		return this;
+	}
+
+	public ClientBuilder contactListeners(List<ContactListener> contactListeners) {
+		Objects.requireNonNull(contactListeners, "contactListeners");
+		this.contactListeners.addAll(contactListeners);
+		return this;
+	}
+
+	public ClientBuilder contactListener(ContactListener contactListener) {
+		Objects.requireNonNull(contactListener, "contactListener");
+		this.contactListeners.add(contactListener);
+		return this;
+	}
+
+	public ClientBuilder userAgent(UserAgent userAgent) {
+		this.userAgent = userAgent;
+		return this;
+	}
+
+	// will update the nodeId is not set or check the nodeId if set
+	protected Future<List<URL>> lookupPeer() {
+		if (deviceNode == null || peerId == null)
+			throw new IllegalStateException("node or peerId not set");
+
+		log.info("Looking up peer {} ...", peerId);
+
+		return Future.fromCompletionStage(deviceNode.findPeer(peerId, 0, LookupOption.ARBITRARY)).map((pil) -> {
+			if (pil.isEmpty()) {
+					log.error("Peer not found {}", peerId);
+					throw new CompletionException("Peer not found: " + peerId, null);
+				}
+
+				PeerInfo pi = pil.get(0);
+				if (nodeId == null)
+					nodeId = pi.getNodeId();
+				else {
+					if (!nodeId.equals(pi.getNodeId())) {
+						log.error("Peer node id does not match the expected node id.");
+						throw new CompletionException("Peer node id does not match the expected node id.", null);
+					}
+				}
+
+				log.info("Found peer {}, node id: {}", peerId, pi.getNodeId());
+				return pi;
+			}).compose((pi) -> {
+				log.info("Looking up node {} ...", pi.getNodeId());
+
+				return Future.fromCompletionStage(deviceNode.findNode(pi.getNodeId(), LookupOption.ARBITRARY)).map((r) -> {
+					NodeInfo ni = r.get(Network.IPv4);
+					if (ni == null) {
+						log.error("Node not found {}", pi.getNodeId());
+						throw new CompletionException("Node not found: " + pi.getNodeId(), null);
 					}
 
-					PeerInfo pi = pil.get(0);
-					return pi;
-				})
-				.compose((pi) -> {
-					return Future.fromCompletionStage(node.findNode(pi.getNodeId(), LookupOption.ARBITRARY))
-							.map((r) -> {
-								NodeInfo ni = r.get(Network.IPv4);
-								if (ni == null) {
-									log.error("Can not found node {}", pi.getNodeId());
-									throw new CompletionException("Can not found node " + pi.getNodeId(), null);
-								}
+					List<URL> urls = new ArrayList<>(3);
+					try {
+						if (pi.hasAlternativeURL())
+							urls.add(new URL(pi.getAlternativeURL()));
 
-								List<URL> urls = new ArrayList<>(3);
+						urls.add(new URL("https", ni.getAddress().getHostString(), pi.getPort(), "/"));
+						urls.add(new URL("http",  ni.getAddress().getHostString(), pi.getPort(), "/"));
+					} catch (MalformedURLException e) {
+						log.error("Invalid messaging peer URL", e);
+						throw new CompletionException("Invalid messaging peer URL", e);
+					}
 
-								try {
-									if (pi.hasAlternativeURL())
-										urls.add(new URL(pi.getAlternativeURL()));
-
-									urls.add(new URL("https", ni.getAddress().getHostString(), pi.getPort(), "/"));
-									urls.add(new URL("http",  ni.getAddress().getHostString(), pi.getPort(), "/"));
-								} catch (MalformedURLException e) {
-									throw new CompletionException("Invalid messaging peer info", e);
-								}
-
-								return urls;
-							});
-
+					log.info("Found node {}", pi.getNodeId());
+					return urls;
 				});
+			});
 	}
 
-	private WebClient getWebClient() {
-		if (webClient == null) {
-			WebClientOptions opts = new WebClientOptions()
-					.setSsl(false)
-					.setDefaultHost(apiURL.getHost())
-					.setDefaultPort(apiURL.getPort() > 0 ? apiURL.getPort() : apiURL.getDefaultPort())
-					.setProtocolVersion(HttpVersion.HTTP_1_1);
+	protected abstract Future<MessagingServiceId> getServiceIds(URL url);
 
-			webClient = WebClient.create(vertx, opts);
-		}
+	// Should not return a failed Future.
+	// If the attempt fails, it should return a Future completed with null.
+	protected Future<MessagingServiceId> attemptServiceCheck(URL url) {
+		log.info("Checking peer service {} at {} ...", peerId, url);
 
-		return webClient;
+		return getServiceIds(url).otherwise(e -> {
+			log.info("{} - Check the service error: {}", url, e.getMessage());
+			return null;
+		});
 	}
 
-	private String generateAuthorization(Identity identity, Function<byte[], byte[]> checksum) {
-		Nonce nonce = Nonce.random();
-		byte[] digest = checksum.apply(nonce.bytes());
-		byte[] sig = identity.sign(digest);
+	protected Future<MessagingPeerInfo> attemptServiceCheck(List<URL> urls) {
+		List<Future<MessagingServiceId>> futures = urls.stream().map(url -> attemptServiceCheck(url))
+				.collect(Collectors.toList());
 
-		return "Bearer " + Base58.encode(identity.getId().bytes()) + ":" + Base58.encode(nonce.bytes()) +
-				":" + Base58.encode(sig);
-	}
+		return Future.all(futures).map(ar -> {
+			// always succeeded AsyncResult
+			CompositeFuture cf = ar.result();
 
-	private void parseServiceInfo(JsonObject json) {
-		try {
-			String v = json.getString("peerId");
-			if (v == null)
-				throw new IllegalArgumentException("missing peer id");
-			this.peerId = Id.of(v);
-
-			this.sslPort = json.getInteger("sslPort", 0);
-			this.tcpPort = json.getInteger("tcpPort", 0);
-			if (this.sslPort == 0 && this.tcpPort == 0)
-				throw new IllegalArgumentException("Missing messaging service port ");
-
-			this.sslCert = json.getString("sslCert");
-		} catch (Exception e) {
-			log.error("Got invalid service info.");
-			throw new CompletionException("Invalid service info", e);
-		}
-	}
-
-	private Future<URL> attemptServiceCheck(List<URL> urls, int index) {
-		if (index >= urls.size())
-            return Future.failedFuture("No more candidate URLs to attempt");
-
-		Promise<URL> promise = Promise.promise();
-
-		URL url = urls.get(index);
-		WebClientOptions opts = new WebClientOptions()
-				.setSsl(url.getProtocol().equals("https"))
-				.setDefaultHost(url.getHost())
-				.setDefaultPort(url.getPort() > 0 ? url.getPort() : url.getDefaultPort())
-				.setProtocolVersion(HttpVersion.HTTP_1_1);
-
-		WebClient webClient = WebClient.create(vertx, opts);
-		webClient.get("/id").send()
-			.andThen((ar) -> {
-				if (ar.succeeded()) {
-					HttpResponse<Buffer> res = ar.result();
-					if (res.statusCode() == 200) {
-						try {
-							JsonObject json = res.bodyAsJsonObject();
-							Id pid = Id.of(json.getString("peer"));
-							if (!pid.equals(peerId))
-								promise.fail("Mismatched peer id");
-							else
-								promise.complete(url);
-						} catch (Exception e) {
-							promise.fail(e);
-						}
-					} else {
-						promise.fail("HTTP status: " + res.statusCode());
+			for (int i = 0; i < cf.size(); i++) {
+				MessagingServiceId ids = cf.resultAt(i);
+				URL url = urls.get(i);
+				if (ids != null) {
+					if (!ids.peerId().equals(peerId)) {
+						log.error("{} - Mismatched peer id, expected {}, got {}", url, peerId, ids.peerId());
+						continue;
 					}
-				} else {
-					attemptServiceCheck(urls, index + 1).onComplete(promise);
+
+					if (nodeId != null && !ids.nodeId().equals(nodeId)) {
+						log.error("{} - Mismatched node id, expected {}, got {}", url, nodeId, ids.nodeId());
+						continue;
+					}
+
+					log.info("Messaging service {} default api URL {}", peerId, url);
+
+					return MessagingPeerInfo.of(ids.peerId(), ids.nodeId(), url);
 				}
-
-				webClient.close();
-			});
-
-		return promise.future();
-	}
-
-	private Future<Void> registerDevice() {
-		String authHeader = generateAuthorization(user, (nonce) -> {
-			var shasum = ThreadLocals.sha256();
-			shasum.reset();
-			shasum.update(nonce);
-			shasum.update(device.getId().bytes());
-			shasum.update(deviceName.getBytes(UTF8));
-			shasum.update(appName.getBytes(UTF8));
-			return shasum.digest();
-		});
-
-		var body = JsonObject.of(
-				"deviceId", device.getId().toBase58String(),
-				"deviceName", deviceName,
-				"appName", appName);
-
-		log.info("Registering deivce {} with user {} ...",
-				device.getId(), user.getId());
-
-		return getWebClient().post("/devices")
-			.putHeader("content-type", "application/json")
-			.putHeader("authorization", authHeader)
-			.sendJsonObject(body)
-			.map((res) -> {
-				if (res.statusCode() == 201) {
-					var resBody = res.bodyAsJsonObject();
-					JsonObject serviceInfo = resBody.getJsonObject("serviceInfo");
-
-					log.info("Got service info: {}", serviceInfo);
-					parseServiceInfo(serviceInfo);
-					log.info("Registered device {}", device.getId());
-					return null;
-				} else {
-					log.error("Register device failed, HTTP status: {}", res.statusCode());
-					throw new CompletionException("HTTP error, status " + res.statusCode(), null);
-				}
-			});
-	}
-
-	private Future<String> registerDeviceRequest() {
-		String authHeader = generateAuthorization(device, (nonce) -> {
-			var shasum = ThreadLocals.sha256();
-			shasum.reset();
-			shasum.update(nonce);
-			shasum.update(deviceName.getBytes(UTF8));
-			shasum.update(appName.getBytes(UTF8));
-			return shasum.digest();
-		});
-
-		var body = JsonObject.of(
-				"deviceName", deviceName,
-				"appName", appName);
-
-		log.info("Registering deivce {} ...", device.getId());
-
-		return getWebClient().post("/registrations")
-			.putHeader("content-type", "application/json")
-			.putHeader("authorization", authHeader)
-			.sendJsonObject(body)
-			.map((res) -> {
-				if (res.statusCode() == 201) {
-					JsonObject resBody = res.bodyAsJsonObject();
-					String registrationId = resBody.getString("registrationId");
-					log.info("Registration id: {}", registrationId);
-					return registrationId;
-				} else {
-					log.error("Register device request failed, HTTP status: {}", res.statusCode());
-					throw new CompletionException("HTTP error, status " + res.statusCode(), null);
-				}
-			});
-	}
-
-	private void parseUserKey(JsonObject json) {
-		try {
-			Id userId = Id.of(json.getString("userId"));
-			byte[] sk = Base58.decode(json.getString("userPrivateKey"));
-			sk = device.decrypt(userId, sk);
-
-			KeyPair keyPair = KeyPair.fromPrivateKey(sk);
-			if (!Arrays.equals(userId.bytes(), keyPair.publicKey().bytes()))
-				throw new IllegalArgumentException("Invalid register confirmation, user id and private key mismatch");
-
-			this.user = new CryptoIdentity(keyPair);
-		} catch (BosonException e) {
-			log.error("Invalid confirmation for registration, wrong private key");
-			throw new CompletionException("Invalid register confirmation, wrong private key", e);
-		}
-	}
-
-	private Future<Void> registerDeviceWithRegistrationId(String registrationId) {
-		String authHeader = generateAuthorization(device, (nonce) -> {
-			var shasum = ThreadLocals.sha256();
-			shasum.reset();
-			shasum.update(nonce);
-			shasum.update(registrationId.getBytes(UTF8));
-			return shasum.digest();
-		});
-
-		var body = JsonObject.of("registrationId", registrationId);
-
-		log.info("Registering deivce {} with registration id {} ...",
-				device.getClass(), registrationId);
-
-		return getWebClient().post("/devices")
-			.putHeader("content-type", "application/json")
-			.putHeader("authorization", authHeader)
-			.sendJsonObject(body)
-			.map((res) -> {
-				if (res.statusCode() == 201) {
-					var resBody = res.bodyAsJsonObject();
-					log.debug("Registration got confirmed: {}", resBody);
-
-					parseUserKey(resBody);
-					JsonObject serviceInfo = resBody.getJsonObject("serviceInfo");
-					log.info("Got service info: {}", serviceInfo);
-					parseServiceInfo(serviceInfo);
-					log.info("Registered device {}", device.getId());
-					return null;
-				} else {
-					log.error("Register device(registraionId:{}) failed, HTTP status: {}", registrationId, res.statusCode());
-					throw new CompletionException("HTTP error, status " + res.statusCode(), null);
-				}
-			});
-	}
-
-	private CompletableFuture<Void> getServerInfo() {
-		var future = new CompletableFuture<Void>();
-		var httpClient = getWebClient();
-
-		String authHeader = generateAuthorization(device, (nonce) -> {
-			var shasum = ThreadLocals.sha256();
-			shasum.reset();
-			shasum.update(nonce);
-			return shasum.digest();
-		});
-
-		httpClient.get("/service/info")
-			.putHeader("authorization", authHeader)
-			.send()
-			.onSuccess(res -> {
-				if (res.statusCode() == 200) {
-					JsonObject body = res.bodyAsJsonObject();
-					JsonObject serviceInfo = body.getJsonObject("serviceInfo");
-					log.info("Got service info: {}", serviceInfo);
-					future.complete(null);
-				} else {
-					throw new CompletionException("HTTP error, status " + res.statusCode(), null);
-				}
-			}).onFailure(e -> {
-				log.error("Failed to get server endpoints", e);
-				future.completeExceptionally(e);
-			});
-
-		return future;
-	}
-
-	private void eligibleCheck() {
-		if (device == null)
-			throw new IllegalStateException("missing the device key or device node");
-
-		if (registerDevice) {
-			if (node != null) {
-				if (peerId == null)
-					throw new IllegalStateException("missing the peer id");
-			} else {
-				if (apiURL == null)
-					throw new IllegalStateException("missing the API service URL");
 			}
+
+			log.error("Messaging service {} not available, all attempts failed", peerId);
+			throw new CompletionException(new PeerNotAvailable(peerId.toBase58String()));
+		});
+	}
+
+	// Acceptable inputs:
+	//
+	// - Preconfigured client: user and device are registered, qualified messaging peer information
+	//   1. UserAgent
+	//   2. MessageingRepository instance or path, configuration information included
+	//
+	// - Build from scratch
+	//   - User already registered, and have the user's private key
+	//     3. userKey, deviceKey, deviceName, appName, peerId, apiURL, passphrase(registerDevice)
+	//     4. userKey, deviceNode, deviceName, appName, peerId, apiURL[optional] passphrase(registerDevice)
+	//
+	//   - User already registered, and have another device with the user signed-in
+	//     5. deviceKey, deviceName, appName, peerId, apiURL, registrationRequestHandler
+	//     6. deviceNode, deviceName, appName, peerId, apiURL[optional], registrationRequestHandler
+	//
+	//   - New user and device
+	//     7. userKey, userName[optional], deviceKey, deviceName, appName, peerId, apiURL, passphrase(registerUserAndDevice)
+	//     8. userKey, userName[optional], deviceNode, deviceName, appName, peerId, apiURL[optional] passphrase(registerUserAndDevice)
+	//
+	// Build priority:
+	// 1. the custom userAgent
+	// 2. DefaultUserAgent with the custom MessagingRepository instance
+	// 3. DefaultUserAgent with the default MessagingRepository implementation
+	//
+	protected void eligibleCheck() {
+		if (userAgent != null)
+			return; // assume the userAgent is configured
+
+		if (repository == null && repositoryDb == null)
+			throw new IllegalStateException("messaging repository is not configured");
+
+		boolean deviceCheck = false;
+		boolean peerCheck = false;
+
+		if (registerUserAndDevice) {
+			if (user == null)
+				throw new IllegalStateException("user key is not configured");
+
+			if (passphrase == null)
+				throw new IllegalStateException("passphrase is not configured");
+
+			deviceCheck = true;
+			peerCheck = true;
+		}
+
+		if (registerDevice || deviceCheck) {
+			if (device == null)
+				throw new IllegalStateException("device key or node is not configured");
+
+			if (deviceName == null)
+				throw new IllegalStateException("device name is not configured");
+
+			if (appName == null)
+				throw new IllegalStateException("app name is not configured");
+
+			if (user != null && passphrase == null)
+				throw new IllegalStateException("passphrase is not configured");
 
 			if (user == null && registrationRequestHandler == null)
-				throw new IllegalStateException("missing user key or registration request handler");
+				throw new IllegalStateException("registration request handler is not configured");
 
-			if (user != null && registrationRequestHandler != null)
-				log.warn("The registration request handler will be ignored, already has user key");
+			peerCheck = true;
+		}
+
+		if (peerCheck) {
+			// peer info is mandatory
+			if (peerId == null)
+				throw new IllegalStateException("peer id is not configured");
+
+			if (deviceNode == null && apiURL == null)
+				throw new IllegalStateException("api URL is not configured");
 		} else {
-			if (user == null)
-				throw new IllegalStateException("missing the user key");
-
-			if (peerId == null || (tcpPort == 0 && sslPort == 0)) // missing the service info
-				throw new IllegalStateException("missing service info");
-		}
-	}
-
-	public CompletableFuture<MessagingClient> build() {
-		try {
-			eligibleCheck();
-		} catch (Exception e) {
-			return CompletableFuture.failedFuture(e);
-		}
-
-		Future<Void> future;
-		if (registerDevice) {
-			Future<List<URL>> lookup;
-			if (node != null)
-				lookup = lookupPeer(peerId);
-			else
-				lookup = Future.succeededFuture(List.of(apiURL));
-
-			future = lookup.compose((urls) -> {
-				return attemptServiceCheck(urls, 0);
-			}).map((url) -> {
-				this.apiURL = url;
-				return null;
-			});
-
-			if (user != null) {
-				future = future.compose((v) -> registerDevice());
+			// peer info is optional
+			if (peerId != null) {
+				if (deviceNode == null && apiURL == null)
+					throw new IllegalStateException("api URL is not configured");
 			} else {
-				future = future.compose((v) -> registerDeviceRequest())
-					.compose((rid) -> {
-						// Convert CompletableFuture to Vert.x Future
-						Promise<String> promise = Promise.promise();
-						registrationRequestHandler
-							.apply(rid)
-							.thenAccept((v) -> promise.complete(rid))
-							.exceptionally((e) -> {
-								promise.fail(e);
-								return null;
-							});
-
-						return promise.future();
-					})
-					.compose(this::registerDeviceWithRegistrationId);
+				if (apiURL != null)
+					throw new IllegalStateException("peer id is not configured");
 			}
-		} else {
-			future = Future.succeededFuture();
 		}
-
-		CompletableFuture<MessagingClient> f = new CompletableFuture<>();
-		future.map((v) -> {
-			try {
-				MessagingClientImpl client = new MessagingClientImpl(vertx, user, device, peerId,
-						apiURL.getHost(), tcpPort, sslPort, sslCert, listener);
-				saveConfig();
-				return client;
-			} catch (MessagingException e) {
-				log.error("Failed to create the messaging client", e);
-				throw new CompletionException("Failed to create the messaging client", e);
-			}
-		})
-		.compose((client) -> {
-			return vertx.deployVerticle(client).map(id -> client);
-		})
-		.onSuccess((c) -> f.complete(c))
-		.onFailure((e) -> f.completeExceptionally(e));
-
-		return f;
 	}
+
+	public abstract CompletableFuture<MessagingClient> build();
 }
