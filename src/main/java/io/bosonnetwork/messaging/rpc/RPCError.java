@@ -10,11 +10,14 @@ public class RPCError {
 	@JsonProperty(value = "d")
 	private String data;
 
-	public static final RPCError InvalidParameters = new RPCError(-1, "Invalid parameters");
-	public static final RPCError Forbidden = new RPCError(-2, "Forbidden");
-	public static final RPCError Timeout = new RPCError(-3, "Timeout");
-	public static final RPCError AlreadyExists = new RPCError(-4, "Already exists");
-	public static final RPCError SuperNodeError = new RPCError(-5, "Super node error");
+	public static final RPCError SuperNodeError = new RPCError(-1, "Super node internal error");
+	public static final RPCError InvalidParameters = new RPCError(-2, "Invalid parameters");
+	public static final RPCError InvalidMethod = new RPCError(-3, "Invalid method");
+	public static final RPCError Forbidden = new RPCError(-4, "Forbidden");
+	public static final RPCError Timeout = new RPCError(-5, "Timeout");
+	public static final RPCError NotUpToDate = new RPCError(-6, "Not up to date");
+	public static final RPCError AlreadyExists = new RPCError(-7, "Already exists");
+
 
 	public RPCError(int code, String message, String data) {
 		this.code = code;

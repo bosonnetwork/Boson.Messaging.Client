@@ -4,49 +4,32 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 public enum RPCMethod {
-	DEVICE_LIST(0x00),
-	DEVICE_REVOKE(0x01),
+	USER_PROFILE(0x01),
 
-	CONTACT_ADD(0x10),
-	CONTACT_UPDATE(0x11),
-	CONTACT_REMOVE(0x12),
-	CONTACT_LIST(0x13),
-	CONTACT_CLEAR(0x14),
+	DEVICE_LIST(0x11),
+	DEVICE_REVOKE(0x12),
 
-	GROUP_CREATE(0x20),
-	GROUP_UPDATE(0x21),
-	GROUP_DELETE(0x22),
-	GROUP_ROLE(0x23),
-	GROUP_BAN(0x24),
-	GROUP_UNBAN(0x25),
-	GROUP_REMOVE(0x26),
-	GROUP_JOIN(0x27),
-	GROUP_LEAVE(0x28);
+	CONTACT_PUT(0x21),
+	CONTACT_REMOVE(0x22),
+	CONTACT_SYNC(0x23),
+	CONTACT_CLEAR(0x24),
+
+	CHANNEL_CREATE(0x31),
+	CHANNEL_DELETE(0x32),
+	CHANNEL_JOIN(0x33),
+	CHANNEL_LEAVE(0x34),
+	CHANNEL_INFO(0x35),
+	CHANNEL_MEMBERS(0x36),
+	CHANNEL_OWNER(0x37),
+	CHANNEL_PERMISSION(0x38),
+	CHANNEL_NAME(0x39),
+	CHANNEL_NOTICE(0x3A),
+	CHANNEL_ROLE(0x3B),
+	CHANNEL_BAN(0x3C),
+	CHANNEL_UNBAN(0x3D),
+	CHANNEL_REMOVE(0x3E);
 
 	private final int value;
-
-	final static RPCMethod[] METHODS = {
-			DEVICE_LIST,
-			DEVICE_REVOKE,
-			// 14 nulls
-			null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-			CONTACT_ADD,
-			CONTACT_UPDATE,
-			CONTACT_REMOVE,
-			CONTACT_LIST,
-			CONTACT_CLEAR,
-			// 11 nulls
-			null, null, null, null, null, null, null, null, null, null, null,
-			GROUP_CREATE,
-			GROUP_UPDATE,
-			GROUP_DELETE,
-			GROUP_ROLE,
-			GROUP_BAN,
-			GROUP_UNBAN,
-			GROUP_REMOVE,
-			GROUP_JOIN,
-			GROUP_LEAVE
-	};
 
 	private RPCMethod(int value) {
 		this.value = value;
@@ -59,21 +42,29 @@ public enum RPCMethod {
 
 	@JsonCreator
 	public static RPCMethod valueOf(int value) {
-		if (value < 0 || value >= METHODS.length)
-			throw new IllegalArgumentException("Invalid method: " + value);
-
-		RPCMethod type = METHODS[value];
-		if (type != null)
-			return type;
-		else
-			throw new IllegalArgumentException("Invalid method: " + value);
-	}
-
-	public boolean isNodeContext() {
-		return this.value <= GROUP_CREATE.value;
-	}
-
-	public boolean isGroupContext() {
-		return this.value >= GROUP_DELETE.value;
+		return switch (value) {
+		case 0x01 -> USER_PROFILE;
+		case 0x11 -> DEVICE_LIST;
+		case 0x12 -> DEVICE_REVOKE;
+		case 0x21 -> CONTACT_PUT;
+		case 0x22 -> CONTACT_REMOVE;
+		case 0x23 -> CONTACT_SYNC;
+		case 0x24 -> CONTACT_CLEAR;
+		case 0x31 -> CHANNEL_CREATE;
+		case 0x32 -> CHANNEL_DELETE;
+		case 0x33 -> CHANNEL_JOIN;
+		case 0x34 -> CHANNEL_LEAVE;
+		case 0x35 -> CHANNEL_INFO;
+		case 0x36 -> CHANNEL_MEMBERS;
+		case 0x37 -> CHANNEL_OWNER;
+		case 0x38 -> CHANNEL_PERMISSION;
+		case 0x39 -> CHANNEL_NAME;
+		case 0x3A -> CHANNEL_NOTICE;
+		case 0x3B -> CHANNEL_ROLE;
+		case 0x3C -> CHANNEL_BAN;
+		case 0x3D -> CHANNEL_UNBAN;
+		case 0x3E -> CHANNEL_REMOVE;
+		default -> throw new IllegalArgumentException("Invalid method: " + value);
+		};
 	}
 }
