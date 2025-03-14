@@ -80,7 +80,7 @@ public class ContactTests {
 		md.reset();
 		md.update(id.bytes());
 		md.update(homePeerId.bytes());
-		md.update(homePeerSig);
+		//md.update(homePeerSig);
 		if (name != null)
 			md.update(name.getBytes(UTF_8));
 		md.update(avatar ? (byte)1 : (byte)0);
@@ -88,7 +88,7 @@ public class ContactTests {
 			md.update(notice.getBytes(UTF_8));
 		byte[] sig = keys.get(id).sign(md.digest());
 
-		return new Profile(id, homePeerId, homePeerSig, name, avatar, notice, sig);
+		return new Profile(id, homePeerId, name, avatar, notice, homePeerSig, sig);
 	}
 
 	@Test

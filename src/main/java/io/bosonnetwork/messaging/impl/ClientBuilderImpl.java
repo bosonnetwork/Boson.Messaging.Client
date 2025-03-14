@@ -2,6 +2,7 @@ package io.bosonnetwork.messaging.impl;
 
 import java.net.URL;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 import org.slf4j.Logger;
@@ -10,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import io.bosonnetwork.messaging.ClientBuilder;
 import io.bosonnetwork.messaging.DeviceProfile;
 import io.bosonnetwork.messaging.MessagingClient;
+import io.bosonnetwork.messaging.RepositoryException;
 import io.bosonnetwork.messaging.UserAgent;
 import io.bosonnetwork.messaging.UserProfile;
 import io.bosonnetwork.messaging.impl.APIClient.MessagingServiceId;
@@ -75,7 +77,7 @@ public class ClientBuilderImpl extends ClientBuilder {
 			}
 
 			if (deviceNode != null && agent.getDevice() != null)
-				agent.getDevice().setNode(deviceNode);
+				agent.getDevice().setIdentity(deviceNode);
 
 			if (device != null) {
 				if (agent.getDevice() == null)
@@ -128,8 +130,14 @@ public class ClientBuilderImpl extends ClientBuilder {
 		apiClient.setUserIdentity(user);
 		apiClient.setDeviceIdentity(device);
 		apiClient.setAccessTokenRefreshHandler(token -> {
-			// TODO: change this!!!
-			((DefaultUserAgent)agent).setAccessToken(token);
+			// same as in MessagingClientImpl::updateAccessToken
+			Map<String, Object> config = Map.of("accessToken", token);
+
+			try {
+				agent.putProperties("api", config);
+			} catch (RepositoryException e) {
+				log.error("Save API client config failed: ", e.getMessage(), e);
+			}
 		});
 
 		UserProfile user = agent.getUser();
@@ -143,7 +151,7 @@ public class ClientBuilderImpl extends ClientBuilder {
 		if (registerDevice) {
 			if (user != null) {
 				return apiClient.registerDeviceWithUser(passphrase, device.getName(), device.getAppName()).map(cred -> {
-					((DefaultUserAgent)agent).setUser((UserProfileImpl)cred.user());
+					agent.onUserProfileAcquired(cred.user());
 					return agent;
 				});
 			} else {
@@ -168,7 +176,7 @@ public class ClientBuilderImpl extends ClientBuilder {
 				}).compose(rid -> {
 					return apiClient.finishRegisterDeviceRequest(rid);
 				}).map(cred -> {
-					((DefaultUserAgent)agent).setUser((UserProfileImpl)cred.user());
+					agent.onUserProfileAcquired(cred.user());
 					return agent;
 				});
 			}

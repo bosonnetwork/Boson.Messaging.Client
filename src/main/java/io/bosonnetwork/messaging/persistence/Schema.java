@@ -10,7 +10,7 @@ public interface Schema {
 			""")
 	@SqlScript("""
 			CREATE TABLE IF NOT EXISTS messages(
-				sid INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+				rid INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 				conversationId BLOB NOT NULL,
 				version SMALLINT NOT NULL,
 				"from" BLOB NOT NULL,

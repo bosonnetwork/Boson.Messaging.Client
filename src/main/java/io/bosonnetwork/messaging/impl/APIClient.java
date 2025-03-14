@@ -97,6 +97,8 @@ public class APIClient {
 		if (accessToken == null)
 			throw new IllegalStateException("No access token supplier has been set");
 
+		// TODO: call auth to acquire a new access token if is null;
+
 		return accessToken;
 	}
 

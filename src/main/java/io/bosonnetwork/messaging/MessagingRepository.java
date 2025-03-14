@@ -12,12 +12,12 @@ import io.bosonnetwork.messaging.Channel.Role;
 import io.bosonnetwork.utils.Json;
 
 public interface MessagingRepository {
-	public void putConfig(String key, byte[] config) throws RepositoryException;
+	public void putConfig(String key, byte[] value) throws RepositoryException;
 
 	public byte[] getConfig(String key) throws RepositoryException;
 
-	public default void putConfig(String key, Object config) throws RepositoryException {
-		putConfig(key, config == null ? null : Json.toBytes(config));
+	public default void putConfig(String key, Object value) throws RepositoryException {
+		putConfig(key, value == null ? null : Json.toBytes(value));
 	}
 
 	public default <T> T getConfig(String key, Class<T> type) throws RepositoryException {
@@ -38,13 +38,11 @@ public interface MessagingRepository {
 
 	public void updateMessageTimestamp(Message message) throws RepositoryException;
 
-	// TODO: sid is a implementation detail, should be Message?
-	public default void removeMessage(long sid) throws RepositoryException {
-		removeMessages(Arrays.asList(sid));
+	public default void removeMessage(long rid) throws RepositoryException {
+		removeMessages(Arrays.asList(rid));
 	}
 
-	// TODO: sid is a implementation detail, should be Message?
-	public void removeMessages(Collection<Long> sids) throws RepositoryException;
+	public void removeMessages(Collection<Long> rids) throws RepositoryException;
 
 	public void removeMessages(Id conversationId) throws RepositoryException;
 

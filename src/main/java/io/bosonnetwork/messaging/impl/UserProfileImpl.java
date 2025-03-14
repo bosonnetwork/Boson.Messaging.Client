@@ -4,11 +4,8 @@ import io.bosonnetwork.crypto.CryptoIdentity;
 import io.bosonnetwork.messaging.UserProfile;
 
 public class UserProfileImpl extends UserProfile {
-	private CryptoIdentity identity;
-
 	public UserProfileImpl(CryptoIdentity identity, String name, boolean avatar) {
-		super(name, avatar);
-		this.identity = identity;
+		super(identity, name, avatar);
 	}
 
 	public UserProfileImpl(CryptoIdentity identity, String name) {
@@ -16,8 +13,7 @@ public class UserProfileImpl extends UserProfile {
 	}
 
 	public UserProfileImpl(byte[] privateKey, String name, boolean avatar) {
-		super(name, avatar);
-		this.identity = new CryptoIdentity(privateKey);
+		super(new CryptoIdentity(privateKey), name, avatar);
 	}
 
 	public UserProfileImpl(byte[] privateKey, String name) {
@@ -25,7 +21,7 @@ public class UserProfileImpl extends UserProfile {
 	}
 
 	@Override
-	protected CryptoIdentity getIdentity() {
-		return identity;
+	public CryptoIdentity getIdentity() {
+		return (CryptoIdentity)super.getIdentity();
 	}
 }

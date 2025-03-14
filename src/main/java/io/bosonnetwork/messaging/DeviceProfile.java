@@ -4,27 +4,40 @@ import java.util.Objects;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.Identity;
-import io.bosonnetwork.Node;
 
 public abstract class DeviceProfile {
-
+	private Identity identity;
 	private String name;
 	private String app;
 
-	protected DeviceProfile(String name, String app) {
+	protected DeviceProfile(Identity identity, String name, String app) {
+		this.identity = identity;
 		this.name = name;
 		this.app = app;
 	}
 
-	public abstract Id getId();
+	public Id getId() {
+		return getIdentity().getId();
+	}
 
-	protected abstract Identity getIdentity();
+	protected Identity getIdentity() {
+		if (identity == null)
+			throw new IllegalStateException("identity not set");
 
-	protected abstract void updateIdentity(Identity identity);
+		return identity;
+	}
 
-	public void setNode(Node node) {
-		Objects.requireNonNull(node, "node");
-		updateIdentity(node);
+	public boolean hasIdentity() {
+		return identity != null;
+	}
+
+	public void setIdentity(Identity identity) {
+		Objects.requireNonNull(identity, "identity");
+
+		if (this.identity != null)
+			throw new IllegalStateException("identity already set");
+
+		this.identity = identity;
 	}
 
 	public String getName() {

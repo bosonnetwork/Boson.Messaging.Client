@@ -41,22 +41,17 @@ public class Profile {
 	@JsonCreator
 	protected Profile() {}
 
-	public Profile(Id id, Id homePeerId, byte[] homePeerSig, String name, boolean avatar, byte[] sig) {
-		this.id = id;
-		this.homePeerId = homePeerId;
-		this.homePeerSig = homePeerSig;
-		this.name = name;
-		this.avatar = avatar;
-		this.sig = sig;
+	public Profile(Id id, Id homePeerId, String name, boolean avatar, byte[] homePeerSig, byte[] sig) {
+		this(id, homePeerId, name, avatar, null, homePeerSig, sig);
 	}
 
-	public Profile(Id id, Id homePeerId, byte[] homePeerSig, String name, boolean avatar, String notice, byte[] sig) {
+	public Profile(Id id, Id homePeerId, String name, boolean avatar, String notice, byte[] homePeerSig, byte[] sig) {
 		this.id = id;
 		this.homePeerId = homePeerId;
-		this.homePeerSig = homePeerSig;
 		this.name = name;
 		this.notice = notice;
 		this.avatar = avatar;
+		this.homePeerSig = homePeerSig;
 		this.sig = sig;
 	}
 
@@ -135,5 +130,25 @@ public class Profile {
 		if (notice != null)
 			md.update(notice.getBytes(UTF_8));
 		return id.toSignatureKey().verify(md.digest(), sig);
+	}
+
+	@Override
+	public String toString() {
+		StringBuilder repr = new StringBuilder(256);
+
+		repr.append("Profile: ").append(id)
+			.append("[homePeer=").append(homePeerId);
+
+		if (name != null)
+			repr.append(", name=").append(name);
+
+		repr.append(", avatar=").append(avatar ? "yes" : "no");
+
+		if (notice != null)
+			repr.append(", notice=").append(notice);
+
+		repr.append(']');
+
+		return repr.toString();
 	}
 }

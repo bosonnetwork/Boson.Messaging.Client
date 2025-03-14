@@ -57,6 +57,7 @@ public abstract class Message {
 	@JsonInclude(Include.NON_DEFAULT)
 	private byte[] body;
 
+	private long rid;
 	private Id conversationId;
 	private long timestamp; // local sent or received timestamp
 
@@ -115,11 +116,13 @@ public abstract class Message {
 	}
 
 	protected Message() {
+		this.rid = -1;
 		this.conversationId = null;
 		this.timestamp = -1;
 	}
 
 	protected Message(Id from, long serialNumber, int messageType) {
+		this.rid = -1;
 		this.conversationId = null;
 		this.version = VERSION;
 		this.from = from;
@@ -138,11 +141,12 @@ public abstract class Message {
 	}
 	*/
 
-	protected Message(Id conversationId, int version, Id from, Id to, long serialNumber, long created,
+	protected Message(long rid, Id conversationId, int version, Id from, Id to, long serialNumber, long created,
 			int messageType, Map<String, Object> properties, String contentType, String contentDisposition,
 			byte[] body, long timestamp) {
-		this.version = version;
+		this.rid = rid;
 		this.conversationId = conversationId;
+		this.version = version;
 		this.from = from;
 		this.to = to;
 		this.serialNumber = serialNumber;
@@ -157,6 +161,14 @@ public abstract class Message {
 
 	public int getVersion() {
 		return version;
+	}
+
+	public long getRid() {
+		return rid;
+	}
+
+	protected void setRid(long rid) {
+		this.rid = rid;
 	}
 
 	public Id getConversationId() {

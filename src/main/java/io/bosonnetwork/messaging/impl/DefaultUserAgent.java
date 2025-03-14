@@ -45,8 +45,6 @@ public class DefaultUserAgent implements UserAgent {
 	private DeviceProfileImpl device;
 	private MessagingPeerInfo peer;
 
-	private String accessToken;
-
 	private MessagingRepository repository;
 
 	private List<ConnectionListener> connectionListeners;
@@ -89,14 +87,6 @@ public class DefaultUserAgent implements UserAgent {
 			throw new IllegalStateException("UserAgent is hardened");
 
 		this.user = new UserProfileImpl(user, name);
-		updateUserInfoConfig();
-	}
-
-	// TODO: temporary API?!
-	protected void setUser(UserProfileImpl user) {
-		Objects.requireNonNull(user, "user");
-
-		this.user = user;
 		updateUserInfoConfig();
 	}
 
@@ -208,21 +198,6 @@ public class DefaultUserAgent implements UserAgent {
 		return repository;
 	}
 
-	protected String getAccessToken() {
-		return accessToken;
-	}
-
-	protected void setAccessToken(String token) {
-		this.accessToken = token;
-		Map<String, Object> config = Map.of("accessToken", token);
-
-		try {
-			repository.putConfig(".api", config);
-		} catch (RepositoryException e) {
-			log.error("Save API client config failed: ", e.getMessage(), e);
-		}
-	}
-
 	private void updateUserInfoConfig() {
 		if (repository == null)
 			throw new IllegalStateException("messaging repository not configured");
@@ -323,6 +298,7 @@ public class DefaultUserAgent implements UserAgent {
 			throw new IllegalStateException("config: invalid messaging peer info", e);
 		}
 
+		/*
 		try {
 			Map<String, Object> apiClientInfo = repository.getConfig(".api", Json.MAP_TYPE);
 			if (apiClientInfo != null && !apiClientInfo.isEmpty()) {
@@ -332,6 +308,7 @@ public class DefaultUserAgent implements UserAgent {
 			log.error("Load API client config failed: {}", e.getMessage(), e);
 			throw new IllegalStateException("config: invalid API client config", e);
 		}
+		*/
 	}
 
 	@Override
@@ -481,6 +458,32 @@ public class DefaultUserAgent implements UserAgent {
 	@Override
 	public void onDisconnected() {
 		connectionListeners.forEach(l -> l.onDisconnected());
+	}
+
+	////////////////////////////////////////////////////////////////////////////
+	// Profile
+	@Override
+	public void onUserProfileAcquired(UserProfile profile) {
+		Objects.requireNonNull(profile, "profile");
+
+		if (!(profile instanceof UserProfileImpl))
+			throw new IllegalArgumentException("Unaccepted profile type");
+
+		UserProfileImpl newProfile = (UserProfileImpl)profile;
+		if (user != null && !user.getIdentity().equals(newProfile.getIdentity()))
+			throw new IllegalStateException("Can not update the user identity");
+
+		this.user = new UserProfileImpl(newProfile.getIdentity(), profile.getName(), profile.hasAvatar());
+
+		updateUserInfoConfig();
+	}
+
+	@Override
+	public void onUserProfileChanged(String name, boolean avatar) {
+		CryptoIdentity identity = user.getIdentity(); // use the existing identity
+		this.user = new UserProfileImpl(identity, name, avatar);
+
+		updateUserInfoConfig();
 	}
 
 	////////////////////////////////////////////////////////////////////////////

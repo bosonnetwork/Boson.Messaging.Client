@@ -106,7 +106,8 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		if (!userAgent.isConfigured())
 			throw new IllegalStateException("UserAgent is not configured");
 
-		((DefaultUserAgent)userAgent).harden();
+		if (userAgent instanceof DefaultUserAgent dua)
+			dua.harden();
 
 		this.peer = userAgent.getMessagingPeerInfo();
 		this.user = ((UserProfileImpl)userAgent.getUser()).getIdentity();
@@ -127,15 +128,38 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		nextRpcCallId = new AtomicLong(idx);
 	}
 
+	private String loadAccessToken() {
+		try {
+			Map<String, Object> config = userAgent.getProperties("api");
+			if (config != null && !config.isEmpty())
+				return (String)config.get("accessToken");
+		} catch (Exception e) {
+			log.error("Load API client config failed: {}", e.getMessage(), e);
+			throw new IllegalStateException("config: invalid API client config", e);
+		}
+
+		return null;
+	}
+
+	private void updateAccessToken(String token) {
+		Map<String, Object> config = Map.of("accessToken", token);
+
+		try {
+			userAgent.putProperties("api", config);
+		} catch (RepositoryException e) {
+			log.error("Save API client config failed: ", e.getMessage(), e);
+		}
+	}
+
 	@Override
 	public void start(Promise<Void> startPromise) {
+		loadAccessToken();
+
 		apiClient = new APIClient(vertx, peer.getPeerId(), peer.getApiURL());
 		apiClient.setUserIdentity(user);
 		apiClient.setDeviceIdentity(device);
-		apiClient.setAccessToken(((DefaultUserAgent)userAgent).getAccessToken());
-		apiClient.setAccessTokenRefreshHandler((accessToken) -> {
-			((DefaultUserAgent)userAgent).setAccessToken(accessToken);
-		});
+		apiClient.setAccessToken(loadAccessToken());
+		apiClient.setAccessTokenRefreshHandler(this::updateAccessToken);
 
 		apiClient.getServiceInfo().map(info -> {
 			serviceInfo = info;

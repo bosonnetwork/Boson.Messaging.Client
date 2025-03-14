@@ -22,7 +22,7 @@ public interface Messages {
 			VALUES(:conversationId, :version, :from, :to, :serialNumber, :created, :messageType, :properties, :contentType, :contentDisposition, :body, :timestamp)
 			""")
 	@RegisterArgumentFactory(PropertiesArgumentFactory.class)
-	@GetGeneratedKeys("sid")
+	@GetGeneratedKeys("rid")
 	long put(@BindBean Message message);
 
 	@SqlBatch("""
@@ -30,16 +30,16 @@ public interface Messages {
 			VALUES(:conversationId, :version, :from, :to, :serialNumber, :created, :messageType, :properties, :contentType, :contentDisposition, :body, :timestamp)
 			""")
 	@RegisterArgumentFactory(PropertiesArgumentFactory.class)
-	@GetGeneratedKeys("sid")
+	@GetGeneratedKeys("rid")
 	// SQLite can not return the generated keys in batch mode
 	long[] putAll(@BindBean Collection<Message> messages);
 
-	@SqlUpdate("UPDATE messages SET timestamp = :timestamp WHERE sid = :sid")
+	@SqlUpdate("UPDATE messages SET timestamp = :timestamp WHERE rid = :rid")
 	int updateTimestamp(@BindBean Message message);
 
-	@SqlQuery("SELECT * FROM messages WHERE sid = ?")
+	@SqlQuery("SELECT * FROM messages WHERE rid = ?")
 	@RegisterRowMapper(MessageRowMapper.class)
-	Message get(long sid);
+	Message get(long rid);
 
 	@SqlQuery("""
 			SELECT * FROM messages
@@ -60,11 +60,11 @@ public interface Messages {
 	// since(inclusive)
 	List<Message> get(@Bind("conversationId") Id conversationId, @Bind("since") long since, @Bind("limit") int limit, @Bind("offset") int offset);
 
-	@SqlUpdate("DELETE FROM messages WHERE sid = ?")
-	int remove(long sid);
+	@SqlUpdate("DELETE FROM messages WHERE rid = ?")
+	int remove(long rid);
 
-	@SqlUpdate("DELETE FROM messages WHERE sid IN (<sids>)")
-	int removeAll(@BindList("sids") Collection<Long> sids);
+	@SqlUpdate("DELETE FROM messages WHERE rid IN (<rids>)")
+	int removeAll(@BindList("rids") Collection<Long> rids);
 
 	@SqlUpdate("DELETE FROM messages WHERE conversationId = :conversationId")
 	int removeAll(@Bind("conversationId") Id conversationId);

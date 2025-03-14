@@ -105,7 +105,7 @@ public class ContactsTests {
 		md.reset();
 		md.update(userId.bytes());
 		md.update(homePeerId.bytes());
-		md.update(homePeerSig);
+		//md.update(homePeerSig);
 		if (name != null)
 			md.update(name.getBytes(UTF_8));
 		md.update(avatar ? (byte)1 : (byte)0);
@@ -113,7 +113,7 @@ public class ContactsTests {
 			md.update(notice.getBytes(UTF_8));
 		byte[] sig = keys.get(userId).sign(md.digest());
 
-		return new Profile(userId, homePeerId, homePeerSig, name, avatar, notice, sig);
+		return new Profile(userId, homePeerId, name, avatar, notice, homePeerSig, sig);
 	}
 
 	private static Channel createChannel() {

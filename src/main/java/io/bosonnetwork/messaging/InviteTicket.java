@@ -1,43 +1,46 @@
 package io.bosonnetwork.messaging;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
+import java.time.Instant;
 import java.util.Objects;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.JsonProcessingException;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.crypto.Hash;
-import io.bosonnetwork.utils.Json;
 
 public class InviteTicket {
-	@JsonProperty(value = "c", required = true)
+	@JsonProperty("c")
 	private Id channelId;
 
-	@JsonProperty(value = "i", required = true)
+	@JsonProperty("i")
 	private Id inviter;
 
-	@JsonProperty(value = "p")
+	@JsonProperty("p")
 	@JsonInclude(Include.NON_EMPTY)
 	private boolean isPublic;
 
-	@JsonProperty(value = "e")
+	@JsonProperty("e")
 	@JsonInclude(Include.NON_EMPTY)
 	private long expire;
 
-	@JsonProperty(value = "s", required = true)
+	@JsonProperty("s")
 	private byte[] sig;
 
 	@JsonCreator
-	protected InviteTicket() {
-	}
+	public InviteTicket(@JsonProperty(value = "c", required = true) Id channelId,
+			@JsonProperty(value = "i", required = true) Id inviter,
+			@JsonProperty(value = "p", defaultValue = "false") boolean isPublic,
+			@JsonProperty(value = "e", required = true) long expire,
+			@JsonProperty(value = "s", required = true) byte[] sig) {
+		Objects.requireNonNull(channelId, "channelId");
+		Objects.requireNonNull(inviter, "inviter");
+		Objects.requireNonNull(sig, "sig");
 
-	public InviteTicket(Id channelId, Id inviter, boolean isPublic, long expire, byte[] sig) {
 		this.channelId = channelId;
 		this.inviter = inviter;
 		this.isPublic = isPublic;
@@ -75,30 +78,16 @@ public class InviteTicket {
 		return inviter.toSignatureKey().verify(shasum.digest(), sig);
 	}
 
-	public static InviteTicket deserialize(byte[] data) {
-		Objects.requireNonNull(data, "data");
-
-		try {
-			return Json.cborMapper().readValue(data, InviteTicket.class);
-		} catch (IOException e) {
-			throw new IllegalArgumentException(e);
-		}
-	}
-
-	public byte[] serialize() {
-		try {
-			return Json.cborMapper().writeValueAsBytes(this);
-		} catch (JsonProcessingException e) {
-			throw new IllegalStateException(e);
-		}
-	}
-
 	@Override
 	public String toString() {
-		try {
-			return Json.objectMapper().writeValueAsString(this);
-		} catch (JsonProcessingException e) {
-			throw new IllegalStateException(e);
-		}
+		StringBuilder repr = new StringBuilder(256);
+		repr.append("InviteTicket[channel=").append(channelId.toString())
+			.append(", invitor=").append(inviter.toString())
+			.append(isPublic ? ", public" : "")
+			.append(", expiration=").append(Instant.ofEpochMilli(expire))
+			.append(isExpired() ? ", expired" : "")
+			.append(']');
+
+		return repr.toString();
 	}
 }

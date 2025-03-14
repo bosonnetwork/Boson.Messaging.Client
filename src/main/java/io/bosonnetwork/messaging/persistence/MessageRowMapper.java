@@ -18,7 +18,7 @@ import io.bosonnetwork.utils.Json;
 public class MessageRowMapper implements RowMapper<Message> {
 	protected static Message map(ResultSet rs) throws SQLException {
 		try {
-			long sid = rs.getLong("sid");
+			long rid = rs.getLong("rid");
 			Id conversationId = Id.of(rs.getBytes("conversationId"));
 
 			int version = rs.getInt("version");
@@ -43,7 +43,7 @@ public class MessageRowMapper implements RowMapper<Message> {
 
 			long timestamp = rs.getLong("timestamp");
 
-			return new MessageImpl(sid, conversationId, version,
+			return new MessageImpl(rid, conversationId, version,
 					from, to, serialNumber, created, messageType, properties,
 					contentType, contentDisposition, body, timestamp);
 		} catch (IOException e) {
