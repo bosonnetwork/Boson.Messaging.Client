@@ -7,7 +7,8 @@ import java.util.Map;
 
 import io.bosonnetwork.Id;
 
-public interface UserAgent extends ConnectionListener, MessageListener, ChannelListener, ContactListener {
+public interface UserAgent
+		extends ConnectionListener, ProfileListener, MessageListener, ChannelListener, ContactListener {
 	public UserProfile getUser();
 
 	public DeviceProfile getDevice();

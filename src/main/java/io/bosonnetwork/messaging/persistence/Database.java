@@ -27,7 +27,6 @@ import io.bosonnetwork.messaging.Channel.Member;
 import io.bosonnetwork.messaging.Channel.Role;
 import io.bosonnetwork.messaging.Contact;
 import io.bosonnetwork.messaging.Conversation;
-import io.bosonnetwork.messaging.DatabaseException;
 import io.bosonnetwork.messaging.Message;
 import io.bosonnetwork.messaging.MessagingRepository;
 import io.bosonnetwork.messaging.RepositoryException;
@@ -57,7 +56,7 @@ public class Database implements MessagingRepository {
 				.build();
 	}
 
-	public static Database open(Vertx vertx, Path database) throws DatabaseException {
+	public static Database open(Vertx vertx, Path database) throws RepositoryException {
 		Objects.requireNonNull(vertx, "vertx");
 
 		String db;
@@ -73,7 +72,7 @@ public class Database implements MessagingRepository {
 
 				db = database.toString();
 			} catch (IOException e) {
-				throw new DatabaseException(e);
+				throw new RepositoryException(e);
 			}
 		}
 
@@ -94,15 +93,15 @@ public class Database implements MessagingRepository {
 
 			return new Database(vertx, jdbi);
 		} catch (JdbiException e) {
-			throw new DatabaseException(e);
+			throw new RepositoryException(e);
 		}
 	}
 
-	public static Database open(Vertx vertx, String database) throws DatabaseException {
+	public static Database open(Vertx vertx, String database) throws RepositoryException {
 		return open(vertx, database != null ? Path.of(database) : null);
 	}
 
-	public static Database open(Vertx vertx, File database) throws DatabaseException {
+	public static Database open(Vertx vertx, File database) throws RepositoryException {
 		return open(vertx, database != null ? database.toPath() : null);
 	}
 
@@ -134,12 +133,12 @@ public class Database implements MessagingRepository {
 	}
 
 	@Override
-	public void putConfig(String key, byte[] config) throws RepositoryException {
+	public void putConfig(String key, byte[] value) throws RepositoryException {
 		Objects.requireNonNull(key, "key");
 
 		useHandle(handle -> {
 			Configuration dao = handle.attach(Configuration.class);
-			dao.put(key, config);
+			dao.put(key, value);
 		});
 	}
 
@@ -159,8 +158,8 @@ public class Database implements MessagingRepository {
 
 		useHandle(handle -> {
 			Messages dao = handle.attach(Messages.class);
-			long sid = dao.put(message);
-			((MessageImpl)message).setSid(sid);
+			long rid = dao.put(message);
+			((MessageImpl)message).setRid(rid);
 		});
 	}
 
@@ -187,22 +186,22 @@ public class Database implements MessagingRepository {
 	}
 
 	@Override
-	public void removeMessage(long sid) throws RepositoryException {
+	public void removeMessage(long rid) throws RepositoryException {
 		useHandle(handle -> {
 			Messages dao = handle.attach(Messages.class);
-			dao.remove(sid);
+			dao.remove(rid);
 		});
 	}
 
 	@Override
-	public void removeMessages(Collection<Long> sids) throws RepositoryException {
-		Objects.requireNonNull(sids, "sids");
-		if (sids.isEmpty())
+	public void removeMessages(Collection<Long> rids) throws RepositoryException {
+		Objects.requireNonNull(rids, "rids");
+		if (rids.isEmpty())
 			return;
 
 		useHandle(handle -> {
 			Messages dao = handle.attach(Messages.class);
-			dao.removeAll(sids);
+			dao.removeAll(rids);
 		});
 	}
 

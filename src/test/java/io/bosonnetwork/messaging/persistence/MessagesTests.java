@@ -142,8 +142,8 @@ public class MessagesTests {
 				for (int j = 0; j < n; j++) {
 					message = j % 2 == 0 ? createMessage(contactId, me) : createMessage(me, contactId);
 					message.setConversationId(contactId);
-					var sid = dao.put(message);
- 					message.setSid(sid);
+					var rid = dao.put(message);
+ 					message.setRid(rid);
 					lst.add(message);
 				}
 
@@ -211,10 +211,10 @@ public class MessagesTests {
 				assertEquals(1, rc);
 
 				@SuppressWarnings("unused")
-				var sid = dao.putAll(lst);
+				var rids = dao.putAll(lst);
 				//int pos = 0;
 				//for (var message : lst)
-				//	message.setSid(sid[pos++]);
+				//	message.setRid(rids[pos++]);
 			});
 
 			Collections.reverse(lst);
@@ -260,10 +260,10 @@ public class MessagesTests {
 		db.getJdbi().useHandle((handle) -> {
 			var dao = handle.attach(Messages.class);
 			@SuppressWarnings("unused")
-			var sid = dao.putAll(lst);
+			var rids = dao.putAll(lst);
 			//int pos = 0;
 			//for (var message : lst)
-			//	message.setSid(sid[pos++]);
+			//	message.setRid(rids[pos++]);
 		});
 
 		Collections.reverse(lst);
@@ -272,7 +272,7 @@ public class MessagesTests {
 
 	@Test
 	@Order(4)
-	void testGetMessageBySid() {
+	void testGetMessageByRid() {
 		db.getJdbi().useHandle((handle) -> {
 			var dao = handle.attach(Messages.class);
 
@@ -389,7 +389,7 @@ public class MessagesTests {
 	@Test
 	@Order(10)
 	void testRemoveMessages() {
-		// Can not use the existing list in the messages due to the sid field not updated after insert
+		// Can not use the existing list in the messages due to the rid field not updated after insert
 		var lst = db.getJdbi().withHandle((handle) -> {
 			var dao = handle.attach(Messages.class);
 			return dao.get(bulkPeer, Long.MAX_VALUE, 0);
@@ -398,11 +398,11 @@ public class MessagesTests {
 		var random = Random.random();
 
 		var toBeRemoved = lst.stream().filter(v -> random.nextInt(1000) > 600).collect(Collectors.toList());
-		var sids = toBeRemoved.stream().map(m -> ((MessageImpl)m).getSid()).collect(Collectors.toList());
+		var rids = toBeRemoved.stream().map(m -> m.getRid()).collect(Collectors.toList());
 
 		db.getJdbi().useHandle((handle) -> {
 			var dao = handle.attach(Messages.class);
-			var rc = dao.removeAll(sids);
+			var rc = dao.removeAll(rids);
 			assertEquals(toBeRemoved.size(), rc);
 		});
 
