@@ -69,6 +69,8 @@ public interface UserAgent
 
 	public List<Contact> getContacts() throws RepositoryException;
 
+	public List<Contact> getUserContacts() throws RepositoryException;
+
 	public Contact getContact(Id contactId) throws RepositoryException;
 
 	public default void putContact(Contact contact) throws RepositoryException {

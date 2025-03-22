@@ -3,13 +3,18 @@ package io.bosonnetwork.messaging;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
+import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
+import io.bosonnetwork.crypto.CryptoBox;
+import io.bosonnetwork.crypto.CryptoException;
+import io.bosonnetwork.crypto.Signature;
 import io.bosonnetwork.messaging.impl.ContactBuilder;
 
 @JsonDeserialize(builder = ContactBuilder.class)
@@ -17,9 +22,17 @@ public abstract class Contact implements Comparable<Contact> {
 	private static final long STALE_TIME = TimeUnit.HOURS.toMillis(6);
 
 	private Id id;
-	private Id homePeerId;
 
 	private boolean auto;
+
+	private Signature.KeyPair sessionKeyPair;
+	private CryptoBox.KeyPair encryptionKeyPair;
+	private Id sessionId;
+
+	private CryptoContext rxCryptoContext;
+	private CryptoContext txCryptoContext;
+
+	private Id homePeerId;
 
 	private String name;
 	private boolean avatar;
@@ -41,7 +54,7 @@ public abstract class Contact implements Comparable<Contact> {
 		public static final int CHANNEL = 2;
 	}
 
-	protected Contact(Id id, Id homePeerId, boolean auto,  String name, boolean avatar,
+	protected Contact(Id id, Id homePeerId, boolean auto, byte[] sessionKey, String name, boolean avatar,
 			String remark, String tags, boolean muted, boolean blocked,
 			long created, long lastModified,  long lastUpdated) {
 		this.id = id;
@@ -60,12 +73,15 @@ public abstract class Contact implements Comparable<Contact> {
 		this.lastModified = lastModified;
 
 		this.lastUpdated = lastUpdated;
-	}
 
-	protected Contact(Id id, Id homePeerId, boolean auto) {
+		if (sessionKey != null && sessionKey.length > 0)
+			initSessionKey(sessionKey);
+}
+
+	protected Contact(Id id, Id homePeerId) {
 		this.id = id;
 		this.homePeerId = homePeerId;
-		this.auto = auto;
+		this.auto = true;
 		this.created = System.currentTimeMillis();
 		this.lastModified = this.created;
 		this.lastUpdated = -1;
@@ -76,18 +92,51 @@ public abstract class Contact implements Comparable<Contact> {
 		return id;
 	}
 
-	@JsonProperty("p")
+	// @JsonProperty("p")
+	// @JsonInclude(Include.NON_NULL)
 	public Id getHomePeerId() {
 		return homePeerId;
+	}
+
+	protected void setHomePeerId(Id homePeerId) {
+		this.homePeerId = homePeerId;
 	}
 
 	@JsonProperty("t")
 	public abstract int getType();
 
-	@JsonProperty("k")
+	public boolean isAuto() {
+		return auto;
+	}
+
+	protected void setAuto(boolean auto) {
+		this.auto = auto;
+	}
+
+	@JsonProperty("sk")
 	@JsonInclude(Include.NON_EMPTY)
-	protected byte[] getPrivateKey() {
-		return null;
+	public byte[] getSessionKey() {
+		return sessionKeyPair == null ? null : sessionKeyPair.privateKey().bytes();
+	}
+
+	private void initSessionKey(byte[] privateKey) {
+		this.sessionKeyPair = Signature.KeyPair.fromPrivateKey(privateKey);
+		this.encryptionKeyPair = CryptoBox.KeyPair.fromSignatureKeyPair(sessionKeyPair);
+		this.sessionId = Id.of(sessionKeyPair.publicKey().bytes());
+
+	}
+
+	protected void setSessionKey(byte[] privateKey) {
+		initSessionKey(privateKey);
+		touch();
+	}
+
+	public boolean hasSessionKey() {
+		return sessionKeyPair != null;
+	}
+
+	public Id getSessionId() {
+		return sessionId;
 	}
 
 	// @JsonProperty("n")
@@ -98,11 +147,15 @@ public abstract class Contact implements Comparable<Contact> {
 
 	// @JsonProperty("a")
 	// @JsonInclude(Include.NON_EMPTY)
+	public boolean getAvatar() {
+		return avatar;
+	}
+
 	public boolean hasAvatar() {
 		return avatar;
 	}
 
-	public String getAvatar() {
+	public String getAvatarURI() {
 		return avatar ? "bmr://" + homePeerId.toBase58String() + "/" + id.toBase58String() : null;
 	}
 
@@ -163,14 +216,6 @@ public abstract class Contact implements Comparable<Contact> {
 		return lastModified;
 	}
 
-	public boolean isAuto() {
-		return auto;
-	}
-
-	protected void setAuto(boolean auto) {
-		this.auto = auto;
-	}
-
 	protected void touch() {
 		this.lastModified = System.currentTimeMillis();
 		this.auto = false;
@@ -218,6 +263,11 @@ public abstract class Contact implements Comparable<Contact> {
 		if (!contact.getId().equals(id))
 			throw new IllegalArgumentException("contact does not matched");
 
+		if (contact.sessionKeyPair != null) {
+			this.sessionKeyPair = contact.sessionKeyPair;
+			this.encryptionKeyPair = contact.encryptionKeyPair;
+		}
+
 		this.homePeerId = contact.homePeerId;
 		this.remark = contact.remark;
 		this.tags = contact.tags;
@@ -238,6 +288,71 @@ public abstract class Contact implements Comparable<Contact> {
 		return System.currentTimeMillis() - lastUpdated > STALE_TIME;
 	}
 
+	protected Signature.KeyPair getSessionKeyPair() {
+		return sessionKeyPair;
+	}
+
+	public byte[] sign(byte[] data) {
+		return Signature.sign(data, sessionKeyPair.privateKey());
+	}
+
+	public boolean verify(byte[] data, byte[] signature) {
+		return Signature.verify(data, signature, sessionKeyPair.publicKey());
+	}
+
+	// one-shot encryption
+	public byte[] encrypt(Id recipient, byte[] data) {
+		// TODO: how to avoid the memory copy?!
+		CryptoBox.Nonce nonce = CryptoBox.Nonce.random();
+		CryptoBox.PublicKey pk = recipient.toEncryptionKey();
+		CryptoBox.PrivateKey sk = encryptionKeyPair.privateKey();
+		byte[] cipher = CryptoBox.encrypt(data, pk, sk, nonce);
+
+		byte[] buf = new byte[CryptoBox.Nonce.BYTES + cipher.length];
+		System.arraycopy(nonce.bytes(), 0, buf, 0, CryptoBox.Nonce.BYTES);
+		System.arraycopy(cipher, 0, buf,CryptoBox. Nonce.BYTES, cipher.length);
+		return buf;
+	}
+
+	// one-shot decryption
+	public byte[] decrypt(Id sender, byte[] data) throws CryptoException {
+		if (data.length <= CryptoBox.Nonce.BYTES + CryptoBox.MAC_BYTES)
+			throw new CryptoException("Invalid cipher size");
+
+		// TODO: how to avoid the memory copy?!
+		byte[] n = Arrays.copyOfRange(data, 0, CryptoBox.Nonce.BYTES);
+		CryptoBox.Nonce nonce = CryptoBox.Nonce.fromBytes(n);
+
+		//if (lastPeerNonce != null && nonce.equals(lastPeerNonce))
+		//	throw new CryptoException("Duplicated nonce");
+
+		//	lastPeerNonce = nonce;
+		CryptoBox.PublicKey pk = sender.toEncryptionKey();
+		CryptoBox.PrivateKey sk = encryptionKeyPair.privateKey();
+		byte[] cipher = Arrays.copyOfRange(data, CryptoBox.Nonce.BYTES, data.length);
+		return CryptoBox.decrypt(cipher, pk, sk, nonce);
+	}
+
+	public CryptoContext createCryptoContext(Id id) {
+		CryptoBox.PublicKey pk = id.toEncryptionKey();
+		CryptoBox box = CryptoBox.fromKeys(pk, encryptionKeyPair.privateKey());
+		return new CryptoContext(id, box);
+	}
+
+	public CryptoContext getRxCryptoContext() {
+		if (rxCryptoContext == null)
+			rxCryptoContext = createCryptoContext(id);
+
+		return rxCryptoContext;
+	}
+
+	public CryptoContext getTxCryptoContext(Supplier<CryptoContext> supplier) {
+		if (txCryptoContext == null)
+			txCryptoContext = supplier.get();
+
+		return txCryptoContext;
+	}
+
 	public boolean is(Contact contact) {
 		if (contact == this)
 			return true;
@@ -252,8 +367,11 @@ public abstract class Contact implements Comparable<Contact> {
 
 		if (o instanceof Contact that) {
 			return Objects.equals(this.id, that.id) &&
+					Objects.equals(this.homePeerId, that.homePeerId) &&
 					this.getType() == that.getType() &&
-					Arrays.equals(this.getPrivateKey(), that.getPrivateKey()) &&
+					Arrays.equals(this.getSessionKey(), that.getSessionKey()) &&
+					Objects.equals(this.name, that.name) &&
+					this.avatar == that.avatar &&
 					Objects.equals(this.remark, that.remark) &&
 					Objects.equals(this.tags, that.tags) &&
 					this.muted == that.muted &&

@@ -370,6 +370,21 @@ public class Database implements MessagingRepository {
 	}
 
 	@Override
+	public List<Contact> getAllUserContacts() throws RepositoryException {
+		return withHandle(handle -> {
+			Contacts dao = handle.attach(Contacts.class);
+			return dao.getAllUserContacts();
+		}).stream().map(c -> {
+			Contact contact = contactCache.getIfPresent(c.getId());
+			if (contact != null)
+				return contact;
+
+			contactCache.put(c.getId(), c);
+			return c;
+		}).collect(Collectors.toList());
+	}
+
+	@Override
 	public List<Contact> getAllContacts(int type) throws RepositoryException {
 		return withHandle(handle -> {
 			Contacts dao = handle.attach(Contacts.class);

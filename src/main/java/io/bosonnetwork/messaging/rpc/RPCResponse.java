@@ -20,10 +20,6 @@ public class RPCResponse<R> {
 	@JsonProperty("e")
 	private RPCError error;
 
-	// for JSON creator
-	protected RPCResponse() {
-	}
-
 	public RPCResponse(long id, R result) {
 		this(id, result, null);
 	}
@@ -41,7 +37,9 @@ public class RPCResponse<R> {
 	}
 
 	@JsonCreator
-	private RPCResponse(long id, R result, RPCError error) {
+	private RPCResponse(@JsonProperty(value = "i", required = true) long id,
+			@JsonProperty("r") R result,
+			@JsonProperty("e") RPCError error) {
 		this.id = id;
 		this.result = result;
 		this.error = error;
@@ -74,17 +72,28 @@ public class RPCResponse<R> {
 		return typed;
 	}
 
-	public <T> RPCResponse<T> map() {
+	public <T> RPCResponse<T> map(Class<T> resultType) {
 		if (result == null)
 			return cast();
 
-		T r =  Json.cborMapper().convertValue(result, new TypeReference<T>() {});
+		T r =  Json.cborMapper().convertValue(result, resultType);
 		return new RPCResponse<>(this.id, r, this.error);
 	}
 
-	public RPCResponse<R> revised(R result) {
-		if (result == this.result)
-			return this;
+	public <T> RPCResponse<T> map(TypeReference<T> resultType) {
+		if (result == null)
+			return cast();
+
+		T r =  Json.cborMapper().convertValue(result, resultType);
+		return new RPCResponse<>(this.id, r, this.error);
+	}
+
+	public <RR> RPCResponse<RR> revised(RR result) {
+		if (result == this.result) {
+			@SuppressWarnings("unchecked")
+			RPCResponse<RR> response = (RPCResponse<RR>)this;
+			return response;
+		}
 
 		return new RPCResponse<>(this.id, result, this.error);
 	}

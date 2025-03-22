@@ -70,6 +70,8 @@ public interface MessagingRepository {
 
 	public List<Contact> getAllContacts() throws RepositoryException;
 
+	public List<Contact> getAllUserContacts() throws RepositoryException;
+
 	public List<Contact> getAllContacts(int type) throws RepositoryException;
 
 	public default boolean existsContact(Id contactId) throws RepositoryException {

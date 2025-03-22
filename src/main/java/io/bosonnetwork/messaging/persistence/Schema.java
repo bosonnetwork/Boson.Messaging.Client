@@ -34,7 +34,7 @@ public interface Schema {
 				type SMALLINT NOT NULL,
 				auto BOOLEAN NOT NULL,
 				homePeerId BLOB,
-				privateKey BLOB,
+				sessionKey BLOB,
 				name VARCHAR(128),
 				avatar BOOLEAN DEFAULT FALSE,
 				notice VARCHAR(1024),

@@ -4,6 +4,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
 import java.security.MessageDigest;
@@ -11,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -84,7 +86,10 @@ public class ContactsTests {
 	}
 
 	private static Contact createContact(Id userId, Id peerId) {
+		KeyPair sessionKeyPair = KeyPair.random();
+
 		return new ContactImpl(userId, peerId, faker.bool().bool(),
+				nullOr(() -> sessionKeyPair.privateKey().bytes()),
 				nullOr(() -> faker.name().fullName()), faker.bool().bool(),
 				nullOr(() -> faker.name().fullName()),
 				nullOr(() -> tags()),
@@ -126,12 +131,12 @@ public class ContactsTests {
 		keys.put(peerId, peer.privateKey());
 		peers.add(peerId);
 
-		KeyPair memberKeyPair = KeyPair.random();
+		KeyPair sessionKeyPair = KeyPair.random();
 
 		return new ChannelImpl(channelId, peerId, false,
+				sessionKeyPair.privateKey().bytes(),
 				nullOr(() -> faker.name().fullName()), faker.bool().bool(),
 				nullOr(() -> faker.lorem().paragraph()),
-				memberKeyPair.privateKey().bytes(),
 				Id.random(), Permission.MODERATOR_INVITE,
 				nullOr(() -> faker.name().fullName()),
 				nullOr(() -> tags()),
@@ -344,7 +349,15 @@ public class ContactsTests {
 			var dao = handle.attach(Contacts.class);
 			var result = dao.getAllContacts();
 			result.sort((c1, c2) -> c1.getId().compareTo(c2.getId()));
-			assertEquals(contacts, result);
+			//assertEquals(contacts, result);
+			for (int i = 0; i < contacts.size(); i++)
+				if (!Objects.equals(contacts.get(i), result.get(i))) {
+					var c1 = contacts.get(i);
+					var c2 = result.get(i);
+					System.out.println(c1);
+					System.out.println(c2);
+					fail();
+				}
 		});
 
 		db.getJdbi().useHandle((handle) -> {
@@ -508,7 +521,7 @@ public class ContactsTests {
 
 	@Test
 	@Order(54)
-	void testUpdateGroups() {
+	void testUpdateChannels() {
 		List<Channel> lst;
 		do {
 			lst = channels.stream().filter(g -> Random.random().nextInt(4) == 0).collect(Collectors.toList());

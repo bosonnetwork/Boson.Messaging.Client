@@ -7,29 +7,38 @@ import io.bosonnetwork.messaging.Contact;
 
 public class ContactImpl extends Contact {
 	// for local storage
-	public ContactImpl(Id id, Id homePeerId, boolean auto, String name, boolean avatar,
-			String remark, String tags, boolean muted, boolean blocked,
-			long created, long lastModified, long lastUpdated) {
-		super(id, homePeerId, auto, name, avatar, remark, tags,
+	public ContactImpl(Id id, Id homePeerId, boolean auto, byte[] sessionKey,
+			String name, boolean avatar, String remark, String tags, boolean muted,
+			boolean blocked, long created, long lastModified, long lastUpdated) {
+		super(id, homePeerId, auto, sessionKey, name, avatar, remark, tags,
 				muted, blocked, created, lastModified, lastUpdated);
 	}
 
+	/*
 	// for contact synchronization
 	public ContactImpl(Id id, Id homePeerId, String remark, String tags, boolean muted, boolean blocked,
 			long created, long lastModified) {
 		this(id, homePeerId, false, null, false, remark, tags, muted, blocked, created, lastModified, -1);
 	}
+	*/
 
-	public ContactImpl(Id id, Id homePeerId, boolean auto) {
-		super(id, homePeerId, auto);
+	private ContactImpl(Id id, Id homePeerId) {
+		super(id, homePeerId);
+	}
+
+	public static Contact create(Id id, Id homePeerId, byte[] sessionKey, String name, boolean avatar) {
+		long now = System.currentTimeMillis();
+
+		return new ContactImpl(id, homePeerId, false, sessionKey, name, avatar,
+				null, null, false, false, now, now, -1);
 	}
 
 	public static Contact auto(Id id, Id homePeerId) {
-		return new ContactImpl(id, homePeerId, true);
+		return new ContactImpl(id, homePeerId);
 	}
 
 	public static Contact auto(Id id) {
-		return new ContactImpl(id, null, true);
+		return new ContactImpl(id, null);
 	}
 
 	@Override
@@ -44,7 +53,7 @@ public class ContactImpl extends Contact {
 
 	@Override
 	public String toString() {
-		StringBuilder repr = new StringBuilder();
+		StringBuilder repr = new StringBuilder(512);
 
 		repr.append("Contact:")
 			.append(getId().toBase58String()).append('[');
@@ -52,10 +61,13 @@ public class ContactImpl extends Contact {
 		if (getHomePeerId() != null)
 			repr.append("homePeer= ").append(getHomePeerId().toBase58String()).append(", ");
 
+		if (getSessionKeyPair() != null)
+			repr.append("sessionKey*, ");
+
 		if (getName() != null)
 			repr.append("name= ").append(getName()).append(", ");
 
-		if (hasAvatar())
+		if (getAvatar())
 			repr.append("avatar, ");
 
 		if (getRemark() != null)

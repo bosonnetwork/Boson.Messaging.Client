@@ -14,6 +14,8 @@ import io.bosonnetwork.Id;
 import io.bosonnetwork.crypto.Hash;
 
 public class InviteTicket {
+	public static long DEFAULT_EXPIRATION = 7 * 24 * 60 * 60 * 1000; // 3 days
+
 	@JsonProperty("c")
 	private Id channelId;
 
@@ -31,12 +33,31 @@ public class InviteTicket {
 	@JsonProperty("s")
 	private byte[] sig;
 
+	@JsonProperty("sk")
+	@JsonInclude(Include.NON_EMPTY)
+	private byte[] sessionKey;
+
 	@JsonCreator
 	public InviteTicket(@JsonProperty(value = "c", required = true) Id channelId,
 			@JsonProperty(value = "i", required = true) Id inviter,
 			@JsonProperty(value = "p", defaultValue = "false") boolean isPublic,
 			@JsonProperty(value = "e", required = true) long expire,
-			@JsonProperty(value = "s", required = true) byte[] sig) {
+			@JsonProperty(value = "s", required = true) byte[] sig,
+			@JsonProperty(value = "sk", required = true) byte[] sessionKey) {
+		Objects.requireNonNull(channelId, "channelId");
+		Objects.requireNonNull(inviter, "inviter");
+		Objects.requireNonNull(sig, "sig");
+		Objects.requireNonNull(sessionKey, "sessionKey");
+
+		this.channelId = channelId;
+		this.inviter = inviter;
+		this.isPublic = isPublic;
+		this.expire = expire;
+		this.sig = sig;
+		this.sessionKey = sessionKey;
+	}
+
+	private InviteTicket(Id channelId, Id inviter, boolean isPublic, long expire, byte[] sig) {
 		Objects.requireNonNull(channelId, "channelId");
 		Objects.requireNonNull(inviter, "inviter");
 		Objects.requireNonNull(sig, "sig");
@@ -46,6 +67,7 @@ public class InviteTicket {
 		this.isPublic = isPublic;
 		this.expire = expire;
 		this.sig = sig;
+		this.sessionKey = null;
 	}
 
 	public Id getChannelId() {
@@ -64,9 +86,12 @@ public class InviteTicket {
 		return expire < System.currentTimeMillis();
 	}
 
+	public byte[] getSessionKey() {
+		return sessionKey;
+	}
+
 	public boolean isValid(Id invitee) {
 		MessageDigest shasum = Hash.sha256();
-		shasum.reset();
 		shasum.update(channelId.bytes());
 		shasum.update(inviter.bytes());
 		if (isPublic)
@@ -76,6 +101,10 @@ public class InviteTicket {
 		shasum.update(ByteBuffer.allocate(Long.BYTES).putLong(expire).array());
 
 		return inviter.toSignatureKey().verify(shasum.digest(), sig);
+	}
+
+	public InviteTicket proof() {
+		return new InviteTicket(channelId, inviter, isPublic, expire, sig);
 	}
 
 	@Override

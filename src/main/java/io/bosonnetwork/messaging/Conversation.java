@@ -31,7 +31,7 @@ public abstract class Conversation implements Comparable<Conversation> {
 	}
 
 	public String getAvatar() {
-		return interlocutor.hasAvatar() ? interlocutor.getAvatar() : DEFAULT_AVATAR;
+		return interlocutor.hasAvatar() ? interlocutor.getAvatarURI() : DEFAULT_AVATAR;
 	}
 
 	public String getSnippet() {
