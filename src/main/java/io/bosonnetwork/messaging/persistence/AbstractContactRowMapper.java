@@ -31,6 +31,9 @@ public class AbstractContactRowMapper<T extends Contact> implements RowMapper<T>
 		byte[] value = rs.getBytes(n(prefix, "homePeerId"));
 		Id homePeerId = rs.wasNull() ? null : Id.of(value);
 
+		value = rs.getBytes(n(prefix, "sessionKey"));
+		byte[] sessionKey = rs.wasNull() ? null : value;
+
 		String name = rs.getString(n(prefix, "name"));
 		boolean avatar = rs.getBoolean(n(prefix, "avatar"));
 
@@ -44,12 +47,10 @@ public class AbstractContactRowMapper<T extends Contact> implements RowMapper<T>
 
 		Contact contact;
 		if (type == Contact.Types.CONTACT) {
-			contact = new ContactImpl(id, homePeerId, auto, name, avatar, remark, tags,
+			contact = new ContactImpl(id, homePeerId, auto, sessionKey, name, avatar, remark, tags,
 					muted, blocked, created, lastModified, lastUpdated);
 		} else if (type == Contact.Types.CHANNEL) {
 			String notice = rs.getString(n(prefix, "notice"));
-
-			byte[] privateKey = rs.getBytes(n(prefix, "privateKey"));
 
 			value = rs.getBytes(n(prefix, "owner"));
 			Id owner = rs.wasNull() ? null : Id.of(value);
@@ -57,9 +58,9 @@ public class AbstractContactRowMapper<T extends Contact> implements RowMapper<T>
 			int perm = rs.getInt(n(prefix, "permission"));
 			Permission permission = rs.wasNull() ? null : Permission.valueOf(perm);
 
-			contact = new ChannelImpl(id, homePeerId, auto, name, avatar, notice,
-					privateKey, owner, permission, remark, tags, muted, created,
-					lastModified, lastUpdated);
+			contact = new ChannelImpl(id, homePeerId, auto, sessionKey,
+					name, avatar, notice, owner, permission, remark, tags,
+					muted, created, lastModified, lastUpdated);
 		} else {
 			throw new SQLException("Unknown contact type: " + type);
 		}

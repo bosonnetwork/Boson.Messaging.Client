@@ -73,6 +73,9 @@ public class RPCParameters {
 	}
 
 	public static class ChannelCreate {
+		@JsonProperty(value = "sid", required = true)
+		private Id sessionId;
+
 		@JsonProperty(value = "p", required = true)
 		private Channel.Permission permission;
 
@@ -84,10 +87,15 @@ public class RPCParameters {
 		@JsonInclude(Include.NON_EMPTY)
 		private String notice;
 
-		public ChannelCreate(Channel.Permission permission, String name, String notice) {
+		public ChannelCreate(Id sessionId, Channel.Permission permission, String name, String notice) {
+			this.sessionId = sessionId;
 			this.permission = permission;
 			this.name = name;
 			this.notice = notice;
+		}
+
+		public Id getSessionId() {
+			return sessionId;
 		}
 
 		public Channel.Permission getPermission() {

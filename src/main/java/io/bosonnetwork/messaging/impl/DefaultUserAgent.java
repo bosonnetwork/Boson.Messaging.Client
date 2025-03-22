@@ -809,6 +809,11 @@ public class DefaultUserAgent implements UserAgent {
 	}
 
 	@Override
+	public List<Contact> getUserContacts() throws RepositoryException {
+		return repository.getAllUserContacts();
+	}
+
+	@Override
 	public Contact getContact(Id contactId) throws RepositoryException {
 		return repository.getContact(contactId);
 	}

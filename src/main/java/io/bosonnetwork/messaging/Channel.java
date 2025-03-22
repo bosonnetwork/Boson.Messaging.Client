@@ -1,6 +1,9 @@
 package io.bosonnetwork.messaging;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -8,13 +11,19 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonValue;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
+import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
+import io.bosonnetwork.messaging.impl.ChannelBuilder;
 
-public abstract class Channel extends Contact implements ChannelIdentity {
+@JsonDeserialize(builder = ChannelBuilder.class)
+public abstract class Channel extends Contact {
 	private Id owner;
 	private Permission permission;
 	private String notice;
+
+	private Map<Id, CryptoContext> memberCryptoContexts;
 
 	public static enum Permission {
 		PUBLIC(0), MEMBER_INVITE(1), MODERATOR_INVITE(2), OWNER_INVITE(3);
@@ -170,33 +179,19 @@ public abstract class Channel extends Contact implements ChannelIdentity {
 	}
 
 	// for local storage
-	protected Channel(Id id, Id homePeerId,  boolean auto,  String name, boolean avatar, String notice,
-			byte[] privateKey, Id owner, Permission permission, String remark, String tags,
-			 boolean muted, long created, long lastModified, long lastUpdated) {
-		super(id, homePeerId, auto, name, avatar, remark, tags, muted, false, created, lastModified, lastUpdated);
+	protected Channel(Id id, Id homePeerId,  boolean auto, byte[] sessionKey, String name, boolean avatar,
+			String notice, Id owner, Permission permission, String remark, String tags,
+			boolean muted, long created, long lastModified, long lastUpdated) {
+		super(id, homePeerId, auto, sessionKey, name, avatar, remark, tags, muted, false, created, lastModified, lastUpdated);
 
 		this.notice = notice;
 		this.owner = owner;
 		this.permission = permission;
-
-		setMemberPrivateKey(privateKey);
 	}
 
-	/*
-	// for contact synchronization
-	protected Channel(Id id, Id homePeerId, byte[] privateKey, String remark, String tags, boolean muted,
-			long created, long lastModified) {
-		this(id, homePeerId, false, null, false, null, privateKey, null, null, remark, tags, muted, created, lastModified, -1);
+	protected Channel(Id id, Id homePeerId) {
+		super(id, homePeerId);
 	}
-	*/
-
-	protected Channel(Id id, Id homePeerId, byte[] privateKey, boolean auto) {
-		super(id, homePeerId, auto);
-
-		setMemberPrivateKey(privateKey);
-	}
-
-	protected abstract void setMemberPrivateKey(byte[] privateKey);
 
 	@JsonProperty("o")
 	@JsonInclude(Include.NON_NULL)
@@ -249,6 +244,20 @@ public abstract class Channel extends Contact implements ChannelIdentity {
 		this.notice = channel.notice;
 
 		super.update(channel);
+	}
+
+	public CryptoContext getRxCryptoContext(Id memberId) {
+		Objects.requireNonNull(memberId, "memberId");
+
+		if (!hasSessionKey())
+			return null;
+
+		if (memberCryptoContexts == null)
+			memberCryptoContexts = new HashMap<>();
+
+		return memberCryptoContexts.computeIfAbsent(memberId, id -> {
+			return createCryptoContext(id);
+		});
 	}
 
 	public abstract int size();
@@ -311,5 +320,20 @@ public abstract class Channel extends Contact implements ChannelIdentity {
 		default:
 			return false;
 		}
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o)
+			return true;
+
+		if (o instanceof Channel that) {
+			return super.equals(o) &&
+					Objects.equals(this.owner, that.owner) &&
+					Objects.equals(this.permission, that.permission) &&
+					Objects.equals(this.notice, that.notice);
+		}
+
+		return false;
 	}
 }

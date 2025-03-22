@@ -1,5 +1,6 @@
 package io.bosonnetwork.messaging.rpc;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class RPCError {
@@ -18,8 +19,10 @@ public class RPCError {
 	public static final RPCError NotUpToDate = new RPCError(-6, "Not up to date");
 	public static final RPCError AlreadyExists = new RPCError(-7, "Already exists");
 
-
-	public RPCError(int code, String message, String data) {
+	@JsonCreator
+	public RPCError(@JsonProperty(value = "c", required = true) int code,
+			@JsonProperty(value = "m", required = true) String message,
+			@JsonProperty(value = "d") String data) {
 		this.code = code;
 		this.message = message;
 		this.data = data;

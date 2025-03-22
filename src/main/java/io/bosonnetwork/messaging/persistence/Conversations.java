@@ -11,7 +11,7 @@ import io.bosonnetwork.messaging.Conversation;
 public interface Conversations {
 	@SqlQuery("""
 			SELECT m.*, c.type AS c_type, c.auto AS c_auto, c.homePeerId as c_homePeerId,
-				c.privateKey AS c_privateKey, c.name AS c_name, c.avatar AS c_avatar,
+				c.sessionKey AS c_sessionKey, c.name AS c_name, c.avatar AS c_avatar,
 				c.notice AS c_notice, c.owner AS c_owner, c.permission AS c_permission,
 				c.remark AS c_remark, c.tags AS c_tags, c.muted AS c_muted, c.blocked AS c_blocked,
 				c.created AS c_created, c.lastModified AS c_lastModified, c.lastUpdated AS c_lastUpdated
@@ -23,7 +23,7 @@ public interface Conversations {
 
 	@SqlQuery("""
 			SELECT m.*, c.type AS c_type, c.auto AS c_auto, c.homePeerId as c_homePeerId,
-				c.privateKey AS c_privateKey, c.name AS c_name, c.avatar AS c_avatar,
+				c.sessionKey AS c_sessionKey, c.name AS c_name, c.avatar AS c_avatar,
 				c.notice AS c_notice, c.owner AS c_owner, c.permission AS c_permission,
 				c.remark AS c_remark, c.tags AS c_tags, c.muted AS c_muted, c.blocked AS c_blocked,
 				c.created AS c_created, c.lastModified AS c_lastModified, c.lastUpdated AS c_lastUpdated

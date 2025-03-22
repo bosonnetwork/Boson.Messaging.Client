@@ -19,26 +19,26 @@ import io.bosonnetwork.messaging.Contact;
 public interface Contacts {
 	// Contacts
 	@SqlUpdate("""
-			INSERT INTO contacts(id, type, auto, homePeerId, name, avatar, remark, tags, muted, blocked, created, lastModified, lastUpdated)
-			VALUES(:id, :type, :auto, :homePeerId, :name, :avatar, :remark, :tags, :muted, :blocked, :created, :lastModified, :lastUpdated)
+			INSERT INTO contacts(id, type, auto, homePeerId, sessionKey, name, avatar, remark, tags, muted, blocked, created, lastModified, lastUpdated)
+			VALUES(:id, :type, :auto, :homePeerId, :sessionKey, :name, :avatar, :remark, :tags, :muted, :blocked, :created, :lastModified, :lastUpdated)
 			ON CONFLICT(id) DO UPDATE SET
 				type=EXCLUDED.type, auto=EXCLUDED.auto, homePeerId=EXCLUDED.homePeerId,
-				name=EXCLUDED.name, avatar=EXCLUDED.avatar, remark=EXCLUDED.remark,
-				tags=EXCLUDED.tags, muted=EXCLUDED.muted, blocked=EXCLUDED.blocked,
-				created=EXCLUDED.created, lastModified=EXCLUDED.lastModified,
-				lastUpdated=EXCLUDED.lastUpdated
+				sessionKey=EXCLUDED.sessionKey, name=EXCLUDED.name, avatar=EXCLUDED.avatar,
+				remark=EXCLUDED.remark, tags=EXCLUDED.tags, muted=EXCLUDED.muted,
+				blocked=EXCLUDED.blocked, created=EXCLUDED.created,
+				lastModified=EXCLUDED.lastModified, lastUpdated=EXCLUDED.lastUpdated
 			""")
 	int putContact(@BindBean Contact contact);
 
 	@SqlBatch("""
-			INSERT INTO contacts(id, type, auto, homePeerId, name, avatar, remark, tags, muted, blocked, created, lastModified, lastUpdated)
-			VALUES(:id, :type, :auto, :homePeerId, :name, :avatar, :remark, :tags, :muted, :blocked, :created, :lastModified, :lastUpdated)
+			INSERT INTO contacts(id, type, auto, homePeerId, sessionKey, name, avatar, remark, tags, muted, blocked, created, lastModified, lastUpdated)
+			VALUES(:id, :type, :auto, :homePeerId, :sessionKey, :name, :avatar, :remark, :tags, :muted, :blocked, :created, :lastModified, :lastUpdated)
 			ON CONFLICT(id) DO UPDATE SET
 				type=EXCLUDED.type, auto=EXCLUDED.auto, homePeerId=EXCLUDED.homePeerId,
-				name=EXCLUDED.name, avatar=EXCLUDED.avatar, remark=EXCLUDED.remark,
-				tags=EXCLUDED.tags, muted=EXCLUDED.muted, blocked=EXCLUDED.blocked,
-				created=EXCLUDED.created, lastModified=EXCLUDED.lastModified,
-				lastUpdated=EXCLUDED.lastUpdated
+				sessionKey=EXCLUDED.sessionKey, name=EXCLUDED.name, avatar=EXCLUDED.avatar,
+				remark=EXCLUDED.remark, tags=EXCLUDED.tags, muted=EXCLUDED.muted,
+				blocked=EXCLUDED.blocked, created=EXCLUDED.created,
+				lastModified=EXCLUDED.lastModified, lastUpdated=EXCLUDED.lastUpdated
 			""")
 	int[] putContacts(@BindBean Collection<Contact> contacts);
 
@@ -50,38 +50,42 @@ public interface Contacts {
 	@RegisterRowMapper(ContactRowMapper.class)
 	List<Contact> getAllContacts();
 
+	@SqlQuery("SELECT * FROM contacts where auto = false")
+	@RegisterRowMapper(ContactRowMapper.class)
+	List<Contact> getAllUserContacts();
+
 	@SqlQuery("SELECT * FROM contacts WHERE type = ?")
 	@RegisterRowMapper(ContactRowMapper.class)
 	List<Contact> getAllContacts(int type);
 
 	// Channels
 	@SqlUpdate("""
-			INSERT INTO contacts(id, type, auto, privateKey, name, avatar, notice, owner, permission, remark, tags, muted, blocked, created, lastModified, lastUpdated)
-			VALUES(:id, :type, :auto, :privateKey, :name, :avatar, :notice, :owner, :permission, :remark, :tags, :muted, :blocked, :created, :lastModified, :lastUpdated)
+			INSERT INTO contacts(id, type, auto, homePeerId, sessionKey, name, avatar, notice, owner, permission, remark, tags, muted, blocked, created, lastModified, lastUpdated)
+			VALUES(:id, :type, :auto, :homePeerId, :sessionKey, :name, :avatar, :notice, :owner, :permission, :remark, :tags, :muted, :blocked, :created, :lastModified, :lastUpdated)
 			ON CONFLICT(id) DO UPDATE SET
-				type=EXCLUDED.type, auto=EXCLUDED.auto, privateKey=EXCLUDED.privateKey,
-				name=EXCLUDED.name, avatar=EXCLUDED.avatar, notice=EXCLUDED.notice,
-				owner=EXCLUDED.owner, permission=EXCLUDED.permission,
+				type=EXCLUDED.type, auto=EXCLUDED.auto, homePeerId=EXCLUDED.homePeerId,
+				sessionKey=EXCLUDED.sessionKey, name=EXCLUDED.name, avatar=EXCLUDED.avatar,
+				notice=EXCLUDED.notice, owner=EXCLUDED.owner, permission=EXCLUDED.permission,
 				remark=EXCLUDED.remark, tags=EXCLUDED.tags, muted=EXCLUDED.muted,
 				blocked=EXCLUDED.blocked, created=EXCLUDED.created,
 				lastModified=EXCLUDED.lastModified, lastUpdated=EXCLUDED.lastUpdated
 			""")
 	@RegisterArgumentFactory(PermissionArgumentFactory.class)
-	int putChannel(@BindBean Channel group);
+	int putChannel(@BindBean Channel channel);
 
 	@SqlBatch("""
-			INSERT INTO contacts(id, type, auto, privateKey, name, avatar, notice, owner, permission, remark, tags, muted, blocked, created, lastModified, lastUpdated)
-			VALUES(:id, :type, :auto, :privateKey, :name, :avatar, :notice, :owner, :permission, :remark, :tags, :muted, :blocked, :created, :lastModified, :lastUpdated)
+			INSERT INTO contacts(id, type, auto, homePeerId, sessionKey, name, avatar, notice, owner, permission, remark, tags, muted, blocked, created, lastModified, lastUpdated)
+			VALUES(:id, :type, :auto, :homePeerId, :sessionKey, :name, :avatar, :notice, :owner, :permission, :remark, :tags, :muted, :blocked, :created, :lastModified, :lastUpdated)
 			ON CONFLICT(id) DO UPDATE SET
-				type=EXCLUDED.type, auto=EXCLUDED.auto, privateKey=EXCLUDED.privateKey,
-				name=EXCLUDED.name, avatar=EXCLUDED.avatar, notice=EXCLUDED.notice,
-				owner=EXCLUDED.owner, permission=EXCLUDED.permission,
+				type=EXCLUDED.type, auto=EXCLUDED.auto, homePeerId=EXCLUDED.homePeerId,
+				sessionKey=EXCLUDED.sessionKey, name=EXCLUDED.name, avatar=EXCLUDED.avatar,
+				notice=EXCLUDED.notice, owner=EXCLUDED.owner, permission=EXCLUDED.permission,
 				remark=EXCLUDED.remark, tags=EXCLUDED.tags, muted=EXCLUDED.muted,
 				blocked=EXCLUDED.blocked, created=EXCLUDED.created,
 				lastModified=EXCLUDED.lastModified, lastUpdated=EXCLUDED.lastUpdated
 			""")
 	@RegisterArgumentFactory(PermissionArgumentFactory.class)
-	int[] putChannels(@BindBean Collection<Channel> groups);
+	int[] putChannels(@BindBean Collection<Channel> channels);
 
 	/*
 	@SqlQuery("SELECT * FROM contacts WHERE type = 2 AND id = ?")

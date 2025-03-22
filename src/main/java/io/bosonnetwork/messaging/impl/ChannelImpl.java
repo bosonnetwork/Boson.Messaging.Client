@@ -2,7 +2,6 @@ package io.bosonnetwork.messaging.impl;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -10,28 +9,22 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
-import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
-import io.bosonnetwork.crypto.CryptoBox;
-import io.bosonnetwork.crypto.CryptoException;
-import io.bosonnetwork.crypto.Signature;
+import io.bosonnetwork.crypto.Signature.KeyPair;
 import io.bosonnetwork.messaging.Channel;
 
 public class ChannelImpl extends Channel {
-	private Signature.KeyPair keyPair; // member keypair
-	private Id memberPublicKey;
-	private CryptoBox.KeyPair encryptionKeyPair;
-
 	private HashMap<Id, Member> members;
 	private Callable<List<Member>> memberLoader;
 
-	public ChannelImpl(Id id, Id homePeerId, boolean auto, String name, boolean avatar, String notice,
-			byte[] privateKey, Id owner, Permission permission, String remark, String tags,
-			boolean muted,long created, long lastModified, long lastUpdated) {
-		super(id, homePeerId, auto, name, avatar, notice, privateKey, owner, permission,
+	public ChannelImpl(Id id, Id homePeerId, boolean auto, byte[] sessionKey, String name, boolean avatar,
+			 String notice, Id owner, Permission permission, String remark, String tags,
+			boolean muted, long created, long lastModified, long lastUpdated) {
+		super(id, homePeerId, auto, sessionKey, name, avatar, notice, owner, permission,
 				remark, tags, muted, created, lastModified, lastUpdated);
 	}
 
+	/*
 	public ChannelImpl(Id id, Id homePeerId, boolean auto, byte[] privateKey,
 			String remark, String tags, boolean muted, long created, long lastModified) {
 		this(id, homePeerId, auto, null, false, null, privateKey, null, null,
@@ -43,17 +36,25 @@ public class ChannelImpl extends Channel {
 		this(id, homePeerId, auto, name, avatar, notice, privateKey, owner, permission,
 				null, null, false, created, lastModified, System.currentTimeMillis());
 	}
+	*/
 
-	public ChannelImpl(Id id, Id homePeerId, byte[] privateKey, boolean auto) {
-		super(id, homePeerId, privateKey, auto);
+	private ChannelImpl(Id id, Id homePeerId) {
+		super(id, homePeerId);
+	}
+
+	public static Channel create(Id id, Id homePeerId, byte[] sessionKey, String name, boolean avatar) {
+		long now = System.currentTimeMillis();
+
+		return new ChannelImpl(id, homePeerId, false, sessionKey, name, avatar,
+				null, null, null, null, null, false, now, now, -1);
 	}
 
 	public static Channel auto(Id id, Id homePeerId) {
-		return new ChannelImpl(id, homePeerId, null, true);
+		return new ChannelImpl(id, homePeerId);
 	}
 
 	public static Channel auto(Id id) {
-		return new ChannelImpl(id, null, null, true);
+		return new ChannelImpl(id, null);
 	}
 
 	protected void setMembers(Callable<List<Member>> memberLoader) {
@@ -66,76 +67,13 @@ public class ChannelImpl extends Channel {
 	}
 
 	@Override
-	protected void setMemberPrivateKey(byte[] privateKey) {
-		this.keyPair = Signature.KeyPair.fromPrivateKey(privateKey);
-		this.encryptionKeyPair = CryptoBox.KeyPair.fromSignatureKeyPair(keyPair);
-		this.memberPublicKey = Id.of(keyPair.publicKey().bytes());
+	public void setSessionKey(byte[] privateKey) {
+		super.setSessionKey(privateKey);
 	}
 
 	@Override
-	public byte[] getPrivateKey() {
-		return keyPair.privateKey().bytes(); // to be encrypt
-	}
-
-	@Override
-	public Id getMemberPublicKey() {
-		return memberPublicKey;
-	}
-
-	protected Signature.KeyPair getMemberKeyPair() {
-		return keyPair;
-	}
-
-	@Override
-	public byte[] sign(byte[] data) {
-		return Signature.sign(data, keyPair.privateKey());
-	}
-
-	@Override
-	public boolean verify(byte[] data, byte[] signature) {
-		return Signature.verify(data, signature, keyPair.publicKey());
-	}
-
-	// one-shot encryption
-	@Override
-	public byte[] encrypt(Id recipient, byte[] data) {
-		// TODO: how to avoid the memory copy?!
-		CryptoBox.Nonce nonce = CryptoBox.Nonce.random();
-		CryptoBox.PublicKey pk = recipient.toEncryptionKey();
-		CryptoBox.PrivateKey sk = encryptionKeyPair.privateKey();
-		byte[] cipher = CryptoBox.encrypt(data, pk, sk, nonce);
-
-		byte[] buf = new byte[CryptoBox.Nonce.BYTES + cipher.length];
-		System.arraycopy(nonce.bytes(), 0, buf, 0, CryptoBox.Nonce.BYTES);
-		System.arraycopy(cipher, 0, buf,CryptoBox. Nonce.BYTES, cipher.length);
-		return buf;
-	}
-
-	// one-shot decryption
-	@Override
-	public byte[] decrypt(Id sender, byte[] data) throws CryptoException {
-		if (data.length <= CryptoBox.Nonce.BYTES + CryptoBox.MAC_BYTES)
-			throw new CryptoException("Invalid cipher size");
-
-		// TODO: how to avoid the memory copy?!
-		byte[] n = Arrays.copyOfRange(data, 0, CryptoBox.Nonce.BYTES);
-		CryptoBox.Nonce nonce = CryptoBox.Nonce.fromBytes(n);
-
-		//if (lastPeerNonce != null && nonce.equals(lastPeerNonce))
-		//	throw new CryptoException("Duplicated nonce");
-
-		//	lastPeerNonce = nonce;
-		CryptoBox.PublicKey pk = sender.toEncryptionKey();
-		CryptoBox.PrivateKey sk = encryptionKeyPair.privateKey();
-		byte[] cipher = Arrays.copyOfRange(data, CryptoBox.Nonce.BYTES, data.length);
-		return CryptoBox.decrypt(cipher, pk, sk, nonce);
-	}
-
-	@Override
-	public CryptoContext createCryptoContext(Id id) {
-		CryptoBox.PublicKey pk = id.toEncryptionKey();
-		CryptoBox box = CryptoBox.fromKeys(pk, encryptionKeyPair.privateKey());
-		return new CryptoContext(id, box);
+	public KeyPair getSessionKeyPair() {
+		return super.getSessionKeyPair();
 	}
 
 	@Override
@@ -214,26 +152,28 @@ public class ChannelImpl extends Channel {
 
 	@Override
 	public String toString() {
-		StringBuilder repr = new StringBuilder();
+		StringBuilder repr = new StringBuilder(512);
 
 		repr.append("Channel: ")
-			.append(getId().toBase58String()).append('[');
+			.append(getId().toString()).append('[');
+
+		if (getHomePeerId() != null)
+			repr.append("homePeer= ").append(getHomePeerId().toString()).append(", ");
+
+		if (getSessionKeyPair() != null)
+			repr.append("sessionKey*, ");
 
 		if (getName() != null)
 			repr.append("name= ").append(getName()).append(", ");
 
-		if (hasAvatar())
+		if (getAvatar())
 			repr.append("avatar, ");
 
 		if (getNotice() != null)
 			repr.append("notice= ").append(getNotice()).append(", ");
 
-		byte[] key = getPrivateKey();
-		if (key != null)
-			repr.append("sk*, ");
-
 		if (getOwner() != null)
-			repr.append("owner= ").append(getOwner().toBase58String()).append(", ");
+			repr.append("owner= ").append(getOwner().toString()).append(", ");
 
 		if (getPermission() != null)
 			repr.append("permission= ").append(getPermission()).append(", ");

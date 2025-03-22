@@ -17,6 +17,8 @@ public class ContactBuilder {
 	private Id homePeerId;
 	private int type;
 
+	private byte[] sessionKey;
+
 	private String remark;
 	private String tags;
 	private boolean muted;
@@ -27,11 +29,16 @@ public class ContactBuilder {
 	private String name;
 	private boolean avatar;
 	private String notice;
-	private byte[] privateKey;
 	private Id owner;
 	private Channel.Permission permission;
 
-	public ContactBuilder() {}
+	public ContactBuilder() {
+		this(Contact.Types.UNKNOWN);
+	}
+
+	protected ContactBuilder(int defaultType) {
+		this.type = defaultType;
+	}
 
 	@JsonProperty("id")
 	public ContactBuilder withId(Id id) {
@@ -54,6 +61,14 @@ public class ContactBuilder {
 		return this;
 	}
 
+	@JsonProperty("sk")
+	public ContactBuilder withSessionKey(byte[] sessionKey) {
+		Objects.requireNonNull(sessionKey, "sessionKey");
+		// TODO: check the key is valid
+		this.sessionKey = sessionKey;
+		return null;
+	}
+
 	@JsonProperty("n")
 	public ContactBuilder withName(String name) {
 		this.name = name == null || name.isEmpty() ? null : name;
@@ -69,14 +84,6 @@ public class ContactBuilder {
 	@JsonProperty("nt")
 	public ContactBuilder withNotice(String notice) {
 		this.notice = notice == null || notice.isEmpty() ? null : notice;
-		return null;
-	}
-
-	@JsonProperty("k")
-	public ContactBuilder withPrivateKey(byte[] privateKey) {
-		Objects.requireNonNull(privateKey, "privateKey");
-		// TODO: check the key is valid
-		this.privateKey = privateKey;
 		return null;
 	}
 
@@ -135,9 +142,9 @@ public class ContactBuilder {
 			throw new IllegalStateException("Missing id");
 
 		if (type == Contact.Types.CONTACT)
-			return new ContactImpl(id, homePeerId, false, name, avatar, remark, tags, muted, blocked, created, lastModified, -1);
+			return new ContactImpl(id, homePeerId, false, sessionKey, name, avatar, remark, tags, muted, blocked, created, lastModified, -1);
 		else if (type == Contact.Types.CHANNEL)
-			return new ChannelImpl(id, homePeerId, false, name, avatar, notice, privateKey, owner, permission, remark, tags, muted, created, lastModified, -1);
+			return new ChannelImpl(id, homePeerId, false, sessionKey, name, avatar, notice, owner, permission, remark, tags, muted, created, lastModified, -1);
 		else
 			throw new IllegalStateException("Unknown contact type: " + type);
 	}

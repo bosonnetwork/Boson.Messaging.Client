@@ -10,7 +10,9 @@ import org.jdbi.v3.core.mapper.reflect.JdbiConstructor;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 
+import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
+import io.bosonnetwork.crypto.CryptoException;
 import io.bosonnetwork.messaging.Message;
 import io.vertx.core.Promise;
 
@@ -83,6 +85,16 @@ public class MessageImpl extends Message {
 		return new MessageImpl(getRid(), getConversationId(), getVersion(), getFrom(), getTo(),
 				getSerialNumber(), getCreated(), getMessageType(), getProperties(),
 				getContentType(), getContentDisposition(), body, getTimestamp());
+	}
+
+	@Override
+	protected void decryptBody(CryptoContext ctx) throws CryptoException {
+		super.decryptBody(ctx);
+	}
+
+	@Override
+	protected void setEncrypted(boolean encrypted) {
+		super.setEncrypted(encrypted);
 	}
 
 	public static MessageImpl parse(byte[] input) throws IOException {

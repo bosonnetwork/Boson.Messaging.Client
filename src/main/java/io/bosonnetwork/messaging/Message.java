@@ -18,7 +18,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
+import io.bosonnetwork.crypto.CryptoException;
 import io.bosonnetwork.utils.Json;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufOutputStream;
@@ -59,6 +61,7 @@ public abstract class Message {
 
 	private long rid;
 	private Id conversationId;
+	private boolean encrypted;
 	private long timestamp; // local sent or received timestamp
 
 	public static class Types {
@@ -119,6 +122,7 @@ public abstract class Message {
 		this.rid = -1;
 		this.conversationId = null;
 		this.timestamp = -1;
+		this.encrypted = false;
 	}
 
 	protected Message(Id from, long serialNumber, int messageType) {
@@ -130,6 +134,7 @@ public abstract class Message {
 		this.messageType = messageType;
 		this.created = System.currentTimeMillis();
 		this.timestamp = -1;
+		this.encrypted = false;
 	}
 
 	/*
@@ -143,7 +148,7 @@ public abstract class Message {
 
 	protected Message(long rid, Id conversationId, int version, Id from, Id to, long serialNumber, long created,
 			int messageType, Map<String, Object> properties, String contentType, String contentDisposition,
-			byte[] body, long timestamp) {
+			byte[] body, long timestamp/*, boolean encrypted*/) {
 		this.rid = rid;
 		this.conversationId = conversationId;
 		this.version = version;
@@ -157,6 +162,7 @@ public abstract class Message {
 		this.contentDisposition = contentDisposition;
 		this.body = body;
 		this.timestamp = timestamp;
+		this.encrypted = false; // TODO:
 	}
 
 	public int getVersion() {
@@ -235,8 +241,21 @@ public abstract class Message {
 		return body != null ? getObjectMapper().readValue(body, type) : null;
 	}
 
+	protected void decryptBody(CryptoContext ctx) throws CryptoException {
+		body = ctx.decrypt(body);
+		this.encrypted = false;
+	}
+
 	public long getTimestamp() {
 		return timestamp;
+	}
+
+	public boolean isEncrypted() {
+		return encrypted;
+	}
+
+	protected void setEncrypted(boolean encrypted) {
+		this.encrypted = encrypted;
 	}
 
 	protected void setTimestamp(long timestamp) {
@@ -279,6 +298,19 @@ public abstract class Message {
 		}
 
 		return false;
+	}
+
+	@Override
+	public String toString() {
+		StringBuilder repr = new StringBuilder(256);
+
+		repr.append("Message[from=").append(from)
+			.append(", to=").append(to)
+			.append(", type=").append(messageType)
+			.append(", serialNumber=").append(serialNumber)
+			.append(']');
+
+		return repr.toString();
 	}
 
 	public static abstract class Builder {

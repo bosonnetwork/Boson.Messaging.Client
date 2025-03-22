@@ -7,13 +7,21 @@ import io.bosonnetwork.messaging.Profile;
 public class UnknownContact extends Contact {
 	private String notice;
 
+	public UnknownContact(Id id, Id homePeerId) {
+		super(id, homePeerId);
+	}
+
 	public UnknownContact(Id id) {
-		super(id, null, true);
+		super(id, null);
 	}
 
 	@Override
 	public int getType() {
 		return Types.UNKNOWN;
+	}
+
+	public String getNotice() {
+		return notice;
 	}
 
 	@Override

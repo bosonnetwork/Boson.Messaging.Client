@@ -2,6 +2,8 @@ package io.bosonnetwork.messaging.impl;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.ByteBuffer;
+import java.security.MessageDigest;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -17,7 +19,6 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.github.benmanes.caffeine.cache.LoadingCache;
 
 import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
@@ -36,9 +37,11 @@ import io.bosonnetwork.messaging.InviteTicket;
 import io.bosonnetwork.messaging.Message;
 import io.bosonnetwork.messaging.Message.Builder;
 import io.bosonnetwork.messaging.MessagingClient;
+import io.bosonnetwork.messaging.MessagingException;
 import io.bosonnetwork.messaging.MessagingPeerInfo;
 import io.bosonnetwork.messaging.RepositoryException;
 import io.bosonnetwork.messaging.TimeoutException;
+import io.bosonnetwork.messaging.UnknownRecipient;
 import io.bosonnetwork.messaging.UserAgent;
 import io.bosonnetwork.messaging.impl.APIClient.MessagingServiceInfo;
 import io.bosonnetwork.messaging.rpc.RPCMethod;
@@ -51,7 +54,6 @@ import io.bosonnetwork.messaging.rpc.RPCParameters.UserProfile;
 import io.bosonnetwork.messaging.rpc.RPCRequest;
 import io.bosonnetwork.messaging.rpc.RPCResponse;
 import io.bosonnetwork.utils.Base58;
-import io.bosonnetwork.utils.vertx.VertxBackedCaffeine;
 import io.bosonnetwork.utils.vertx.VertxFuture;
 import io.netty.handler.codec.mqtt.MqttQoS;
 import io.vertx.core.AbstractVerticle;
@@ -84,6 +86,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 	private MessagingServiceInfo serviceInfo;
 
 	private CryptoContext serverContext;
+	private CryptoContext selfContext;
 
 	private int failures;
 	private boolean disconnect;
@@ -97,7 +100,6 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 
 	private Map<Integer, MessageImpl> pendingMessages;
 	private Map<Long, RPCRequest<?, ?>> pendingCalls;
-	private LoadingCache<IdPath, CryptoContext> cryptoContexts;
 
 	private static final Logger log = LoggerFactory.getLogger(MessagingClientImpl.class);
 
@@ -126,6 +128,16 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		nextMessageIndex = new AtomicLong(idx);
 		idx = Random.secureRandom().nextInt() & 0x7FFFFFFFFFFFFFFFL;
 		nextRpcCallId = new AtomicLong(idx);
+	}
+
+	@Override
+	public UserAgent getUserAgent() {
+		return userAgent;
+	}
+
+	@Override
+	public Id getUserId() {
+		return user.getId();
 	}
 
 	private String loadAccessToken() {
@@ -165,22 +177,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 			serviceInfo = info;
 
 			serverContext = user.createCryptoContext(peer.getPeerId());
-
-			cryptoContexts = VertxBackedCaffeine.newBuilder(vertx)
-					.expireAfterAccess(10, TimeUnit.MINUTES)
-					.removalListener((k, v, r) -> { if (v != null) ((CryptoContext)v).close(); })
-					.build((path) -> {
-						if (isMe(path.from())) {
-							// message sent from self to an user or a group
-							Channel identity = userAgent.getChannel(path.to());
-							Id recipient = identity == null ? path.to() : identity.getMemberPublicKey();
-							return user.createCryptoContext(recipient);
-						} else {
-							// message sent to me(self or group message)
-							Identity identity = isMe(path.to()) ? user : userAgent.getChannel(path.to());
-							return identity == null ? null : identity.createCryptoContext(path.from());
-						}
-					});
+			selfContext = user.createCryptoContext(user.getId());
 
 			// MqttClientOptions acts like a static data bean/POJO and does not support dynamic options.
 			// Additionally, the MqttClient creates a copy of the options when the instance is created.
@@ -208,19 +205,8 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 			serverContext = null;
 			mqttClientOptions = null;
 			mqttClient = null;
-			cryptoContexts.invalidateAll();
 			stopPromise.complete();
 		});
-	}
-
-	@Override
-	public UserAgent getUserAgent() {
-		return userAgent;
-	}
-
-	@Override
-	public Id getUserId() {
-		return user.getId();
 	}
 
 	private static String getClientId(Id deviceId) {
@@ -314,7 +300,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 
 	private void onClose() {
 		if (disconnect) {
-			onDisonnected();
+			userAgent.onDisconnected();
 			log.info("Disconnected");
 			return;
 		} else {
@@ -334,7 +320,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 
 		if (connectPromise != null) {
 			log.info("Subscribe topics success");
-			onConnected();
+			userAgent.onConnected();
 			connectPromise.complete(null);
 		}
 	}
@@ -379,118 +365,119 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 			// decrypt the message envelope
 			byte[] payload = serverContext.decrypt(mm.payload().getBytes());
 			MessageImpl message = MessageImpl.parse(payload);
-			if (!message.getFrom().equals(peer.getPeerId())) {
-				// message not sent from the server peer
-				// decrypt the message body if exists
-				byte[] body = message.getBody();
-				if (body != null && body.length != 0) {
-					CryptoContext context = cryptoContexts.get(IdPath.of(message.getFrom(), message.getTo()));
-					if (context == null) {
-						// Got an unknown group message, drop it due to we cannot decrypt the content
-						log.warn("Unknown group message {}->{}", message.getFrom(), message.getTo());
-						return;
-					}
+			message.setEncrypted(true);
 
-					body = context.decrypt(body);
-					message = message.dup(body);
-				}
-			}
-
-			if (topic.equals(inbox))
-				processIncomingMessage(topic, message);
-			else if (topic.equals(outbox))
-				processOutgoingMessage(topic, message);
+			if (topic.equals(inbox)) {
+				processIncomingMessage(message);
+			} else if (topic.equals(outbox))
+				processOutgoingMessage(message);
 			else if (topic.equals(broadcast))
-				onBroadcase(message);
+				processBroadcast(message);
 		} catch (Exception e) {
 			log.error("Failed to process the MQTT message", e);
 		}
 	}
 
-	private void processIncomingMessage(String topic, Message message) {
+	private void processIncomingMessage(MessageImpl message) throws CryptoException, RepositoryException {
 		int type = message.getMessageType();
+
+		byte[] body = message.getBody();
+		if (body != null && body.length > 0) {
+			if (message.getFrom().equals(peer.getPeerId())) {
+				// service RPC response or user notification: servicePeer -> me
+				// body is encrypted with the message envelope
+				message.setEncrypted(false);
+			} else {
+				if (type == Message.Types.MESSAGE) {
+					// Message: sender -> me
+					// The body is encrypted using the sender's private key
+					// and the session public key associated with that sender.
+					Contact sender = userAgent.getContact(message.getFrom());
+					if (sender != null && sender.hasSessionKey()) {
+						if (sender instanceof Channel channel) {
+							CryptoContext ctx = channel.getRxCryptoContext(message.getFrom());
+							message.decryptBody(ctx);
+						} else {
+							CryptoContext ctx = sender.getRxCryptoContext();
+							message.decryptBody(ctx);
+						}
+					} else {
+						log.warn("Message from unknow sender {}, keep in encrypted", message.getFrom());
+					}
+				} else if (type == Message.Types.CALL) {
+					// Channel RPC response: channel -> me
+					// The body is encrypted using sender's private key and my public key.
+					CryptoContext ctx = user.createCryptoContext(message.getFrom());
+					message.decryptBody(ctx);
+				} else if (type == Message.Types.NOTIFICATION) {
+					// Channel notification: channel -> channel
+					// The body is encrypted using the channel's private key
+					// and the channel session's public key
+					Channel channel = userAgent.getChannel(message.getFrom());
+					if (channel != null && channel.hasSessionKey()) {
+						CryptoContext ctx = channel.getRxCryptoContext();
+						message.decryptBody(ctx);
+					} else {
+						log.warn("Notification from unknow sender {}, keep in encrypted", message.getFrom());
+					}
+				}
+
+				// Ignore unknown message types here. Errors will be logged below.
+			}
+		} else {
+			message.setEncrypted(false);
+		}
+
 		if (type == Message.Types.MESSAGE)
 			onMessage(message);
 		else if (type == Message.Types.CALL)
 			processRpcResponse(message);
+		else if (type == Message.Types.NOTIFICATION)
+			processNotification(message);
 		else
-			log.warn("Unknown message type {} from {}, ignore",
-					type, message.getFrom());
+			log.warn("Unknown incoming message type {} from {}, ignore", type, message.getFrom());
 	}
 
-	private void processOutgoingMessage(String topic, Message message) {
+	private void processOutgoingMessage(MessageImpl message) throws CryptoException, RepositoryException {
 		int type = message.getMessageType();
-		if (type ==  Message.Types.MESSAGE)
+
+		byte[] body = message.getBody();
+		if (body != null && body.length > 0) {
+			if (message.getTo().equals(peer.getPeerId())) {
+				// service RPC requests: me -> servicePeer
+				// body is encrypted with the message envelope
+				message.setEncrypted(false);
+			} else {
+				if (type == Message.Types.MESSAGE) {
+					// The body is encrypted using my private key and the recipient's session public key.
+					Contact contact = userAgent.getContact(message.getTo());
+					if (contact != null && contact.hasSessionKey()) {
+						CryptoContext ctx = contact.getTxCryptoContext(() -> {
+							return user.createCryptoContext(contact.getSessionId());
+						});
+						message.decryptBody(ctx);
+					} else {
+						log.warn("Message to unknow contact {}, keep in encrypted", message.getTo());
+					}
+				} else if (type == Message.Types.CALL) {
+					// The body is encrypted using my private key and the recipient's public key.
+					// TODO: CHEKME - need cache the RPC crypto context?
+					CryptoContext ctx = user.createCryptoContext(message.getTo());
+					message.decryptBody(ctx);
+				}
+
+				// Ignore other message types(notification) here. Errors will be logged below.
+			}
+		} else {
+			message.setEncrypted(false);
+		}
+
+		if (type == Message.Types.MESSAGE)
 			onSent(message);
 		else if (type == Message.Types.CALL)
 			processRpcRequest(message);
 		else
-			log.warn("Unknown message type {}, ignore", type);
-	}
-
-	private void onConnecting() {
-		userAgent.onConnecting();
-	}
-
-	private void onConnected() {
-		userAgent.onConnected();
-	}
-
-	private void onDisonnected() {
-		userAgent.onDisconnected();
-	}
-
-	private void onMessage(Message message) {
-		boolean isChannelMessage = !isMe(message.getTo());
-		Id convId = isChannelMessage ? message.getTo() : message.getFrom();
-
-		// check the contact
-		try {
-			Contact contact = userAgent.getContact(convId);
-
-			if (contact == null) {
-				contact = isChannelMessage ? ChannelImpl.auto(convId) : ContactImpl.auto(convId);
-				userAgent.putContact(contact);
-			}
-
-			if (contact.isStaled())
-				tryRefreshProfile(contact);
-		} catch (RepositoryException e) {
-			log.error("Failed to get and update the contact profile: ", convId, e);
-		}
-
-		if (isChannelMessage && message.getMessageType() == Message.Types.NOTIFICATION)
-			processNotification(message);
-
-		userAgent.onMessage(message);
-	}
-
-	private void onSent(Message message) {
-		// check the contact
-		try {
-			Contact contact = userAgent.getContact(message.getTo());
-
-			if (contact != null && contact.isStaled())
-				tryRefreshProfile(contact);
-		} catch (RepositoryException e) {
-			log.error("Failed to get the contact: ", message.getTo(), e);
-		}
-
-		userAgent.onSent(message);
-	}
-
-	private void onBroadcase(Message message) {
-		// check the contact
-		try {
-			// messaging service peer
-			Contact contact = userAgent.getContact(message.getFrom());
-
-			// TODO: how to update?
-		} catch (RepositoryException e) {
-			log.error("Failed to get the contact: ", message.getFrom(), e);
-		}
-
-		userAgent.onBroadcast(message);
+			log.error("INTERNAL ERROR: unexpected outgoing message type {}", type);
 	}
 
 	private void processNotification(Message message) {
@@ -601,6 +588,53 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		}
 	}
 
+	private void processBroadcast(MessageImpl message) {
+		// Broadcast notifications from the service peer.
+		// Message body is encrypted with the message envelope,
+		// it was already decrypted here
+		message.setEncrypted(false);
+		userAgent.onBroadcast(message);
+	}
+
+	private void onMessage(Message message) {
+		boolean isChannelMessage = !isMe(message.getTo());
+		Id convId = isChannelMessage ? message.getTo() : message.getFrom();
+
+		// check the contact
+		try {
+			Contact contact = userAgent.getContact(convId);
+
+			if (contact == null) {
+				contact = isChannelMessage ? ChannelImpl.auto(convId) : ContactImpl.auto(convId);
+				userAgent.putContact(contact);
+			}
+
+			if (contact.isStaled())
+				tryRefreshProfile(contact);
+		} catch (RepositoryException e) {
+			log.error("Failed to get and update the contact profile: ", convId, e);
+		}
+
+		if (isChannelMessage && message.getMessageType() == Message.Types.NOTIFICATION)
+			processNotification(message);
+
+		userAgent.onMessage(message);
+	}
+
+	private void onSent(Message message) {
+		// check the contact
+		try {
+			Contact contact = userAgent.getContact(message.getTo());
+
+			if (contact != null && contact.isStaled())
+				tryRefreshProfile(contact);
+		} catch (RepositoryException e) {
+			log.error("Failed to get the contact: ", message.getTo(), e);
+		}
+
+		userAgent.onSent(message);
+	}
+
 	private Future<Void> doConnect() {
 		if (mqttClient != null && mqttClient.isConnected())
 			return Future.succeededFuture();
@@ -608,7 +642,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		log.info("Connecting ...");
 
 		disconnect = false;
-		onConnecting();
+		userAgent.onConnecting();
 
 		Map<String, Integer> topics = Map.of(inbox, MqttQoS.AT_LEAST_ONCE.value(),
 				outbox, MqttQoS.AT_LEAST_ONCE.value(),
@@ -622,7 +656,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 			})
 			.onFailure((e) -> {
 				log.error("Failed to connect to the messaging service", e);
-				onDisonnected();
+				userAgent.onDisconnected();
 				connectPromise.fail(e);
 			});
 
@@ -700,15 +734,18 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		return vertx.undeploy(this.deploymentID()).toCompletionStage().toCompletableFuture();
 	}
 
+	@Override
+	public Builder message() {
+		return new MessageBuilderImpl(this, Message.Types.MESSAGE);
+	}
+
 	private byte[] selfEncrypt(byte[] data) {
-		CryptoContext ctx = cryptoContexts.get(IdPath.of(user.getId(), user.getId()));
-		return ctx.encrypt(data);
+		return selfContext.encrypt(data);
 	}
 
 	private byte[] selfDecrypt(byte[] data) {
-		CryptoContext ctx = cryptoContexts.get(IdPath.of(user.getId(), user.getId()));
 		try {
-			return ctx.decrypt(data);
+			return selfContext.decrypt(data);
 		} catch (CryptoException e) {
 			log.error("INTERNAL ERROR!!! This should never heppen.");
 			throw new IllegalStateException(e);
@@ -726,7 +763,8 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		try {
 			preparsed = message.getBodyAs(new TypeReference<RPCRequest<JsonNode, ?>>() {});
 		} catch (IOException e) {
-			log.error("Malformed RPC response from {}, parse failed", message.getFrom());
+			log.debug("======== {}", message);
+			log.error("Malformed RPC request from {}, parse failed", message.getFrom(), e);
 			return;
 		}
 
@@ -737,7 +775,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 
 		switch (preparsed.getMethod()) {
 		case USER_PROFILE: {
-			RPCRequest<UserProfile, Boolean> call = preparsed.map();
+			RPCRequest<UserProfile, Boolean> call = preparsed.map(UserProfile.class);
 			pendingCalls.put(call.getId(), call);
 			break;
 		}
@@ -781,62 +819,62 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		*/
 
 		case CHANNEL_CREATE: {
-			RPCRequest<ChannelCreate, Channel> call = preparsed.map();
+			RPCRequest<ChannelCreate, Channel> call = preparsed.map(ChannelCreate.class);
 			pendingCalls.put(call.getId(), call);
 			break;
 		}
 
 		case CHANNEL_DELETE: {
-			RPCRequest<Void, Boolean> call = preparsed.map();
+			RPCRequest<Void, Boolean> call = preparsed.map(Void.class);
 			pendingCalls.put(call.getId(), call);
 			break;
 		}
 
 		case CHANNEL_JOIN: {
-			RPCRequest<InviteTicket, Channel> call = preparsed.map();
+			RPCRequest<InviteTicket, Channel> call = preparsed.map(InviteTicket.class);
 			pendingCalls.put(call.getId(), call);
 			break;
 		}
 
 		case CHANNEL_LEAVE: {
-			RPCRequest<Void, Boolean> call = preparsed.map();
+			RPCRequest<Void, Boolean> call = preparsed.map(Void.class);
 			pendingCalls.put(call.getId(), call);
 			break;
 		}
 
 		case CHANNEL_INFO: {
-			RPCRequest<Void, Channel> call = preparsed.map();
+			RPCRequest<Void, Channel> call = preparsed.map(Void.class);
 			pendingCalls.put(call.getId(), call);
 			break;
 		}
 
 		case CHANNEL_MEMBERS: {
-			RPCRequest<Void, List<Channel.Member>> call = preparsed.map();
+			RPCRequest<Void, List<Channel.Member>> call = preparsed.map(Void.class);
 			pendingCalls.put(call.getId(), call);
 			break;
 		}
 
 		case CHANNEL_OWNER: {
-			RPCRequest<Id, Boolean> call = preparsed.map();
+			RPCRequest<Id, Boolean> call = preparsed.map(Id.class);
 			pendingCalls.put(call.getId(), call);
 			break;
 		}
 
 		case CHANNEL_PERMISSION: {
-			RPCRequest<Channel.Permission, Boolean> call = preparsed.map();
+			RPCRequest<Channel.Permission, Boolean> call = preparsed.map(Channel.Permission.class);
 			pendingCalls.put(call.getId(), call);
 			break;
 		}
 
 		case CHANNEL_NAME:
 		case CHANNEL_NOTICE: {
-			RPCRequest<String, Boolean> call = preparsed.map();
+			RPCRequest<String, Boolean> call = preparsed.map(String.class);
 			pendingCalls.put(call.getId(), call);
 			break;
 		}
 
 		case CHANNEL_ROLE: {
-			RPCRequest<ChannelMemberRole, Boolean> call = preparsed.map();
+			RPCRequest<ChannelMemberRole, Boolean> call = preparsed.map(ChannelMemberRole.class);
 			pendingCalls.put(call.getId(), call);
 			break;
 		}
@@ -844,7 +882,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		case CHANNEL_BAN:
 		case CHANNEL_UNBAN:
 		case CHANNEL_REMOVE: {
-			RPCRequest<List<Id>, Boolean> call = preparsed.map();
+			RPCRequest<List<Id>, Boolean> call = preparsed.map(new TypeReference<List<Id>>() {});
 			pendingCalls.put(call.getId(), call);
 			break;
 		}
@@ -865,7 +903,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		try {
 			preparsed = message.getBodyAs(new TypeReference<RPCResponse<JsonNode>>() {});
 		} catch (IOException e) {
-			log.error("Malformed RPC response from {}, parse failed", message.getFrom());
+			log.error("Malformed RPC response from {}, parse failed", message.getFrom(), e);
 			return;
 		}
 
@@ -885,25 +923,25 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		case USER_PROFILE: {
 			// TODO: How to store and update user information
 			RPCRequest<UserProfile, Boolean> call = request.cast();
-			call.complete(preparsed.map());
+			call.complete(preparsed.map(Boolean.class));
 			break;
 		}
 
 		case DEVICE_LIST: {
 			RPCRequest<Void, List<ClientDevice>> call = request.cast();
-			call.complete(preparsed.map());
+			call.complete(preparsed.map(new TypeReference<List<ClientDevice>>() {}));
 			break;
 		}
 
 		case DEVICE_REVOKE: {
 			RPCRequest<Id, Boolean> call = request.cast();
-			call.complete(preparsed.map());
+			call.complete(preparsed.map(Boolean.class));
 			break;
 		}
 
 		case CONTACT_PUT: {
 			RPCRequest<ContactPut, String> call = request.cast();
-			RPCResponse<String> response = preparsed.map();
+			RPCResponse<String> response = preparsed.map(String.class);
 			String sequenceId = response.getResult();
 			List<Contact> contacts = call.getParameters().getContacts();
 			userAgent.onContactsUpdated(sequenceId, contacts);
@@ -913,7 +951,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 
 		case CONTACT_REMOVE: {
 			RPCRequest<ContactRemove, String> call = request.cast();
-			RPCResponse<String> response = preparsed.map();
+			RPCResponse<String> response = preparsed.map(String.class);
 			String sequenceId = response.getResult();
 			List<Id> contacts = call.getParameters().getContacts();
 			userAgent.onContactsRemoved(sequenceId, contacts);
@@ -923,7 +961,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 
 		case CONTACT_SYNC: {
 			RPCRequest<String, ContactSyncResult> call = request.cast();
-			RPCResponse<ContactSyncResult> response = preparsed.map();
+			RPCResponse<ContactSyncResult> response = preparsed.map(ContactSyncResult.class);
 			String sequenceId = response.getResult().getLastSequence().getId();
 			List<Contact> contacts = response.getResult().getContacts();
 			userAgent.onContactsSynced(sequenceId, contacts);
@@ -933,7 +971,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 
 		case CONTACT_CLEAR: {
 			RPCRequest<Void, String> call = request.cast();
-			RPCResponse<String> response = preparsed.map();
+			RPCResponse<String> response = preparsed.map(String.class);
 			String sequenceId = response.getResult();
 			userAgent.onContactsSynced(sequenceId, Collections.emptyList());
 			call.complete(response);
@@ -944,25 +982,24 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 			// No notification to the channel creator
 			// so save the channel here
 			RPCRequest<ChannelCreate, Channel> call = request.cast();
-			RPCResponse<Channel> response = preparsed.map();
+			RPCResponse<Channel> response = preparsed.map(Channel.class);
 			ChannelImpl channel = (ChannelImpl)response.getResult();
-			channel.setMemberPrivateKey(call.getCookie(this::selfDecrypt));
+			channel.setSessionKey(call.getCookie(this::selfDecrypt));
 
 			// fetch the channel members
-			getChannelMembers(channel.getId()).onSuccess(members -> {
-				userAgent.onChannelMembers(channel, members);
-			}).onFailure(e -> {
-				log.error("Failed to get the channel {} members", channel.getId(), e);
-			});
+			if (request.isInitiator())
+				getChannelMembers(channel.getId());
 
-			call.complete(response.revised(channel));
-			vertx.runOnContext(v -> userAgent.onJoinedChannel(channel));
+			vertx.runOnContext(v -> {
+				userAgent.onJoinedChannel(channel);
+				call.complete(response);
+			});
 			break;
 		}
 
 		case CHANNEL_DELETE: {
 			RPCRequest<Void, Boolean> call = request.cast();
-			call.complete(preparsed.map());
+			call.complete(preparsed.map(Boolean.class));
 			break;
 		}
 
@@ -970,18 +1007,15 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 			// No notification to the new joined member
 			// so save the channel here
 			RPCRequest<InviteTicket, Channel> call = request.cast();
-			RPCResponse<Channel> response = preparsed.map();
+			RPCResponse<Channel> response = preparsed.map(Channel.class);
 			ChannelImpl channel = (ChannelImpl)response.getResult();
-			channel.setMemberPrivateKey(call.getCookie(this::selfDecrypt));
+			channel.setSessionKey(call.getCookie(this::selfDecrypt));
 
 			// fetch the channel members
-			getChannelMembers(channel.getId()).onSuccess(members -> {
-				userAgent.onChannelMembers(channel, members);
-			}).onFailure(e -> {
-				log.error("Failed to get the channel {} members", channel.getId(), e);
-			});
+			if (request.isInitiator())
+				getChannelMembers(channel.getId());
 
-			call.complete(response.revised(channel));
+			call.complete(response);
 			vertx.runOnContext(v -> userAgent.onJoinedChannel(channel));
 			break;
 		}
@@ -997,7 +1031,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 				log.error("Failed to get the channel from user agent", e);
 			}
 
-			call.complete(preparsed.map());
+			call.complete(preparsed.map(Boolean.class));
 			Channel ch = channel != null ? channel : ChannelImpl.auto(message.getFrom());
 			vertx.runOnContext(v -> userAgent.onLeftChannel(ch));
 			break;
@@ -1005,7 +1039,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 
 		case CHANNEL_INFO: {
 			RPCRequest<Void, Channel> call = request.cast();
-			RPCResponse<Channel> response = preparsed.map();
+			RPCResponse<ChannelImpl> response = preparsed.map(ChannelImpl.class);
 			ChannelImpl channel;
 			try {
 				channel = (ChannelImpl)userAgent.getChannel(message.getFrom());
@@ -1013,11 +1047,11 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 					channel.update(response.getResult());
 				} else {
 					log.error("INTERNAL ERROR: try to update non-exists channel");
-					channel = (ChannelImpl)response.getResult();
+					channel = response.getResult();
 				}
 			} catch (Exception e) {
 				log.error("INTERNAL ERROR: Failed to get the channel from user agent", e);
-				channel = (ChannelImpl)response.getResult();
+				channel = response.getResult();
 			}
 
 			call.complete(response.revised(channel));
@@ -1027,7 +1061,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 
 		case CHANNEL_MEMBERS: {
 			RPCRequest<Void, List<Channel.Member>> call = request.cast();
-			RPCResponse<List<Channel.Member>> reponse = preparsed.map();
+			RPCResponse<List<Channel.Member>> reponse = preparsed.map(new TypeReference<List<Channel.Member>>() {});
 			List<Channel.Member> members = reponse.getResult();
 
 			ChannelImpl channel = null;
@@ -1045,26 +1079,26 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 
 		case CHANNEL_OWNER: {
 			RPCRequest<Id, Boolean> call = request.cast();
-			call.complete(preparsed.map());
+			call.complete(preparsed.map(Boolean.class));
 			break;
 		}
 
 		case CHANNEL_PERMISSION: {
 			RPCRequest<Channel.Permission, Boolean> call = request.cast();
-			call.complete(preparsed.map());
+			call.complete(preparsed.map(Boolean.class));
 			break;
 		}
 
 		case CHANNEL_NAME:
 		case CHANNEL_NOTICE: {
 			RPCRequest<String, Boolean> call = request.cast();
-			call.complete(preparsed.map());
+			call.complete(preparsed.map(Boolean.class));
 			break;
 		}
 
 		case CHANNEL_ROLE: {
 			RPCRequest<ChannelMemberRole, Boolean> call = request.cast();
-			call.complete(preparsed.map());
+			call.complete(preparsed.map(Boolean.class));
 			break;
 		}
 
@@ -1072,7 +1106,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		case CHANNEL_UNBAN:
 		case CHANNEL_REMOVE: {
 			RPCRequest<List<Id>, Boolean> call = request.cast();
-			call.complete(preparsed.map());
+			call.complete(preparsed.map(Boolean.class));
 			break;
 		}
 
@@ -1081,16 +1115,12 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		}
 	}
 
-	private MessageImpl rpcCall(Id recipient, RPCRequest<?, ?> request) {
+	private Future<Integer> sendRpcRequest(Id recipient, RPCRequest<?, ?> request) {
 		MessageBuilderImpl builder = new MessageBuilderImpl(this, Message.Types.CALL);
 		builder.to(recipient).body(request);
-		return (MessageImpl)builder.build();
-	}
+		MessageImpl message = (MessageImpl)builder.build();
 
-	private Future<Integer> sendRpcRequest(Id recipient, RPCRequest<?, ?> request) {
-		MessageImpl message = rpcCall(recipient, request);
-
-		return sendMessage(outbox, message)
+		return sendMessageInternal(message)
 			.andThen((ar) -> {
 				if (ar.succeeded()) {
 					pendingCalls.put(request.getId(), request);
@@ -1099,14 +1129,9 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 						request.failed(new TimeoutException());
 					});
 				} else {
-					pendingCalls.remove(request.getId());
 					request.failed(ar.cause());
 				}
 			});
-	}
-
-	private Future<Integer> sendRpcRequest(RPCRequest<?, ?> request) {
-		return sendRpcRequest(peer.getPeerId(), request);
 	}
 
 	@Override
@@ -1115,7 +1140,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 
 		vertx.runOnContext((v) -> {
 			// NOTICE: Send to the device private outbox
-			sendRpcRequest(request);
+			sendRpcRequest(peer.getPeerId(), request);
 		});
 
 		return VertxFuture.of(request.getFuture());
@@ -1131,7 +1156,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 
 		vertx.runOnContext((v) -> {
 			// NOTICE: Send to the device private outbox
-			sendRpcRequest(request);
+			sendRpcRequest(peer.getPeerId(), request);
 		});
 
 		return VertxFuture.of(request.getFuture());
@@ -1142,15 +1167,16 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		if (permission == null)
 			permission = Channel.Permission.OWNER_INVITE;
 
-		Signature.KeyPair memberKeyPair = Signature.KeyPair.random();
-		RPCParameters.ChannelCreate params = new RPCParameters.ChannelCreate(permission, name, notice);
+		Signature.KeyPair sessionKeyPair = Signature.KeyPair.random();
+		Id sessionId = Id.of(sessionKeyPair.publicKey().bytes());
+		RPCParameters.ChannelCreate params = new RPCParameters.ChannelCreate(sessionId, permission, name, notice);
 
 		RPCRequest<RPCParameters.ChannelCreate, Channel> request = new RPCRequest<>(
 				getNextRpcCallId(), RPCMethod.CHANNEL_CREATE, params);
-		request.setCookie(memberKeyPair, (kp) -> selfEncrypt(kp.privateKey().bytes()));
+		request.setCookie(sessionKeyPair, (kp) -> selfEncrypt(kp.privateKey().bytes()));
 
 		vertx.runOnContext((v) -> {
-			sendRpcRequest(request);
+			sendRpcRequest(peer.getPeerId(), request);
 		});
 
 		return VertxFuture.of(request.getFuture());
@@ -1172,29 +1198,36 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 	}
 
 	@Override
-	public CompletableFuture<Channel> joinChannel(InviteTicket ticket, byte[] memberPrivateKey) {
+	public CompletableFuture<Channel> joinChannel(InviteTicket ticket) {
 		if (ticket == null)
 			return VertxFuture.failedFuture(new NullPointerException("ticket"));
 
-		if (memberPrivateKey == null)
-			return VertxFuture.failedFuture(new NullPointerException("groupPrivateKey"));
+		if (ticket.getSessionKey() == null)
+			return VertxFuture.failedFuture(new IllegalArgumentException("ticket not include the session key"));
 
 		if (ticket.isExpired())
-			return VertxFuture.failedFuture(new IllegalArgumentException("Ticket expired"));
+			return VertxFuture.failedFuture(new IllegalArgumentException("ticket expired"));
 
 		if (!ticket.isValid(getUserId()))
-			return VertxFuture.failedFuture(new IllegalArgumentException("Ticket is not valid"));
+			return VertxFuture.failedFuture(new IllegalArgumentException("ticket is not valid"));
 
+		byte[] sessionKey = null;
 		try {
 			// check the private key
-			Signature.KeyPair.fromPrivateKey(memberPrivateKey);
+			if (ticket.isPublic()) {
+				sessionKey = ticket.getSessionKey();
+			} else {
+				sessionKey = user.decrypt(ticket.getInviter(), ticket.getSessionKey());
+			}
+
+			Signature.KeyPair.fromPrivateKey(sessionKey);
 		} catch (Exception e) {
-			return VertxFuture.failedFuture(new IllegalArgumentException("Invalid member private key"));
+			return VertxFuture.failedFuture(new IllegalArgumentException("invalid member private key"));
 		}
 
 		RPCRequest<InviteTicket, Channel> request = new RPCRequest<>(
-				getNextRpcCallId(), RPCMethod.CHANNEL_JOIN, ticket);
-		request.setCookie(memberPrivateKey, this::selfEncrypt);
+				getNextRpcCallId(), RPCMethod.CHANNEL_JOIN, ticket.proof());
+		request.setCookie(sessionKey, this::selfEncrypt);
 
 		vertx.runOnContext((v) -> {
 			sendRpcRequest(ticket.getChannelId(), request);
@@ -1216,6 +1249,61 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		});
 
 		return VertxFuture.of(request.getFuture());
+	}
+
+	@Override
+	public CompletableFuture<InviteTicket> createInviteTicket(Id channelId) {
+		if (channelId == null)
+			return VertxFuture.failedFuture(new NullPointerException("channelId"));
+
+		try {
+			InviteTicket ticket = signInviteTicket(channelId, null);
+			return VertxFuture.succeededFuture(ticket);
+		} catch (Exception e) {
+			return VertxFuture.failedFuture(e);
+		}
+
+	}
+
+	@Override
+	public CompletableFuture<InviteTicket> createInviteTicket(Id channelId, Id invitee) {
+		if (channelId == null)
+			return VertxFuture.failedFuture(new NullPointerException("channelId"));
+
+		if (invitee == null)
+			return VertxFuture.failedFuture(new NullPointerException("invitee"));
+
+		try {
+			InviteTicket ticket = signInviteTicket(channelId, invitee);
+			return VertxFuture.succeededFuture(ticket);
+		} catch (Exception e) {
+			return VertxFuture.failedFuture(e);
+		}
+	}
+
+	private InviteTicket signInviteTicket(Id channelId, Id invitee) throws RepositoryException {
+		ChannelImpl channel = (ChannelImpl)userAgent.getChannel(channelId);
+		if (channel == null)
+			throw new IllegalArgumentException("channel not exists");
+
+		long expire = System.currentTimeMillis() + InviteTicket.DEFAULT_EXPIRATION;
+
+		MessageDigest shasum = Hash.sha256();
+		shasum.update(channelId.bytes());
+		shasum.update(user.getId().bytes());
+		if (invitee == null)
+			shasum.update(Id.MAX_ID.bytes());
+		else
+			shasum.update(invitee.bytes());
+		shasum.update(ByteBuffer.allocate(Long.BYTES).putLong(expire).array());
+
+		byte[] sig = user.sign(shasum.digest());
+
+		byte[] sk = channel.getSessionKeyPair().privateKey().bytes();
+		if (invitee != null)
+			sk = user.encrypt(invitee, sk);
+
+		return new InviteTicket(channelId, user.getId(), invitee == null, expire, sig, sk);
 	}
 
 	private Future<Channel> getChannelInfo(Id channelId) {
@@ -1552,28 +1640,57 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 	}
 	*/
 
+	private Future<Integer> sendMessageInternal(MessageImpl message) {
+		try {
+			int type = message.getMessageType();
+			byte[] body = message.getBody();
 
-	private Future<Integer> sendMessage(String topic, MessageImpl message) {
-		// message send to home peer no need to encrypt the body
-		Message encryptedMsg = message;
-		byte[] body = message.getBody();
-		if (!message.getTo().equals(peer.getPeerId()) && body != null && body.length > 0) {
-			// encrypt the message body
-			CryptoContext context = cryptoContexts.get(IdPath.of(message.getFrom(), message.getTo()));
-			body = context.encrypt(message.getBody());
-			encryptedMsg = message.dup(body);
-		}
+			MessageImpl encryptedMessage;
 
-		byte[] payload = serverContext.encrypt(encryptedMsg.serialize());
+			if (body != null && body.length > 0 && !message.getTo().equals(peer.getPeerId())) {
+				byte[] encryptedBody;
 
-		return mqttClient.publish(topic, Buffer.buffer(payload), MqttQoS.AT_LEAST_ONCE, false, false)
-			.andThen((ar) -> {
-				if (ar.succeeded()) {
-					log.debug("Sent message to {}", message.getTo());
+				if (type == Message.Types.MESSAGE) {
+					// The body is encrypted using my private key and the recipient's session public key.
+					Contact recipient = userAgent.getContact(message.getTo());
+					if (recipient != null && recipient.hasSessionKey()) {
+						CryptoContext ctx = recipient.getTxCryptoContext(() -> {
+							return user.createCryptoContext(recipient.getSessionId());
+						});
+						encryptedBody = ctx.encrypt(body);
+					} else {
+						log.error("Failed to send message to unknow recipient {}", message.getTo());
+						return Future.failedFuture(new UnknownRecipient(message.getTo().toString()));
+					}
+				} else if (type == Message.Types.CALL) {
+					// The body is encrypted using my private key and the recipient's public key.
+					// TODO: CHEKME - need cache the RPC crypto context?
+					CryptoContext ctx = user.createCryptoContext(message.getTo());
+					encryptedBody = ctx.encrypt(body);
 				} else {
-					log.error("Sent message to {} failed", message.getTo(), ar.cause());
+					log.error("INTERNAL ERROR: Failed to send unsupported message type {}", type);
+					return Future.failedFuture(new MessagingException("INTERNAL ERROR"));
 				}
-			});
+
+				encryptedMessage = message.dup(encryptedBody);
+			} else {
+				encryptedMessage = message;
+			}
+
+			byte[] payload = serverContext.encrypt(encryptedMessage.serialize());
+
+			return mqttClient.publish(outbox, Buffer.buffer(payload), MqttQoS.AT_LEAST_ONCE, false, false)
+				.andThen((ar) -> {
+					if (ar.succeeded()) {
+						log.debug("Sent message to {}", message.getTo());
+					} else {
+						log.error("Sent message to {} failed", message.getTo(), ar.cause());
+					}
+				});
+		} catch (Exception e) {
+			log.error("Send message to {} failed", message.getTo(), e);
+			return Future.failedFuture(e);
+		}
 	}
 
 	protected CompletableFuture<Message> sendMessage(Message message) {
@@ -1581,7 +1698,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		Promise<Message> promise = msg.initSendPromise();
 
 		vertx.runOnContext((v) -> {
-			sendMessage(outbox, msg)
+			sendMessageInternal(msg)
 				.onSuccess(packetId -> {
 					pendingMessages.put(packetId, msg);
 				}).onFailure(e -> {
@@ -1593,14 +1710,91 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 	}
 
 	@Override
-	public Builder message() {
-		return new MessageBuilderImpl(this, Message.Types.MESSAGE);
+	public CompletableFuture<Contact> addContact(Id id, Id homePeerId, byte[] sessionKey, String name, boolean avatar) {
+		if (id == null)
+			return VertxFuture.failedFuture(new NullPointerException("id"));
+
+		if (sessionKey == null)
+			return VertxFuture.failedFuture(new NullPointerException("sessionKey"));
+
+		try {
+			Contact contact = ContactImpl.create(id, homePeerId, sessionKey, name, avatar);
+			userAgent.putContact(contact);
+			tryRefreshProfile(contact);
+
+			// TODO: call put contact RPC
+			return VertxFuture.succeededFuture(contact);
+		} catch (Exception e) {
+			return VertxFuture.failedFuture(e);
+		}
 	}
 
 	@Override
-	public CompletableFuture<Void> syncContact() {
-		// TODO:
-		return null;
+	public CompletableFuture<Contact> getContact(Id id) {
+		if (id == null)
+			return VertxFuture.failedFuture(new NullPointerException("id"));
+
+		try {
+			Contact contact = userAgent.getContact(id);
+			return VertxFuture.succeededFuture(contact);
+		} catch (RepositoryException e) {
+			return VertxFuture.failedFuture(e);
+		}
+	}
+
+	@Override
+	public CompletableFuture<Channel> getChannel(Id id) {
+		if (id == null)
+			return VertxFuture.failedFuture(new NullPointerException("id"));
+
+		try {
+			Channel channel = userAgent.getChannel(id);
+			return VertxFuture.succeededFuture(channel);
+		} catch (RepositoryException e) {
+			return VertxFuture.failedFuture(e);
+		}
+	}
+
+	@Override
+	public CompletableFuture<List<Contact>> getContacts() {
+		try {
+			List<Contact> Contact = userAgent.getUserContacts();
+			return VertxFuture.succeededFuture(Contact);
+		} catch (RepositoryException e) {
+			return VertxFuture.failedFuture(e);
+		}
+	}
+
+	@Override
+	public CompletableFuture<Void> updateContact(Contact contact) {
+		if (contact == null)
+			return VertxFuture.failedFuture(new NullPointerException("contact"));
+
+		try {
+			userAgent.putContact(contact);
+
+			// TODO: call put contact RPC
+
+			return VertxFuture.succeededFuture();
+		} catch (RepositoryException e) {
+			return VertxFuture.failedFuture(e);
+		}
+	}
+
+	@Override
+	public CompletableFuture<Void> removeContact(Id id) {
+		if (id == null)
+			return VertxFuture.failedFuture(new NullPointerException("id"));
+
+		try {
+			userAgent.removeContact(id);
+
+			// TODO: call remove contact RPC
+
+			return VertxFuture.succeededFuture();
+		} catch (RepositoryException e) {
+			return VertxFuture.failedFuture(e);
+		}
 	}
 
 	private Future<Contact> tryRefreshProfile(Contact contact) {

@@ -91,6 +91,10 @@ public class RPCRequest<P, R> {
 		return transform.apply(cookie);
 	}
 
+	public boolean isInitiator() {
+		return promise != null;
+	}
+
 	public Future<R> getFuture() {
 		return promise != null ? promise.future() : null;
 	}
@@ -121,11 +125,25 @@ public class RPCRequest<P, R> {
 		return typed;
 	}
 
-	public <PT, RT> RPCRequest<PT, RT> map() {
+	public <PT, RT> RPCRequest<PT, RT> map(Class<PT> paramsType) {
 		if (params == null)
-			return map();
+			return cast();
 
-		PT p =  Json.cborMapper().convertValue(params, new TypeReference<PT>() {});
+		PT p =  Json.cborMapper().convertValue(params, paramsType);
+		@SuppressWarnings("unchecked")
+		RPCRequest<PT, RT> r = new RPCRequest<>(this, p, (Promise<RT>)promise);
+
+		if (response != null)
+			r.response = response.cast();
+
+		return r;
+	}
+
+	public <PT, RT> RPCRequest<PT, RT> map(TypeReference<PT> paramsType) {
+		if (params == null)
+			return cast();
+
+		PT p =  Json.cborMapper().convertValue(params, paramsType);
 		@SuppressWarnings("unchecked")
 		RPCRequest<PT, RT> r = new RPCRequest<>(this, p, (Promise<RT>)promise);
 
