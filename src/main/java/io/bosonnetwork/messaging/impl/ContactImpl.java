@@ -9,9 +9,10 @@ public class ContactImpl extends Contact {
 	// for local storage
 	public ContactImpl(Id id, Id homePeerId, boolean auto, byte[] sessionKey,
 			String name, boolean avatar, String remark, String tags, boolean muted,
-			boolean blocked, long created, long lastModified, long lastUpdated) {
+			boolean blocked, long created, long lastModified, long lastUpdated,
+			boolean deleted, int revision, boolean modified) {
 		super(id, homePeerId, auto, sessionKey, name, avatar, remark, tags,
-				muted, blocked, created, lastModified, lastUpdated);
+				muted, blocked, created, lastModified, lastUpdated, deleted, revision, modified);
 	}
 
 	/*
@@ -30,7 +31,7 @@ public class ContactImpl extends Contact {
 		long now = System.currentTimeMillis();
 
 		return new ContactImpl(id, homePeerId, false, sessionKey, name, avatar,
-				null, null, false, false, now, now, -1);
+				null, null, false, false, now, now, -1, false, 1, true);
 	}
 
 	public static Contact auto(Id id, Id homePeerId) {
@@ -84,6 +85,11 @@ public class ContactImpl extends Contact {
 
 		if (isAuto())
 			repr.append("auto, ");
+
+		if (isDeleted())
+			repr.append("deleted, ");
+
+		repr.append("revision= ").append(getRevision()).append(", ");
 
 		repr.append("created= ").append(Instant.ofEpochMilli(getCreated())).append(", ")
 			.append("modified= ").append(Instant.ofEpochMilli(getLastModified())).append(']');

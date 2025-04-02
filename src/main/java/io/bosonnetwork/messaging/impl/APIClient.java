@@ -133,6 +133,28 @@ public class APIClient {
 		return httpRequest(method, uri, accessToken, 0, body, expectedStatus);
 	}
 
+	private Future<String> refreshAccessToken() {
+		byte[] nonce = nonce().bytes();
+
+		Identity user = getUser();
+		Identity device = getDevice();
+
+		var body = JsonObject.of(
+				"userId", user.getId(),
+				"deviceId",	device.getId(),
+				"nonce", nonce,
+				"userSig", user.sign(nonce),
+				"deviceSig", device.sign(nonce));
+
+		return httpRequest(HttpMethod.POST, "/api/v1/auth", body, 201).map(json -> {
+			String accessToken = json.getString("token");
+			if (accessToken == null || accessToken.isEmpty())
+				throw new IllegalStateException("HTTP error: Invalid server response, missing access token");
+
+			return accessToken;
+		});
+	}
+
 	private Future<JsonObject> httpRequest(HttpMethod method, String uri,
 			String accessToken, long timeout, JsonObject body, int expectedStatus) {
 		RequestOptions opts = requestOptions(method, uri)
@@ -388,28 +410,6 @@ public class APIClient {
 		});
 	}
 
-	private Future<String> refreshAccessToken() {
-		byte[] nonce = nonce().bytes();
-
-		Identity user = getUser();
-		Identity device = getDevice();
-
-		var body = JsonObject.of(
-				"userId", user.getId(),
-				"deviceId",	device.getId(),
-				"nonce", nonce,
-				"userSig", user.sign(nonce),
-				"deviceSig", device.sign(nonce));
-
-		return httpRequest(HttpMethod.POST, "/api/v1/auth", body, 201).map(json -> {
-			String accessToken = json.getString("token");
-			if (accessToken == null || accessToken.isEmpty())
-				throw new IllegalStateException("HTTP error: Invalid server response, missing access token");
-
-			return accessToken;
-		});
-	}
-
 	public static class MessagingServiceInfo {
 		@JsonProperty(value = "peerId", required = true)
 		private final Id peerId;
@@ -513,6 +513,13 @@ public class APIClient {
 	public Future<Profile> getProfile(Id id) {
 		return httpRequest(HttpMethod.GET, "/api/v1/profile/" + id.toBase58String(), null, 200).map(json -> {
 			return json.mapTo(Profile.class);
+		});
+	}
+
+	public Future<ContactsUpdate> fetchContactsUpdate(String versionId) {
+		String uri = "/api/v1/contacts" + (versionId == null ? "" : ("/" + versionId));
+		return httpRequest(HttpMethod.GET, uri, getAccessToken(), null, 200).map(json -> {
+			return json.mapTo(ContactsUpdate.class);
 		});
 	}
 }

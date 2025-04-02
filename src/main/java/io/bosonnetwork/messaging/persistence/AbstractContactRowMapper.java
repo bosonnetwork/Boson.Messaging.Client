@@ -45,10 +45,14 @@ public class AbstractContactRowMapper<T extends Contact> implements RowMapper<T>
 		long lastModified = rs.getLong(n(prefix, "lastModified"));
 		long lastUpdated = rs.getLong(n(prefix, "lastUpdated"));
 
+		boolean deleted = rs.getBoolean(n(prefix, "deleted"));
+		int revision = rs.getInt(n(prefix, "revision"));
+		boolean modified = rs.getBoolean(n(prefix, "modified"));
+
 		Contact contact;
 		if (type == Contact.Types.CONTACT) {
 			contact = new ContactImpl(id, homePeerId, auto, sessionKey, name, avatar, remark, tags,
-					muted, blocked, created, lastModified, lastUpdated);
+					muted, blocked, created, lastModified, lastUpdated, deleted, revision, modified);
 		} else if (type == Contact.Types.CHANNEL) {
 			String notice = rs.getString(n(prefix, "notice"));
 
@@ -60,7 +64,7 @@ public class AbstractContactRowMapper<T extends Contact> implements RowMapper<T>
 
 			contact = new ChannelImpl(id, homePeerId, auto, sessionKey,
 					name, avatar, notice, owner, permission, remark, tags,
-					muted, created, lastModified, lastUpdated);
+					muted, created, lastModified, lastUpdated, deleted, revision, modified);
 		} else {
 			throw new SQLException("Unknown contact type: " + type);
 		}

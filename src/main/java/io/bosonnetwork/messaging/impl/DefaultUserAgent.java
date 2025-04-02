@@ -510,9 +510,24 @@ public class DefaultUserAgent implements UserAgent {
 	}
 
 	@Override
-	public void onSent(Message message) {
+	public void onSending(Message message) {
 		Id convId = message.getTo();
 		((MessageImpl)message).setConversationId(convId);
+		putMessage(message);
+
+		getOrCreateConversation(convId).update(message);
+		messageListeners.forEach(l -> l.onSending(message));
+	}
+
+	@Override
+	public void onSent(Message message) {
+		Id convId = message.getConversationId();
+		if (convId == null) {
+			// send by same device, already set the conversation id in onSending
+			convId = message.getTo();
+			((MessageImpl)message).setConversationId(convId);
+		}
+
 		putMessage(message);
 
 		getOrCreateConversation(convId).update(message);
@@ -768,44 +783,65 @@ public class DefaultUserAgent implements UserAgent {
 	////////////////////////////////////////////////////////////////////////////
 	// Contacts
 
+	private List<Contact> mergeContactsUpdate(Collection<Contact> contacts) throws RepositoryException {
+		List<Id> ids = contacts.stream().map(Contact::getId).collect(Collectors.toList());
+		Map<Id, Contact> locals = repository.getContacts(ids).stream().collect(Collectors.toMap(Contact::getId, c -> c));
+
+		List<Contact> merged = new ArrayList<>();
+		for (Contact updated : contacts) {
+			Contact local = locals.get(updated.getId());
+			if (local == null) {
+				merged.add(updated);
+			} else if (updated.getRevision() >= local.getRevision()) {
+				merged.add(updated);
+			} else {
+				log.warn("THIS SHOULD NOT HAPPEN: Contact revision {} is lower than the existing one {}", updated.getRevision(), local.getRevision());
+				// ignore the updated
+			}
+		}
+
+		return merged;
+	}
+
 	@Override
-	public void onContactsUpdated(String sequenceId, List<Contact> contacts) {
+	public void onContactsUpdated(String baseVersionId, String newVersionId, List<Contact> contacts) {
 		try {
-			// TODO: update sequence id
-			repository.putContacts(contacts);
+			// TODO: check the baseVersion id, should be same with the current local version
+			List<Contact> merged = mergeContactsUpdate(contacts);
+			repository.putContactsUpdate(newVersionId, merged);
 		} catch (RepositoryException e) {
 			log.error("Failed to save the contacts to the repository.");
 		}
-		contactListeners.forEach(l -> l.onContactsUpdated(sequenceId, contacts));
+		contactListeners.forEach(l -> l.onContactsUpdated(baseVersionId, newVersionId, contacts));
 	}
 
 	@Override
-	public void onContactsRemoved(String sequenceId, List<Id> contacts) {
+	public void onContactsCleared() {
 		try {
-			// TODO: update sequence id
-			repository.removeContacts(contacts);
+			repository.removeAllUserContacts();
 		} catch (RepositoryException e) {
-			log.error("Failed to remove the contacts from the repository.");
+			log.error("Failed to save the contacts from the repository.");
 		}
 
-		contactListeners.forEach(l -> l.onContactsRemoved(sequenceId, contacts));
+		contactListeners.forEach(l -> l.onContactsCleared());
 	}
 
 	@Override
-	public void onContactsSynced(String sequenceId, List<Contact> contacts) {
-		try {
-			// TODO: update sequence id
-			repository.refillContacts(contacts);
-		} catch (RepositoryException e) {
-			log.error("Failed to refill the contacts to the repository.");
-		}
-
-		contactListeners.forEach(l -> l.onContactsSynced(sequenceId, contacts));
+	public String getContactsVersion() throws RepositoryException {
+		return repository.getContactsVersion();
 	}
 
 	@Override
-	public List<Contact> getContacts() throws RepositoryException {
-		return repository.getAllContacts();
+	public void putContactsUpdate(String versionId, Collection<Contact> updated) throws RepositoryException {
+		Objects.requireNonNull(versionId, "versionId");
+		Objects.requireNonNull(updated, "updated");
+
+		repository.putContactsUpdate(versionId, updated);
+	}
+
+	@Override
+	public List<Contact> getContacts(List<Id> ids) throws RepositoryException {
+		return repository.getContacts(ids);
 	}
 
 	@Override
@@ -817,6 +853,7 @@ public class DefaultUserAgent implements UserAgent {
 	public Contact getContact(Id contactId) throws RepositoryException {
 		return repository.getContact(contactId);
 	}
+
 
 	@Override
 	public void putContact(Contact contact) throws RepositoryException {
@@ -847,5 +884,10 @@ public class DefaultUserAgent implements UserAgent {
 			return;
 
 		repository.removeContacts(contactIds);
+	}
+
+	@Override
+	public void removeUserContacts() throws RepositoryException {
+		repository.removeAllUserContacts();
 	}
 }

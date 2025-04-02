@@ -14,7 +14,8 @@ public interface Conversations {
 				c.sessionKey AS c_sessionKey, c.name AS c_name, c.avatar AS c_avatar,
 				c.notice AS c_notice, c.owner AS c_owner, c.permission AS c_permission,
 				c.remark AS c_remark, c.tags AS c_tags, c.muted AS c_muted, c.blocked AS c_blocked,
-				c.created AS c_created, c.lastModified AS c_lastModified, c.lastUpdated AS c_lastUpdated
+				c.created AS c_created, c.lastModified AS c_lastModified, c.lastUpdated AS c_lastUpdated,
+				c.deleted AS c_deleted, c.revision AS c_revision, c.modified AS c_modified
 			FROM (SELECT *, MAX(created) AS mc FROM messages WHERE conversationId = ?) AS m
 			LEFT JOIN contacts AS c ON m.conversationId = c.id
 			""")
@@ -26,7 +27,8 @@ public interface Conversations {
 				c.sessionKey AS c_sessionKey, c.name AS c_name, c.avatar AS c_avatar,
 				c.notice AS c_notice, c.owner AS c_owner, c.permission AS c_permission,
 				c.remark AS c_remark, c.tags AS c_tags, c.muted AS c_muted, c.blocked AS c_blocked,
-				c.created AS c_created, c.lastModified AS c_lastModified, c.lastUpdated AS c_lastUpdated
+				c.created AS c_created, c.lastModified AS c_lastModified, c.lastUpdated AS c_lastUpdated,
+				c.deleted AS c_deleted, c.revision AS c_revision, c.modified AS c_modified
 			FROM (SELECT *, MAX(created) AS mc FROM messages GROUP BY conversationId) AS m
 			LEFT JOIN contacts AS c ON m.conversationId = c.id
 			ORDER BY m.created DESC

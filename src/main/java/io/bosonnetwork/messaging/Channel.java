@@ -19,8 +19,16 @@ import io.bosonnetwork.messaging.impl.ChannelBuilder;
 
 @JsonDeserialize(builder = ChannelBuilder.class)
 public abstract class Channel extends Contact {
+	@JsonProperty("o")
+	@JsonInclude(Include.NON_NULL)
 	private Id owner;
+
+	@JsonProperty("pm")
+	@JsonInclude(Include.NON_DEFAULT)
 	private Permission permission;
+
+	// @JsonProperty("nt")
+	// @JsonInclude(Include.NON_EMPTY)
 	private String notice;
 
 	private Map<Id, CryptoContext> memberCryptoContexts;
@@ -181,8 +189,10 @@ public abstract class Channel extends Contact {
 	// for local storage
 	protected Channel(Id id, Id homePeerId,  boolean auto, byte[] sessionKey, String name, boolean avatar,
 			String notice, Id owner, Permission permission, String remark, String tags,
-			boolean muted, long created, long lastModified, long lastUpdated) {
-		super(id, homePeerId, auto, sessionKey, name, avatar, remark, tags, muted, false, created, lastModified, lastUpdated);
+			boolean muted, long created, long lastModified, long lastUpdated,
+			boolean deleted, int revision, boolean modified) {
+		super(id, homePeerId, auto, sessionKey, name, avatar, remark, tags,
+				muted, false, created, lastModified, lastUpdated, deleted, revision, modified);
 
 		this.notice = notice;
 		this.owner = owner;
@@ -193,8 +203,6 @@ public abstract class Channel extends Contact {
 		super(id, homePeerId);
 	}
 
-	@JsonProperty("o")
-	@JsonInclude(Include.NON_NULL)
 	public Id getOwner() {
 		return owner;
 	}
@@ -204,8 +212,6 @@ public abstract class Channel extends Contact {
 		touch();
 	}
 
-	@JsonProperty("pm")
-	@JsonInclude(Include.NON_DEFAULT)
 	public Permission getPermission() {
 		return permission;
 	}
@@ -215,8 +221,6 @@ public abstract class Channel extends Contact {
 		touch();
 	}
 
-	// @JsonProperty("nt")
-	// @JsonInclude(Include.NON_EMPTY)
 	public String getNotice() {
 		return notice;
 	}
@@ -228,13 +232,12 @@ public abstract class Channel extends Contact {
 	@Override
 	public void setBlocked(boolean blocked) {
 		// Do nothing on channel contact.
-		//throw new UnsupportedOperationException();
+		throw new UnsupportedOperationException();
 	}
 
 	@Override
 	public void update(Profile profile) {
 		this.notice = profile.getNotice();
-
 		super.update(profile);
 	}
 
@@ -242,7 +245,6 @@ public abstract class Channel extends Contact {
 		this.permission = channel.permission;
 		this.owner = channel.owner;
 		this.notice = channel.notice;
-
 		super.update(channel);
 	}
 

@@ -176,12 +176,12 @@ public class Database implements MessagingRepository {
 	}
 
 	@Override
-	public void updateMessageTimestamp(Message message) throws RepositoryException {
+	public void updateMessageCompletetdTimestamp(Message message) throws RepositoryException {
 		Objects.requireNonNull(message, "message");
 
 		useHandle(handle -> {
 			Messages dao = handle.attach(Messages.class);
-			dao.updateTimestamp(message);
+			dao.updateCompletedTimestamp(message);
 		});
 	}
 
@@ -299,6 +299,33 @@ public class Database implements MessagingRepository {
 	}
 
 	@Override
+	public String getContactsVersion() throws RepositoryException {
+		return withHandle(handle -> {
+			Contacts dao = handle.attach(Contacts.class);
+			return dao.getVersion();
+		});
+	}
+
+	@Override
+	public void putContactsUpdate(String versionId, Collection<Contact> updated) throws RepositoryException {
+		useTransaction(handle -> {
+			Contacts dao = handle.attach(Contacts.class);
+
+			for (Contact contact : updated) {
+				if (contact instanceof Channel ch)
+					dao.putChannel(ch);
+				else
+					dao.putContact(contact);
+			}
+
+			dao.putVersion(versionId, System.currentTimeMillis());
+		});
+
+		for (Contact contact : updated)
+			contactCache.put(contact.getId(), contact);
+	}
+
+	@Override
 	public void putContact(Contact contact) throws RepositoryException {
 		Objects.requireNonNull(contact, "contact");
 
@@ -352,6 +379,21 @@ public class Database implements MessagingRepository {
 		//	deviceCache.put(clientId, ClientDevice.VOID);
 
 		return contact;
+	}
+
+	@Override
+	public List<Contact> getContacts(List<Id> contactIds) throws RepositoryException {
+		return withHandle(handle -> {
+			Contacts dao = handle.attach(Contacts.class);
+			return dao.getContacts(contactIds);
+		}).stream().map(c -> {
+			Contact contact = contactCache.getIfPresent(c.getId());
+			if (contact != null)
+				return contact;
+
+			contactCache.put(c.getId(), c);
+			return c;
+		}).collect(Collectors.toList());
 	}
 
 	@Override
@@ -441,19 +483,11 @@ public class Database implements MessagingRepository {
 	}
 
 	@Override
-	public void refillContacts(Collection<Contact> contacts) throws RepositoryException {
-		Objects.requireNonNull(contacts, "contacts");
-
-		useHandle(handle -> {
+	public void removeAllUserContacts() throws RepositoryException {
+		useTransaction(handle -> {
 			Contacts dao = handle.attach(Contacts.class);
-			dao.removeAllContacts();
-
-			for (Contact contact : contacts) {
-				if (contact instanceof Channel ch)
-					dao.putChannel(ch);
-				else
-					dao.putContact(contact);
-			}
+			dao.removeAllUserContacts();
+			dao.clearVersion();
 		});
 
 		contactCache.invalidateAll();

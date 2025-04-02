@@ -73,6 +73,7 @@ public interface MessagingClient {
 
 	public CompletableFuture<List<Contact>> getContacts();
 
-	public CompletableFuture<Void> updateContact(Contact contact);
+	public CompletableFuture<Contact> updateContact(Contact contact);
 	public CompletableFuture<Void> removeContact(Id id);
+	public CompletableFuture<Void> removeContacts(List<Id> ids);
 }
