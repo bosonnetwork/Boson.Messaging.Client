@@ -17,28 +17,44 @@ import io.bosonnetwork.messaging.Channel;
 import io.bosonnetwork.messaging.Contact;
 
 public interface Contacts {
+	// Version
+	@SqlUpdate("""
+			INSERT INTO contacts_version VALUES(0, :id, :created)
+			ON CONFLICT(rid) DO UPDATE SET
+				id=EXCLUDED.id, created=EXCLUDED.created
+			""")
+	int putVersion(@Bind("id") String versionId, @Bind("created") long created);
+
+	@SqlQuery("SELECT id FROM contacts_version WHERE rid=0")
+	String getVersion();
+
+	@SqlUpdate("DELETE FROM contacts_version")
+	long clearVersion();
+
 	// Contacts
 	@SqlUpdate("""
-			INSERT INTO contacts(id, type, auto, homePeerId, sessionKey, name, avatar, remark, tags, muted, blocked, created, lastModified, lastUpdated)
-			VALUES(:id, :type, :auto, :homePeerId, :sessionKey, :name, :avatar, :remark, :tags, :muted, :blocked, :created, :lastModified, :lastUpdated)
+			INSERT INTO contacts(id, type, auto, homePeerId, sessionKey, name, avatar, remark, tags, muted, blocked, created, lastModified, lastUpdated, deleted, revision, modified)
+			VALUES(:id, :type, :auto, :homePeerId, :sessionKey, :name, :avatar, :remark, :tags, :muted, :blocked, :created, :lastModified, :lastUpdated, :deleted, :revision, :modified)
 			ON CONFLICT(id) DO UPDATE SET
 				type=EXCLUDED.type, auto=EXCLUDED.auto, homePeerId=EXCLUDED.homePeerId,
 				sessionKey=EXCLUDED.sessionKey, name=EXCLUDED.name, avatar=EXCLUDED.avatar,
 				remark=EXCLUDED.remark, tags=EXCLUDED.tags, muted=EXCLUDED.muted,
 				blocked=EXCLUDED.blocked, created=EXCLUDED.created,
-				lastModified=EXCLUDED.lastModified, lastUpdated=EXCLUDED.lastUpdated
+				lastModified=EXCLUDED.lastModified, lastUpdated=EXCLUDED.lastUpdated,
+				deleted=EXCLUDED.deleted, revision=EXCLUDED.revision, modified=EXCLUDED.modified
 			""")
 	int putContact(@BindBean Contact contact);
 
 	@SqlBatch("""
-			INSERT INTO contacts(id, type, auto, homePeerId, sessionKey, name, avatar, remark, tags, muted, blocked, created, lastModified, lastUpdated)
-			VALUES(:id, :type, :auto, :homePeerId, :sessionKey, :name, :avatar, :remark, :tags, :muted, :blocked, :created, :lastModified, :lastUpdated)
+			INSERT INTO contacts(id, type, auto, homePeerId, sessionKey, name, avatar, remark, tags, muted, blocked, created, lastModified, lastUpdated, deleted, revision, modified)
+			VALUES(:id, :type, :auto, :homePeerId, :sessionKey, :name, :avatar, :remark, :tags, :muted, :blocked, :created, :lastModified, :lastUpdated, :deleted, :revision, :modified)
 			ON CONFLICT(id) DO UPDATE SET
 				type=EXCLUDED.type, auto=EXCLUDED.auto, homePeerId=EXCLUDED.homePeerId,
 				sessionKey=EXCLUDED.sessionKey, name=EXCLUDED.name, avatar=EXCLUDED.avatar,
 				remark=EXCLUDED.remark, tags=EXCLUDED.tags, muted=EXCLUDED.muted,
 				blocked=EXCLUDED.blocked, created=EXCLUDED.created,
-				lastModified=EXCLUDED.lastModified, lastUpdated=EXCLUDED.lastUpdated
+				lastModified=EXCLUDED.lastModified, lastUpdated=EXCLUDED.lastUpdated,
+				deleted=EXCLUDED.deleted, revision=EXCLUDED.revision, modified=EXCLUDED.modified
 			""")
 	int[] putContacts(@BindBean Collection<Contact> contacts);
 
@@ -46,11 +62,15 @@ public interface Contacts {
 	@RegisterRowMapper(ContactRowMapper.class)
 	Contact getContact(Id id);
 
+	@SqlQuery("SELECT * FROM contacts WHERE id IN (<ids>)")
+	@RegisterRowMapper(ContactRowMapper.class)
+	List<Contact> getContacts(@BindList("ids") List<Id> ids);
+
 	@SqlQuery("SELECT * FROM contacts")
 	@RegisterRowMapper(ContactRowMapper.class)
 	List<Contact> getAllContacts();
 
-	@SqlQuery("SELECT * FROM contacts where auto = false")
+	@SqlQuery("SELECT * FROM contacts WHERE auto = false AND deleted = false")
 	@RegisterRowMapper(ContactRowMapper.class)
 	List<Contact> getAllUserContacts();
 
@@ -58,31 +78,40 @@ public interface Contacts {
 	@RegisterRowMapper(ContactRowMapper.class)
 	List<Contact> getAllContacts(int type);
 
+	@SqlQuery("SELECT * FROM contacts WHERE auto = false AND modified = true")
+	@RegisterRowMapper(ContactRowMapper.class)
+	List<Contact> getModifiedContacts();
+
+	@SqlQuery("UPDATE contacts SET modified = :modified WHERE id IN (<ids>)")
+	int updateContactsModifiedStatus(@BindList("ids") List<Id> ids, @Bind("modified") boolean modified);
+
 	// Channels
 	@SqlUpdate("""
-			INSERT INTO contacts(id, type, auto, homePeerId, sessionKey, name, avatar, notice, owner, permission, remark, tags, muted, blocked, created, lastModified, lastUpdated)
-			VALUES(:id, :type, :auto, :homePeerId, :sessionKey, :name, :avatar, :notice, :owner, :permission, :remark, :tags, :muted, :blocked, :created, :lastModified, :lastUpdated)
+			INSERT INTO contacts(id, type, auto, homePeerId, sessionKey, name, avatar, notice, owner, permission, remark, tags, muted, blocked, created, lastModified, lastUpdated, deleted, revision)
+			VALUES(:id, :type, :auto, :homePeerId, :sessionKey, :name, :avatar, :notice, :owner, :permission, :remark, :tags, :muted, :blocked, :created, :lastModified, :lastUpdated, :deleted, :revision)
 			ON CONFLICT(id) DO UPDATE SET
 				type=EXCLUDED.type, auto=EXCLUDED.auto, homePeerId=EXCLUDED.homePeerId,
 				sessionKey=EXCLUDED.sessionKey, name=EXCLUDED.name, avatar=EXCLUDED.avatar,
 				notice=EXCLUDED.notice, owner=EXCLUDED.owner, permission=EXCLUDED.permission,
 				remark=EXCLUDED.remark, tags=EXCLUDED.tags, muted=EXCLUDED.muted,
 				blocked=EXCLUDED.blocked, created=EXCLUDED.created,
-				lastModified=EXCLUDED.lastModified, lastUpdated=EXCLUDED.lastUpdated
+				lastModified=EXCLUDED.lastModified, lastUpdated=EXCLUDED.lastUpdated,
+				deleted=EXCLUDED.deleted, revision=EXCLUDED.revision
 			""")
 	@RegisterArgumentFactory(PermissionArgumentFactory.class)
 	int putChannel(@BindBean Channel channel);
 
 	@SqlBatch("""
-			INSERT INTO contacts(id, type, auto, homePeerId, sessionKey, name, avatar, notice, owner, permission, remark, tags, muted, blocked, created, lastModified, lastUpdated)
-			VALUES(:id, :type, :auto, :homePeerId, :sessionKey, :name, :avatar, :notice, :owner, :permission, :remark, :tags, :muted, :blocked, :created, :lastModified, :lastUpdated)
+			INSERT INTO contacts(id, type, auto, homePeerId, sessionKey, name, avatar, notice, owner, permission, remark, tags, muted, blocked, created, lastModified, lastUpdated, deleted, revision)
+			VALUES(:id, :type, :auto, :homePeerId, :sessionKey, :name, :avatar, :notice, :owner, :permission, :remark, :tags, :muted, :blocked, :created, :lastModified, :lastUpdated, :deleted, :revision)
 			ON CONFLICT(id) DO UPDATE SET
 				type=EXCLUDED.type, auto=EXCLUDED.auto, homePeerId=EXCLUDED.homePeerId,
 				sessionKey=EXCLUDED.sessionKey, name=EXCLUDED.name, avatar=EXCLUDED.avatar,
 				notice=EXCLUDED.notice, owner=EXCLUDED.owner, permission=EXCLUDED.permission,
 				remark=EXCLUDED.remark, tags=EXCLUDED.tags, muted=EXCLUDED.muted,
 				blocked=EXCLUDED.blocked, created=EXCLUDED.created,
-				lastModified=EXCLUDED.lastModified, lastUpdated=EXCLUDED.lastUpdated
+				lastModified=EXCLUDED.lastModified, lastUpdated=EXCLUDED.lastUpdated,
+				deleted=EXCLUDED.deleted, revision=EXCLUDED.revision
 			""")
 	@RegisterArgumentFactory(PermissionArgumentFactory.class)
 	int[] putChannels(@BindBean Collection<Channel> channels);
@@ -109,6 +138,9 @@ public interface Contacts {
 
 	@SqlUpdate("DELETE FROM contacts")
 	int removeAllContacts();
+
+	@SqlUpdate("UPDATE contacts SET deleted = true, modified = false WHERE auto = false")
+	int removeAllUserContacts();
 
 	// Channel members
 	@SqlUpdate("""

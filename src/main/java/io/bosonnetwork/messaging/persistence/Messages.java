@@ -18,24 +18,24 @@ import io.bosonnetwork.messaging.Message;
 
 public interface Messages {
 	@SqlUpdate("""
-			INSERT INTO messages(conversationId, version, "from", "to", serialNumber, created, messageType, properties, contentType, contentDisposition, body, "timestamp")
-			VALUES(:conversationId, :version, :from, :to, :serialNumber, :created, :messageType, :properties, :contentType, :contentDisposition, :body, :timestamp)
+			INSERT INTO messages(conversationId, version, "from", "to", serialNumber, created, messageType, properties, contentType, contentDisposition, body, completed, encrypted)
+			VALUES(:conversationId, :version, :from, :to, :serialNumber, :created, :messageType, :properties, :contentType, :contentDisposition, :body, :completed, :encrypted)
 			""")
 	@RegisterArgumentFactory(PropertiesArgumentFactory.class)
 	@GetGeneratedKeys("rid")
 	long put(@BindBean Message message);
 
 	@SqlBatch("""
-			INSERT INTO messages(conversationId, version, "from", "to", serialNumber, created, messageType, properties, contentType, contentDisposition, body, "timestamp")
-			VALUES(:conversationId, :version, :from, :to, :serialNumber, :created, :messageType, :properties, :contentType, :contentDisposition, :body, :timestamp)
+			INSERT INTO messages(conversationId, version, "from", "to", serialNumber, created, messageType, properties, contentType, contentDisposition, body, completed, encrypted)
+			VALUES(:conversationId, :version, :from, :to, :serialNumber, :created, :messageType, :properties, :contentType, :contentDisposition, :body, :completed, :encrypted)
 			""")
 	@RegisterArgumentFactory(PropertiesArgumentFactory.class)
 	@GetGeneratedKeys("rid")
 	// SQLite can not return the generated keys in batch mode
 	long[] putAll(@BindBean Collection<Message> messages);
 
-	@SqlUpdate("UPDATE messages SET timestamp = :timestamp WHERE rid = :rid")
-	int updateTimestamp(@BindBean Message message);
+	@SqlUpdate("UPDATE messages SET completed = :completed WHERE rid = :rid")
+	int updateCompletedTimestamp(@BindBean Message message);
 
 	@SqlQuery("SELECT * FROM messages WHERE rid = ?")
 	@RegisterRowMapper(MessageRowMapper.class)
@@ -44,7 +44,7 @@ public interface Messages {
 	@SqlQuery("""
 			SELECT * FROM messages
 			WHERE conversationId = :conversationId AND created <= :begin AND created > :end
-			ORDER BY created DESC, serialNumber DESC
+			ORDER BY rid DESC
 			""")
 	@RegisterRowMapper(MessageRowMapper.class)
 	// begin(inclusive), end(exclusive)
@@ -53,7 +53,7 @@ public interface Messages {
 	@SqlQuery("""
 			SELECT * FROM messages
 			WHERE conversationId = :conversationId AND created <= :since
-			ORDER BY created DESC, serialNumber DESC
+			ORDER BY rid DESC
 			LIMIT :limit OFFSET :offset
 			""")
 	@RegisterRowMapper(MessageRowMapper.class)

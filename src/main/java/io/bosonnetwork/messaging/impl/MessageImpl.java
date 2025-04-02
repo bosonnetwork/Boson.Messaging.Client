@@ -28,9 +28,10 @@ public class MessageImpl extends Message {
 			@ColumnName("serialNumber") long serialNumber, @ColumnName("created") long created,
 			@ColumnName("messageType") int messageType, @ColumnName("properties") Map<String, Object> properties,
 			@ColumnName("contentType") String contentType, @ColumnName("contentDisposition") String contentDisposition,
-			@ColumnName("body") byte[] body, @ColumnName("timestamp") long timestamp) {
+			@ColumnName("body") byte[] body, @ColumnName("completed") long completed,
+			@ColumnName("encrypted") boolean encrypted) {
 		super(rid, conversationId, version, from, to, serialNumber, created, messageType, properties,
-				contentType, contentDisposition, body, timestamp);
+				contentType, contentDisposition, body, completed, encrypted);
 	}
 
 	@JsonCreator
@@ -45,7 +46,7 @@ public class MessageImpl extends Message {
 	public static Message channelNotification(Id channelId, String body) {
 		long now = System.currentTimeMillis();
 		return new MessageImpl(-1, channelId, Message.VERSION, channelId, channelId, -1,
-				now, Message.Types.NOTIFICATION, null, null, null, body.getBytes(UTF_8), now);
+				now, Message.Types.NOTIFICATION, null, null, null, body.getBytes(UTF_8), now, false);
 	}
 
 	@Override
@@ -59,8 +60,8 @@ public class MessageImpl extends Message {
 	}
 
 	@Override
-	public void setTimestamp(long timestamp) {
-		super.setTimestamp(timestamp);
+	public void setCompleted(long timestamp) {
+		super.setCompleted(timestamp);
 	}
 
 	protected Promise<Message> initSendPromise() {
@@ -71,7 +72,6 @@ public class MessageImpl extends Message {
 	}
 
 	protected void sent() {
-		setTimestamp(System.currentTimeMillis());
 		if (this.promise != null)
 			this.promise.complete(this);
 	}
@@ -84,7 +84,7 @@ public class MessageImpl extends Message {
 	protected MessageImpl dup(byte[] body) {
 		return new MessageImpl(getRid(), getConversationId(), getVersion(), getFrom(), getTo(),
 				getSerialNumber(), getCreated(), getMessageType(), getProperties(),
-				getContentType(), getContentDisposition(), body, getTimestamp());
+				getContentType(), getContentDisposition(), body, getCompleted(), isEncrypted());
 	}
 
 	@Override

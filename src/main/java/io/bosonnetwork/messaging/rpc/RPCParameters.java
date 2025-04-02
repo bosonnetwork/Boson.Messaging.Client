@@ -9,7 +9,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.messaging.Channel;
-import io.bosonnetwork.messaging.Contact;
 
 
 public class RPCParameters {
@@ -23,29 +22,6 @@ public class RPCParameters {
 
 		public String getName() {
 			return name;
-		}
-	}
-
-	public static class ContactPut {
-		@JsonProperty("s")
-		@JsonInclude(Include.NON_EMPTY)
-		private String sequenceId;
-
-		@JsonProperty("c")
-		@JsonInclude(Include.NON_EMPTY)
-		private List<Contact> contacts;
-
-		public ContactPut(String sequenceId, List<Contact> contacts) {
-			this.sequenceId = sequenceId;
-			this.contacts = contacts == null ? Collections.emptyList() : contacts;
-		}
-
-		public String getSequenceId() {
-			return sequenceId;
-		}
-
-		public List<Contact> getContacts() {
-			return contacts;
 		}
 	}
 

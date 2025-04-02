@@ -22,7 +22,8 @@ public interface Schema {
 				contentType VARCHAR(128),
 				contentDisposition VARCHAR(128),
 				body BOLB,
-				"timestamp" BIGINT NOT NULL DEFAULT -1)
+				encrypted BOOLEAN DEFAULT FALSE,
+				completed BIGINT NOT NULL DEFAULT 0)
 			""")
 	@SqlScript("""
 			CREATE INDEX IF NOT EXISTS messages_idx_cid
@@ -46,7 +47,16 @@ public interface Schema {
 				blocked BOOLEAN DEFAULT FALSE,
 				created BIGINT,
 				lastModified BIGINT,
-				lastUpdated BIGINT DEFAULT -1)
+				lastUpdated BIGINT DEFAULT -1,
+				deleted BOOLEAN DEFAULT FALSE,
+				revision INTEGER DEFAULT 1,
+				modified BOOLEAN DEFAULT FALSE)
+			""")
+	@SqlScript("""
+			CREATE TABLE IF NOT EXISTS contacts_version(
+				rid INTEGER NOT NULL PRIMARY KEY,
+				id VARCHAR(32) NOT NULL,
+				created BIGINT NOT NULL)
 			""")
 	@SqlScript("""
 			CREATE TABLE IF NOT EXISTS channel_members(

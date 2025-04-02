@@ -36,7 +36,7 @@ public interface MessagingRepository {
 
 	public void putMessages(Collection<Message> messages) throws RepositoryException;
 
-	public void updateMessageTimestamp(Message message) throws RepositoryException;
+	public void updateMessageCompletetdTimestamp(Message message) throws RepositoryException;
 
 	public default void removeMessage(long rid) throws RepositoryException {
 		removeMessages(Arrays.asList(rid));
@@ -60,6 +60,10 @@ public interface MessagingRepository {
 
 	public void removeConversations(Collection<Id> conversationIds) throws RepositoryException;
 
+	public String getContactsVersion() throws RepositoryException;
+
+	public void putContactsUpdate(String versionId, Collection<Contact> updated) throws RepositoryException;
+
 	public default void putContact(Contact contact) throws RepositoryException {
 		putContacts(Arrays.asList(contact));
 	}
@@ -67,6 +71,8 @@ public interface MessagingRepository {
 	public void putContacts(Collection<Contact> contacts) throws RepositoryException;
 
 	public Contact getContact(Id contactId) throws RepositoryException;
+
+	public List<Contact> getContacts(List<Id> contactIds) throws RepositoryException;
 
 	public List<Contact> getAllContacts() throws RepositoryException;
 
@@ -84,9 +90,9 @@ public interface MessagingRepository {
 
 	public void removeContacts(Collection<Id> contactIds) throws RepositoryException;
 
-	public void refillContacts(Collection<Contact> contacts) throws RepositoryException;
-
 	public void removeAllContacts() throws RepositoryException;
+
+	public void removeAllUserContacts() throws RepositoryException;
 
 	public default Channel getChannel(Id channelId) throws RepositoryException {
 		Contact contact = getContact(channelId);

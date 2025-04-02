@@ -8,7 +8,7 @@ public class MessageBuilderImpl extends Message.Builder {
 	private MessagingClientImpl client;
 
 	MessageBuilderImpl(MessagingClientImpl client, int type) {
-		super(new MessageImpl(client.getUserId(), client.getNextMessageIndex(), type));
+		super(new MessageImpl(client.getUserId(), client.getNextIndex(), type));
 		this.client = client;
 	}
 

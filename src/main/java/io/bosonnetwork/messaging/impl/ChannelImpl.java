@@ -19,9 +19,10 @@ public class ChannelImpl extends Channel {
 
 	public ChannelImpl(Id id, Id homePeerId, boolean auto, byte[] sessionKey, String name, boolean avatar,
 			 String notice, Id owner, Permission permission, String remark, String tags,
-			boolean muted, long created, long lastModified, long lastUpdated) {
+			boolean muted, long created, long lastModified, long lastUpdated,
+			boolean deleted, int revision, boolean modified) {
 		super(id, homePeerId, auto, sessionKey, name, avatar, notice, owner, permission,
-				remark, tags, muted, created, lastModified, lastUpdated);
+				remark, tags, muted, created, lastModified, lastUpdated, deleted, revision, modified);
 	}
 
 	/*
@@ -46,7 +47,7 @@ public class ChannelImpl extends Channel {
 		long now = System.currentTimeMillis();
 
 		return new ChannelImpl(id, homePeerId, false, sessionKey, name, avatar,
-				null, null, null, null, null, false, now, now, -1);
+				null, null, null, null, null, false, now, now, -1, false, 1, true);
 	}
 
 	public static Channel auto(Id id, Id homePeerId) {

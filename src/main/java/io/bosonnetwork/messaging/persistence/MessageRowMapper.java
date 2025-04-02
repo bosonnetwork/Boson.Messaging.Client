@@ -41,11 +41,12 @@ public class MessageRowMapper implements RowMapper<Message> {
 			String contentDisposition = rs.getString("contentDisposition");
 			byte[] body = rs.getBytes("body");
 
-			long timestamp = rs.getLong("timestamp");
+			long completed = rs.getLong("completed");
+			boolean encrypted = rs.getBoolean("encrypted");
 
 			return new MessageImpl(rid, conversationId, version,
 					from, to, serialNumber, created, messageType, properties,
-					contentType, contentDisposition, body, timestamp);
+					contentType, contentDisposition, body, completed, encrypted);
 		} catch (IOException e) {
 			throw new SQLException("Invalid data of the properties column", e);
 		}

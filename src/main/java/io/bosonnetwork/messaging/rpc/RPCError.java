@@ -43,4 +43,9 @@ public class RPCError {
 	public String getData() {
 		return data;
 	}
+
+	@Override
+	public String toString() {
+		return "RPCError [code=" + code + ", message=" + message + "]";
+	}
 }

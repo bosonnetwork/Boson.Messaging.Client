@@ -62,7 +62,7 @@ public abstract class Message {
 	private long rid;
 	private Id conversationId;
 	private boolean encrypted;
-	private long timestamp; // local sent or received timestamp
+	private long completed; // local sent or received timestamp
 
 	public static class Types {
 		public static final int MESSAGE = 0;
@@ -121,7 +121,7 @@ public abstract class Message {
 	protected Message() {
 		this.rid = -1;
 		this.conversationId = null;
-		this.timestamp = -1;
+		this.completed = 0;
 		this.encrypted = false;
 	}
 
@@ -133,7 +133,7 @@ public abstract class Message {
 		this.serialNumber = serialNumber;
 		this.messageType = messageType;
 		this.created = System.currentTimeMillis();
-		this.timestamp = -1;
+		this.completed = 0;
 		this.encrypted = false;
 	}
 
@@ -148,7 +148,7 @@ public abstract class Message {
 
 	protected Message(long rid, Id conversationId, int version, Id from, Id to, long serialNumber, long created,
 			int messageType, Map<String, Object> properties, String contentType, String contentDisposition,
-			byte[] body, long timestamp/*, boolean encrypted*/) {
+			byte[] body, long completed, boolean encrypted) {
 		this.rid = rid;
 		this.conversationId = conversationId;
 		this.version = version;
@@ -161,7 +161,7 @@ public abstract class Message {
 		this.contentType = contentType;
 		this.contentDisposition = contentDisposition;
 		this.body = body;
-		this.timestamp = timestamp;
+		this.completed = completed;
 		this.encrypted = false; // TODO:
 	}
 
@@ -246,8 +246,8 @@ public abstract class Message {
 		this.encrypted = false;
 	}
 
-	public long getTimestamp() {
-		return timestamp;
+	public long getCompleted() {
+		return completed;
 	}
 
 	public boolean isEncrypted() {
@@ -258,8 +258,8 @@ public abstract class Message {
 		this.encrypted = encrypted;
 	}
 
-	protected void setTimestamp(long timestamp) {
-		this.timestamp = timestamp;
+	protected void setCompleted(long timestamp) {
+		this.completed = timestamp;
 	}
 
 	protected static ObjectMapper getObjectMapper() {

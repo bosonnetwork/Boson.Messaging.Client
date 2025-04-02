@@ -26,6 +26,9 @@ public class ContactBuilder {
 	private long created;
 	private long lastModified;
 
+	private boolean deleted;
+	private int revision;
+
 	private String name;
 	private boolean avatar;
 	private String notice;
@@ -137,14 +140,28 @@ public class ContactBuilder {
 		return this;
 	}
 
+	@JsonProperty("e")
+	public ContactBuilder withDeleted(boolean deleted) {
+		this.deleted = deleted;
+		return this;
+	}
+
+	@JsonProperty("v")
+	public ContactBuilder withRevision(int revision) {
+		this.revision = revision;
+		return this;
+	}
+
 	public Contact build() {
 		if (id == null)
 			throw new IllegalStateException("Missing id");
 
 		if (type == Contact.Types.CONTACT)
-			return new ContactImpl(id, homePeerId, false, sessionKey, name, avatar, remark, tags, muted, blocked, created, lastModified, -1);
+			return new ContactImpl(id, homePeerId, false, sessionKey, name, avatar,
+					remark, tags, muted, blocked, created, lastModified, -1, deleted, revision, false);
 		else if (type == Contact.Types.CHANNEL)
-			return new ChannelImpl(id, homePeerId, false, sessionKey, name, avatar, notice, owner, permission, remark, tags, muted, created, lastModified, -1);
+			return new ChannelImpl(id, homePeerId, false, sessionKey, name, avatar, notice,
+					owner, permission, remark, tags, muted, created, lastModified, -1, deleted, revision, false);
 		else
 			throw new IllegalStateException("Unknown contact type: " + type);
 	}

@@ -67,8 +67,13 @@ public interface UserAgent
 
 	public Channel getChannel(Id channel) throws RepositoryException;
 
-	public List<Contact> getContacts() throws RepositoryException;
+	public String getContactsVersion() throws RepositoryException;
 
+	public void putContactsUpdate(String versionId, Collection<Contact> updated) throws RepositoryException;
+
+	public List<Contact> getContacts(List<Id> ids) throws RepositoryException;
+
+	// !!! get all user contacts(!deleted && !auto)
 	public List<Contact> getUserContacts() throws RepositoryException;
 
 	public Contact getContact(Id contactId) throws RepositoryException;
@@ -84,4 +89,6 @@ public interface UserAgent
 	}
 
 	public void removeContacts(Collection<Id> contactIds) throws RepositoryException;
+
+	public void removeUserContacts() throws RepositoryException;
 }

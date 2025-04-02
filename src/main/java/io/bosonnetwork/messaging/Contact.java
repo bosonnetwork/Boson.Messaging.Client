@@ -21,32 +21,60 @@ import io.bosonnetwork.messaging.impl.ContactBuilder;
 public abstract class Contact implements Comparable<Contact> {
 	private static final long STALE_TIME = TimeUnit.HOURS.toMillis(6);
 
+	@JsonProperty("id")
 	private Id id;
 
 	private boolean auto;
 
 	private Signature.KeyPair sessionKeyPair;
-	private CryptoBox.KeyPair encryptionKeyPair;
-	private Id sessionId;
+	private transient CryptoBox.KeyPair encryptionKeyPair;
+	private transient Id sessionId;
 
-	private CryptoContext rxCryptoContext;
-	private CryptoContext txCryptoContext;
+	private transient CryptoContext rxCryptoContext;
+	private transient CryptoContext txCryptoContext;
 
+	// @JsonProperty("p")
+	// @JsonInclude(Include.NON_NULL)
 	private Id homePeerId;
 
+	// @JsonProperty("n")
+	// @JsonInclude(Include.NON_EMPTY)
 	private String name;
+	// @JsonProperty("a")
+	// @JsonInclude(Include.NON_EMPTY)
 	private boolean avatar;
 
+	@JsonProperty("r")
+	@JsonInclude(Include.NON_EMPTY)
 	private String remark;
+	@JsonProperty("ts")
+	@JsonInclude(Include.NON_EMPTY)
 	private String tags;
+	@JsonProperty("d")
+	@JsonInclude(Include.NON_DEFAULT)
 	private boolean muted;
+	@JsonProperty("b")
+	@JsonInclude(Include.NON_DEFAULT)
 	private boolean blocked;
+	@JsonProperty("c")
+	@JsonInclude(Include.NON_EMPTY)
 	private long created;
+	@JsonProperty("m")
+	@JsonInclude(Include.NON_EMPTY)
 	private long lastModified;
 
-	private long lastUpdated;
+	@JsonProperty("e")
+	@JsonInclude(Include.NON_DEFAULT)
+	private boolean deleted;
 
+	@JsonProperty("v")
+	private int revision;
+
+	private boolean modified;
+
+	private long lastUpdated;
 	private transient String displayName;
+
 
 	public static class Types {
 		public static final int UNKNOWN = 0;
@@ -54,9 +82,10 @@ public abstract class Contact implements Comparable<Contact> {
 		public static final int CHANNEL = 2;
 	}
 
-	protected Contact(Id id, Id homePeerId, boolean auto, byte[] sessionKey, String name, boolean avatar,
-			String remark, String tags, boolean muted, boolean blocked,
-			long created, long lastModified,  long lastUpdated) {
+	protected Contact(Id id, Id homePeerId, boolean auto, byte[] sessionKey,
+			 String name, boolean avatar, String remark, String tags, boolean muted, boolean blocked,
+			long created, long lastModified,  long lastUpdated, boolean deleted,
+			int revision, boolean modified) {
 		this.id = id;
 		this.homePeerId = homePeerId;
 
@@ -71,7 +100,10 @@ public abstract class Contact implements Comparable<Contact> {
 		this.blocked = blocked;
 		this.created = created;
 		this.lastModified = lastModified;
+		this.deleted = deleted;
+		this.revision = revision;
 
+		this.modified = modified;
 		this.lastUpdated = lastUpdated;
 
 		if (sessionKey != null && sessionKey.length > 0)
@@ -84,16 +116,16 @@ public abstract class Contact implements Comparable<Contact> {
 		this.auto = true;
 		this.created = System.currentTimeMillis();
 		this.lastModified = this.created;
+		this.modified = false;
+		this.deleted = false;
+		this.revision = 1;
 		this.lastUpdated = -1;
 	}
 
-	@JsonProperty("id")
 	public Id getId() {
 		return id;
 	}
 
-	// @JsonProperty("p")
-	// @JsonInclude(Include.NON_NULL)
 	public Id getHomePeerId() {
 		return homePeerId;
 	}
@@ -139,14 +171,10 @@ public abstract class Contact implements Comparable<Contact> {
 		return sessionId;
 	}
 
-	// @JsonProperty("n")
-	// @JsonInclude(Include.NON_EMPTY)
 	public String getName() {
 		return name;
 	}
 
-	// @JsonProperty("a")
-	// @JsonInclude(Include.NON_EMPTY)
 	public boolean getAvatar() {
 		return avatar;
 	}
@@ -159,8 +187,6 @@ public abstract class Contact implements Comparable<Contact> {
 		return avatar ? "bmr://" + homePeerId.toBase58String() + "/" + id.toBase58String() : null;
 	}
 
-	@JsonProperty("r")
-	@JsonInclude(Include.NON_EMPTY)
 	public String getRemark() {
 		return remark;
 	}
@@ -171,8 +197,6 @@ public abstract class Contact implements Comparable<Contact> {
 		touch();
 	}
 
-	@JsonProperty("ts")
-	@JsonInclude(Include.NON_EMPTY)
 	public String getTags() {
 		return tags;
 	}
@@ -182,8 +206,6 @@ public abstract class Contact implements Comparable<Contact> {
 		touch();
 	}
 
-	@JsonProperty("d")
-	@JsonInclude(Include.NON_DEFAULT)
 	public boolean isMuted() {
 		return muted;
 	}
@@ -193,8 +215,6 @@ public abstract class Contact implements Comparable<Contact> {
 		touch();
 	}
 
-	@JsonProperty("b")
-	@JsonInclude(Include.NON_DEFAULT)
 	public boolean isBlocked() {
 		return blocked;
 	}
@@ -204,21 +224,49 @@ public abstract class Contact implements Comparable<Contact> {
 		touch();
 	}
 
-	@JsonProperty("c")
-	@JsonInclude(Include.NON_EMPTY)
+	public boolean isDeleted() {
+		return deleted;
+	}
+
+	public void setDeleted(boolean deleted) {
+		this.deleted = deleted;
+		touch();
+	}
+
+	public int getRevision() {
+		return revision;
+	}
+
+	private void incrementRevision() {
+		this.revision++;
+	}
+
 	public long getCreated() {
 		return created;
 	}
 
-	@JsonProperty("m")
-	@JsonInclude(Include.NON_EMPTY)
 	public long getLastModified() {
 		return lastModified;
 	}
 
+	public boolean isModified() {
+		return modified;
+	}
+
+	public void setSynced() {
+		this.modified = false;
+	}
+
 	protected void touch() {
+		if (this.auto)
+			this.auto = false;
+
+		if (!this.modified) {
+			this.modified = true;
+			this.incrementRevision();
+		}
+
 		this.lastModified = System.currentTimeMillis();
-		this.auto = false;
 	}
 
 	protected void updated() {
@@ -376,6 +424,8 @@ public abstract class Contact implements Comparable<Contact> {
 					Objects.equals(this.tags, that.tags) &&
 					this.muted == that.muted &&
 					this.blocked == that.blocked &&
+					this.deleted == that.deleted &&
+					this.revision == that.revision &&
 					this.created == that.created &&
 					this.lastModified == that.lastModified;
 		}

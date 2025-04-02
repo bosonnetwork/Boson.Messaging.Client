@@ -3,6 +3,7 @@ package io.bosonnetwork.messaging.persistence;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -94,7 +95,8 @@ public class ContactsTests {
 				nullOr(() -> faker.name().fullName()),
 				nullOr(() -> tags()),
 				faker.bool().bool(), faker.bool().bool(),
-				System.currentTimeMillis(), System.currentTimeMillis(), System.currentTimeMillis());
+				System.currentTimeMillis(), System.currentTimeMillis(), System.currentTimeMillis(),
+				false, faker.number().numberBetween(0, 100), faker.bool().bool());
 	}
 
 	private static Profile createProfile(Id userId, Id homePeerId, String name, boolean avatar) {
@@ -141,7 +143,8 @@ public class ContactsTests {
 				nullOr(() -> faker.name().fullName()),
 				nullOr(() -> tags()),
 				faker.bool().bool(),
-				System.currentTimeMillis(), System.currentTimeMillis(), System.currentTimeMillis());
+				System.currentTimeMillis(), System.currentTimeMillis(), System.currentTimeMillis(),
+				false, faker.number().numberBetween(0, 100), faker.bool().bool());
 	}
 
 	private static Channel.Member createChannelMember(Channel channel) {
@@ -684,6 +687,38 @@ public class ContactsTests {
 		});
 	}
 
+	@Test
+	@Order(201)
+	void TestVersion() {
+		db.getJdbi().useHandle((handle) -> {
+			var dao = handle.attach(Contacts.class);
+			assertNull(dao.getVersion());
+		});
+
+		String version = "rrqs7mbj4jxfrp83ft9f97hm0000gn";
+		db.getJdbi().useHandle((handle) -> {
+			var dao = handle.attach(Contacts.class);
+			dao.putVersion(version, System.currentTimeMillis());
+		});
+
+		db.getJdbi().useHandle((handle) -> {
+			var dao = handle.attach(Contacts.class);
+			String result = dao.getVersion();
+			assertEquals(version, result);
+		});
+
+		String newVersion = "arvb7mbj4jxfrp83ft9f97hm5678ba";
+		db.getJdbi().useHandle((handle) -> {
+			var dao = handle.attach(Contacts.class);
+			dao.putVersion(newVersion, System.currentTimeMillis());
+		});
+
+		db.getJdbi().useHandle((handle) -> {
+			var dao = handle.attach(Contacts.class);
+			String result = dao.getVersion();
+			assertEquals(newVersion, result);
+		});
+	}
 
 
 }

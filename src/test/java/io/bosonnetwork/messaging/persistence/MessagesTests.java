@@ -90,7 +90,7 @@ public class MessagesTests {
 
 		return new MessageImpl(-1L, null, Message.VERSION,
 				from, to, idx++, current, type, props, contentType, contentDisposition,
-				faker.lorem().paragraph().getBytes(), current + Random.random().nextInt(100000));
+				faker.lorem().paragraph().getBytes(), current + Random.random().nextInt(100000), false);
 	}
 
 	private static <T> T nullOr(Supplier<T> supplier) {
@@ -111,7 +111,8 @@ public class MessagesTests {
 				nullOr(() -> faker.name().fullName()),
 				nullOr(() -> tags()),
 				faker.bool().bool(), faker.bool().bool(),
-				System.currentTimeMillis(), System.currentTimeMillis(), System.currentTimeMillis());
+				System.currentTimeMillis(), System.currentTimeMillis(), System.currentTimeMillis(),
+				false, faker.number().numberBetween(0, 100), faker.bool().bool());
 	}
 
 	@Test
