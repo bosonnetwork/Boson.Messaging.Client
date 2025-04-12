@@ -59,6 +59,9 @@ public abstract class Message {
 	@JsonInclude(Include.NON_DEFAULT)
 	private byte[] body;
 
+	// Available only for locally sent messages (originating from the message builder).
+	private Object originalBody;
+
 	private long rid;
 	private Id conversationId;
 	private boolean encrypted;
@@ -241,6 +244,14 @@ public abstract class Message {
 		return body != null ? getObjectMapper().readValue(body, type) : null;
 	}
 
+	protected boolean hasOriginalBody() {
+		return originalBody != null;
+	}
+
+	protected Object getOriginalBody() {
+		return originalBody;
+	}
+
 	protected void decryptBody(CryptoContext ctx) throws CryptoException {
 		body = ctx.decrypt(body);
 		this.encrypted = false;
@@ -359,6 +370,7 @@ public abstract class Message {
 		public Builder body(byte[] body) {
 			Objects.requireNonNull(body, "body");
 			message.body = body;
+			message.originalBody = body;
 
 			if (message.contentType == null)
 				message.contentType = ContentTypes.BINARY;
@@ -369,6 +381,7 @@ public abstract class Message {
 		public Builder body(String body) {
 			Objects.requireNonNull(body, "body");
 			message.body = body.getBytes(UTF_8);
+			message.originalBody = body;
 
 			if (message.contentType == null)
 				message.contentType = ContentTypes.TEXT;
@@ -381,6 +394,7 @@ public abstract class Message {
 
 			try {
 				message.body = getObjectMapper().writeValueAsBytes(body);
+				message.originalBody = body;
 			} catch (JsonProcessingException e) {
 				throw new IllegalArgumentException("body can not be serialized", e);
 			}

@@ -16,6 +16,7 @@ import io.bosonnetwork.crypto.CryptoBox;
 import io.bosonnetwork.crypto.CryptoException;
 import io.bosonnetwork.crypto.Signature;
 import io.bosonnetwork.messaging.impl.ContactBuilder;
+import io.vertx.core.Vertx;
 
 @JsonDeserialize(builder = ContactBuilder.class)
 public abstract class Contact implements Comparable<Contact> {
@@ -145,13 +146,48 @@ public abstract class Contact implements Comparable<Contact> {
 		this.auto = auto;
 	}
 
+	private CryptoContext getSelfEncryptionContext() {
+		if (Vertx.currentContext() == null)
+			return null;
+
+		return Vertx.currentContext().getLocal("SelfEncryptionContext");
+	}
+
 	@JsonProperty("sk")
 	@JsonInclude(Include.NON_EMPTY)
+	public byte[] getSelfEncryptedSessionKey() {
+		if (sessionKeyPair == null)
+			return null;
+
+		CryptoContext ctx = getSelfEncryptionContext();
+		// if (ctx == null)
+		//	 throw new IllegalStateException("no self encryption context set");
+
+		// return ctx.encrypt(sessionKeyPair.privateKey().bytes());
+
+		return ctx != null ? ctx.encrypt(sessionKeyPair.privateKey().bytes()) :
+			sessionKeyPair.privateKey().bytes();
+	}
+
 	public byte[] getSessionKey() {
 		return sessionKeyPair == null ? null : sessionKeyPair.privateKey().bytes();
 	}
 
 	private void initSessionKey(byte[] privateKey) {
+		if (privateKey.length == Signature.PrivateKey.BYTES + CryptoBox.MAC_BYTES + CryptoBox.Nonce.BYTES) {
+			CryptoContext ctx = getSelfEncryptionContext();
+			if (ctx == null)
+				throw new IllegalStateException("no self encryption context set");
+
+			try {
+				privateKey = ctx.decrypt(privateKey);
+			} catch (CryptoException e) {
+				throw new IllegalArgumentException("invalid session key", e);
+			}
+		} else if (privateKey.length != Signature.PrivateKey.BYTES) {
+			throw new IllegalArgumentException("invalid session key");
+		}
+
 		this.sessionKeyPair = Signature.KeyPair.fromPrivateKey(privateKey);
 		this.encryptionKeyPair = CryptoBox.KeyPair.fromSignatureKeyPair(sessionKeyPair);
 		this.sessionId = Id.of(sessionKeyPair.publicKey().bytes());

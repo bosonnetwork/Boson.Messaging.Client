@@ -34,6 +34,13 @@ public class ContactImpl extends Contact {
 				null, null, false, false, now, now, -1, false, 1, true);
 	}
 
+	public static Contact create(Id id, Id homePeerId, byte[] sessionKey, String remark) {
+		long now = System.currentTimeMillis();
+
+		return new ContactImpl(id, homePeerId, false, sessionKey, null, false,
+				remark, null, false, false, now, now, -1, false, 1, true);
+	}
+
 	public static Contact auto(Id id, Id homePeerId) {
 		return new ContactImpl(id, homePeerId);
 	}

@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import io.bosonnetwork.Id;
@@ -37,8 +38,13 @@ public class ClientDevice {
 	 * @param clientPk the client side session encryption public key(CryptoBox).
 	 * @param nonce the session nonce.
 	 */
-	ClientDevice(Id id, String deviceName, String appName, long created,
-			long lastSeen, String lastAddress)  {
+	@JsonCreator
+	ClientDevice(@JsonProperty(value = "id", required = true) Id id,
+			@JsonProperty(value = "n", required = true) String deviceName,
+			@JsonProperty(value = "a", required = true) String appName,
+			@JsonProperty(value = "c") long created,
+			@JsonProperty(value = "ls") long lastSeen,
+			@JsonProperty(value = "la") String lastAddress)  {
 		this.id = id;
 		this.name = deviceName;
 		this.app = appName;

@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.messaging.Channel;
+import io.bosonnetwork.messaging.Profile;
 import io.bosonnetwork.utils.Json;
 
 public class Notification<DT> {
@@ -27,14 +28,15 @@ public class Notification<DT> {
 	private DT data;
 
 	public static final class Events {
-		public static final int CHANNEL_DELETED = 1;
-		public static final int CHANNEL_JOINED = 2;
-		public static final int CHANNEL_LEFT = 3;
-		public static final int CHANNEL_PROFILE = 4; // owner, permission, name, notice
-		public static final int CHANNEL_ROLE = 5;
-		public static final int CHANNEL_BANNED = 6;
-		public static final int CHANNEL_UNBANNED = 7;
-		public static final int CHANNEL_REMOVED = 8;
+		public static final int USER_PROFILE = 1;
+		public static final int CHANNEL_DELETED = 2;
+		public static final int CHANNEL_JOINED = 3;
+		public static final int CHANNEL_LEFT = 4;
+		public static final int CHANNEL_PROFILE = 5; // owner, permission, name, notice
+		public static final int CHANNEL_ROLE = 6;
+		public static final int CHANNEL_BANNED = 7;
+		public static final int CHANNEL_UNBANNED = 8;
+		public static final int CHANNEL_REMOVED = 9;
 	};
 
 	@JsonCreator
@@ -67,8 +69,15 @@ public class Notification<DT> {
 		return data;
 	}
 
-	public <T> Notification<T> map() {
-		return map(new TypeReference<T>() {});
+	public <T> Notification<T> map(Class<T> clazz) {
+		if (data == null) {
+			@SuppressWarnings("unchecked")
+			Notification<T> n = (Notification<T>)this;
+			return n;
+		}
+
+		T mappedData = Json.cborMapper().convertValue(data, clazz);
+		return new Notification<>(event, operator, mappedData);
 	}
 
 	public <T> Notification<T> map(TypeReference<T> type) {
@@ -78,16 +87,18 @@ public class Notification<DT> {
 			return n;
 		}
 
-		T mappedData = Json.objectMapper().convertValue(data, type);
+		T mappedData = Json.cborMapper().convertValue(data, type);
 		return new Notification<>(event, operator, mappedData);
 	}
 
 	public static class Preparsed extends Notification<JsonNode> {}
 
+	public static class UserProfileUpdated extends Notification<Profile> {}
+
 	public static class ChannelDeleted extends Notification<Void> {}
 	public static class ChannelJoined extends Notification<Channel.Member> {}
 	public static class ChannelLeft extends Notification<Void> {}
-	public static class ChannelProfile extends Notification<Channel> {}
+	public static class ChannelProfileUpdated extends Notification<Channel> {}
 
 	public static class ChannelRole extends Notification<ChannelRole.Data> {
 		public static class Data {

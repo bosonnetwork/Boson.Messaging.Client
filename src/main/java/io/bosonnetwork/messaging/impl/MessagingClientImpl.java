@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -40,6 +41,7 @@ import io.bosonnetwork.messaging.Message.Builder;
 import io.bosonnetwork.messaging.MessagingClient;
 import io.bosonnetwork.messaging.MessagingException;
 import io.bosonnetwork.messaging.MessagingPeerInfo;
+import io.bosonnetwork.messaging.Profile;
 import io.bosonnetwork.messaging.RepositoryException;
 import io.bosonnetwork.messaging.TimeoutException;
 import io.bosonnetwork.messaging.UnknownRecipient;
@@ -49,15 +51,16 @@ import io.bosonnetwork.messaging.rpc.RPCMethod;
 import io.bosonnetwork.messaging.rpc.RPCParameters;
 import io.bosonnetwork.messaging.rpc.RPCParameters.ChannelCreate;
 import io.bosonnetwork.messaging.rpc.RPCParameters.ChannelMemberRole;
-import io.bosonnetwork.messaging.rpc.RPCParameters.UserProfile;
 import io.bosonnetwork.messaging.rpc.RPCRequest;
 import io.bosonnetwork.messaging.rpc.RPCResponse;
 import io.bosonnetwork.utils.Base58;
 import io.bosonnetwork.utils.vertx.VertxFuture;
 import io.netty.handler.codec.mqtt.MqttQoS;
-import io.vertx.core.AbstractVerticle;
+import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
+import io.vertx.core.Verticle;
+import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.net.PemTrustOptions;
 import io.vertx.mqtt.MqttClient;
@@ -65,12 +68,22 @@ import io.vertx.mqtt.MqttClientOptions;
 import io.vertx.mqtt.messages.MqttPublishMessage;
 import io.vertx.mqtt.messages.MqttSubAckMessage;
 
-public class MessagingClientImpl extends AbstractVerticle implements MessagingClient {
+public class MessagingClientImpl implements Verticle, MessagingClient {
 	// since Jan 01 2020 00:00:00 GMT+0000
 	private static final long EPOCH_BOSON = 1577836800000L;
 
 	private static final int CALL_TIMEOUT = 60_000; // 60 seconds
 	private static final String broadcast = "broadcast";
+
+	/**
+	 * Reference to the Vert.x instance that deployed this verticle
+	 */
+	private Vertx vertx;
+
+	/**
+	 * Reference to the vertxContext of the verticle
+	 */
+	private Context vertxContext;
 
 	private final UserAgent userAgent;
 
@@ -100,7 +113,11 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 	private MqttClient mqttClient;
 	private Promise<Void> connectPromise;
 
+	// packetId -> message, tracking the MQTT message delivery
 	private Map<Integer, MessageImpl> pendingMessages;
+	// message serial number -> message, tracking the self-sent messages
+	private Map<Long, MessageImpl> sendingMessages;
+
 	private Map<Long, RPCRequest<?, ?>> pendingCalls;
 
 	private static final Logger log = LoggerFactory.getLogger(MessagingClientImpl.class);
@@ -124,6 +141,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		outbox = "outbox/" + user.getId().toBase58String();
 
 		pendingMessages = new HashMap<>();
+		sendingMessages = new HashMap<>();
 		pendingCalls = new HashMap<>();
 
 		// base index: last 4 bytes of device id as unsigned int +
@@ -169,6 +187,17 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 	}
 
 	@Override
+	public void init(Vertx vertx, Context context) {
+		this.vertx = vertx;
+		this.vertxContext = context;
+	}
+
+	@Override
+	public Vertx getVertx() {
+		return vertx;
+	}
+
+	@Override
 	public void start(Promise<Void> startPromise) {
 		loadAccessToken();
 
@@ -177,6 +206,9 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		apiClient.setDeviceIdentity(device);
 		apiClient.setAccessToken(loadAccessToken());
 		apiClient.setAccessTokenRefreshHandler(this::updateAccessToken);
+
+		selfContext = user.createCryptoContext(user.getId());
+		vertxContext.putLocal("SelfEncryptionContext", selfContext);
 
 		String currentVersionId = null;
 		try {
@@ -207,7 +239,6 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 				serviceInfo = info;
 
 				serverContext = user.createCryptoContext(peer.getPeerId());
-				selfContext = user.createCryptoContext(user.getId());
 
 				// MqttClientOptions acts like a static data bean/POJO and does not support dynamic options.
 				// Additionally, the MqttClient creates a copy of the options when the instance is created.
@@ -372,6 +403,8 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 			return;
 		}
 
+		// Sent message failed, remove it from the sending messages
+		sendingMessages.remove(message.getSerialNumber());
 		message.failed(new TimeoutException("Get message ACK timeout"));
 	}
 
@@ -467,35 +500,46 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 	private void processOutgoingMessage(MessageImpl message) throws CryptoException, RepositoryException {
 		int type = message.getMessageType();
 
-		byte[] body = message.getBody();
-		if (body != null && body.length > 0) {
-			if (message.getTo().equals(peer.getPeerId())) {
-				// service RPC requests: me -> servicePeer
-				// body is encrypted with the message envelope
-				message.setEncrypted(false);
-			} else {
-				if (type == Message.Types.MESSAGE) {
-					// The body is encrypted using my private key and the recipient's session public key.
-					Contact contact = userAgent.getContact(message.getTo());
-					if (contact != null && contact.hasSessionKey()) {
-						CryptoContext ctx = contact.getTxCryptoContext(() -> {
-							return user.createCryptoContext(contact.getSessionId());
-						});
-						message.decryptBody(ctx);
-					} else {
-						log.warn("Message to unknow contact {}, keep in encrypted", message.getTo());
-					}
-				} else if (type == Message.Types.CALL) {
-					// The body is encrypted using my private key and the recipient's public key.
-					// TODO: CHEKME - need cache the RPC crypto context?
-					CryptoContext ctx = user.createCryptoContext(message.getTo());
-					message.decryptBody(ctx);
-				}
-
-				// Ignore other message types(notification) here. Errors will be logged below.
-			}
+		long sn = message.getSerialNumber();
+		MessageImpl selfSent = sendingMessages.remove(sn);
+		if (selfSent != null) {
+			// message sent from this client device
+			// just use the original message
+			// System.out.println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> USING THE ORIGINAL MESSAGE");
+			message = selfSent;
 		} else {
-			message.setEncrypted(false);
+			// System.out.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! USING THE PARSED MESSAGE");
+			// message sent from other client device
+			byte[] body = message.getBody();
+			if (body != null && body.length > 0) {
+				if (message.getTo().equals(peer.getPeerId())) {
+					// service RPC requests: me -> servicePeer
+					// body is encrypted with the message envelope
+					message.setEncrypted(false);
+				} else {
+					if (type == Message.Types.MESSAGE) {
+						// The body is encrypted using my private key and the recipient's session public key.
+						Contact contact = userAgent.getContact(message.getTo());
+						if (contact != null && contact.hasSessionKey()) {
+							CryptoContext ctx = contact.getTxCryptoContext(() -> {
+								return user.createCryptoContext(contact.getSessionId());
+							});
+							message.decryptBody(ctx);
+						} else {
+							log.warn("Message to unknow contact {}, keep in encrypted", message.getTo());
+						}
+					} else if (type == Message.Types.CALL) {
+						// The body is encrypted using my private key and the recipient's public key.
+						// TODO: CHEKME - need cache the RPC crypto vertxContext?
+						CryptoContext ctx = user.createCryptoContext(message.getTo());
+						message.decryptBody(ctx);
+					}
+
+					// Ignore other message types(notification) here. Errors will be logged below.
+				}
+			} else {
+				message.setEncrypted(false);
+			}
 		}
 
 		if (type == Message.Types.MESSAGE)
@@ -508,8 +552,6 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 
 	private void processNotification(Message message) {
 		try {
-			Channel channel = userAgent.getChannel(message.getTo());
-
 			Notification<JsonNode> preparsed = message.getBodyAs(
 					new TypeReference<Notification<JsonNode>>() {});
 
@@ -523,17 +565,35 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 			*/
 
 			switch (preparsed.getEvent()) {
-			case Notification.Events.CHANNEL_DELETED:
+			case Notification.Events.USER_PROFILE: {
+				Notification<Profile> notification = preparsed.map(Profile.class);
+				Profile profile = notification.getData();
+				if (!isMe(profile.getId()) && !profile.isGenuine()) {
+					log.warn("User updated its profile, but the Profile invalid");
+					return;
+				} else {
+					log.info("User updated its profile");
+				}
+
+				userAgent.onUserProfileChanged(profile.getName(), profile.hasAvatar());
+				break;
+			}
+
+			case Notification.Events.CHANNEL_DELETED: {
+				Channel channel = userAgent.getChannel(message.getTo());
 				userAgent.onChannelDeleted(channel);
 				break;
+			}
 
 			case Notification.Events.CHANNEL_JOINED: {
-				Notification<Channel.Member> notification = preparsed.map();
+				Channel channel = userAgent.getChannel(message.getTo());
+				Notification<Channel.Member> notification = preparsed.map(Channel.Member.class);
 				userAgent.onChannelMemberJoined(channel, notification.getData());
 				break;
 			}
 
 			case Notification.Events.CHANNEL_LEFT: {
+				Channel channel = userAgent.getChannel(message.getTo());
 				Channel.Member member = channel.getMember(preparsed.getOperator());
 				if (member == null)
 					member = Channel.Member.unknown(preparsed.getOperator());
@@ -542,14 +602,17 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 			}
 
 			case Notification.Events.CHANNEL_PROFILE: {
-				Notification<Channel> notification = preparsed.map();
+				Channel channel = userAgent.getChannel(message.getTo());
+				Notification<Channel> notification = preparsed.map(Channel.class);
 				channel.update(notification.getData());
 				userAgent.onChannelUpdated(channel);
 				break;
 			}
 
 			case Notification.Events.CHANNEL_ROLE: {
-				Notification<Notification.ChannelRole.Data> notification = preparsed.map();
+				Channel channel = userAgent.getChannel(message.getTo());
+				Notification<Notification.ChannelRole.Data> notification = preparsed.map(
+						Notification.ChannelRole.Data.class);
 				Notification.ChannelRole.Data data = notification.getData();
 				Channel.Role role = data.getRole();
 				List<Channel.Member> members = data.getMemberIds().stream().map(id -> {
@@ -564,7 +627,8 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 			}
 
 			case Notification.Events.CHANNEL_BANNED: {
-				Notification<List<Id>> notification = preparsed.map();
+				Channel channel = userAgent.getChannel(message.getTo());
+				Notification<List<Id>> notification = preparsed.map(new TypeReference<List<Id>>() {});
 				List<Channel.Member> members = notification.getData().stream().map(id -> {
 					Channel.Member member = channel.getMember(id);
 					if (member == null)
@@ -577,7 +641,8 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 			}
 
 			case Notification.Events.CHANNEL_UNBANNED: {
-				Notification<List<Id>> notification = preparsed.map();
+				Channel channel = userAgent.getChannel(message.getTo());
+				Notification<List<Id>> notification = preparsed.map(new TypeReference<List<Id>>() {});
 				List<Channel.Member> members = notification.getData().stream().map(id -> {
 					Channel.Member member = channel.getMember(id);
 					if (member == null)
@@ -590,7 +655,8 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 			}
 
 			case Notification.Events.CHANNEL_REMOVED: {
-				Notification<List<Id>> notification = preparsed.map();
+				Channel channel = userAgent.getChannel(message.getTo());
+				Notification<List<Id>> notification = preparsed.map(new TypeReference<List<Id>>() {});
 				List<Channel.Member> members = notification.getData().stream().map(id -> {
 					Channel.Member member = channel.getMember(id);
 					if (member == null)
@@ -640,9 +706,6 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		} catch (RepositoryException e) {
 			log.error("Failed to get and update the contact profile: ", convId, e);
 		}
-
-		if (isChannelMessage && message.getMessageType() == Message.Types.NOTIFICATION)
-			processNotification(message);
 
 		userAgent.onMessage(message);
 	}
@@ -711,13 +774,13 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 				if (ar.succeeded())
 					log.info("Connected to the messaging server {} @ {}", peer.getPeerId(), mqttURI);
 				else {
-					log.warn("Failed to connect to the messaging server {} @ {}", peer.getPeerId(), mqttURI);
-
 					this.failures++;
 					int delay = getRetryInterval();
-					vertx.setTimer(delay, (tid) -> reconnect());
+
+					log.warn("Failed to connect to the messaging server {} @ {}, will retry in {} seconds", peer.getPeerId(), mqttURI, delay);
+					vertx.setTimer(TimeUnit.SECONDS.toMillis(delay), (tid) -> reconnect());
 				}
-			}).map(null);
+			}).mapEmpty();
 	}
 
 	private Future<Void> doDisconnect() {
@@ -733,7 +796,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 	public CompletableFuture<Void> connect() {
 		CompletableFuture<Void> future = new CompletableFuture<>();
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			doConnect()
 				.onSuccess(na -> future.complete(null))
 				.onFailure(e -> future.completeExceptionally(e));
@@ -746,7 +809,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 	public CompletableFuture<Void> disconnect() {
 		CompletableFuture<Void> future = new CompletableFuture<>();
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			doDisconnect()
 				.onSuccess(na -> future.complete(null))
 				.onFailure(e -> future.completeExceptionally(e));
@@ -757,7 +820,9 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 
 	@Override
 	public CompletableFuture<Void> close() {
-		return vertx.undeploy(this.deploymentID()).toCompletionStage().toCompletableFuture();
+		return vertx.undeploy(vertxContext.deploymentID())
+				.toCompletionStage()
+				.toCompletableFuture();
 	}
 
 	@Override
@@ -778,9 +843,20 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		}
 	}
 
-	private void processRpcRequest(Message message) {
+	private void processRpcRequest(MessageImpl message) {
 		if (message.getBody() == null || message.getBody().length == 0) {
 			log.error("Empty RPC request received, ignored");
+			return;
+		}
+
+		if (message.hasOriginalBody()) {
+			RPCRequest<?, ?> original = (RPCRequest<?, ?>)message.getOriginalBody();
+			if (!pendingCalls.containsKey(original.getId())) {
+				log.error("INTERNAL ERROR: RPC request not found, ignored");
+			}
+
+			// this call was initiated by self, do nothing
+			// log.info("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
 			return;
 		}
 
@@ -789,36 +865,26 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		try {
 			preparsed = message.getBodyAs(new TypeReference<RPCRequest<JsonNode, ?>>() {});
 		} catch (IOException e) {
-			log.debug("======== {}", message);
 			log.error("Malformed RPC request from {}, parse failed", message.getFrom(), e);
 			return;
 		}
 
-		if (pendingCalls.containsKey(preparsed.getId())) {
-			// this call was initiated by self, do nothing
-			return;
-		}
-
 		switch (preparsed.getMethod()) {
-		case USER_PROFILE: {
-			RPCRequest<UserProfile, Boolean> call = preparsed.map(UserProfile.class);
-			pendingCalls.put(call.getId(), call);
-			break;
-		}
 
-		/*
 		case DEVICE_LIST: {
-			RPCRequest<Void, List<ClientDevice>> call = preparsed.map();
-			pendingCalls.put(call.getId(), call);
+			// ignore
+			// RPCRequest<Void, List<ClientDevice>> call = preparsed.map();
+			// pendingCalls.put(call.getId(), call);
 			break;
 		}
 
 		case DEVICE_REVOKE: {
-			RPCRequest<Id, Boolean> call = preparsed.map();
-			pendingCalls.put(call.getId(), call);
+			// ignore
+			// RPCRequest<Id, Boolean> call = preparsed.map();
+			// pendingCalls.put(call.getId(), call);
 			break;
 		}
-		*/
+
 		case CONTACT_PUSH: {
 			RPCRequest<ContactsUpdate, String> call = preparsed.map(ContactsUpdate.class);
 			pendingCalls.put(call.getId(), call);
@@ -905,7 +971,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		}
 	}
 
-	private void processRpcResponse(Message message) {
+	private void processRpcResponse(MessageImpl message) {
 		if (message.getBody() == null || message.getBody().length == 0) {
 			log.error("Empty RPC response from {}, ignored", message.getFrom());
 			return;
@@ -933,13 +999,6 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		}
 
 		switch (request.getMethod()) {
-		case USER_PROFILE: {
-			// TODO: How to store and update user information
-			RPCRequest<UserProfile, Boolean> call = request.cast();
-			call.complete(preparsed.map(Boolean.class));
-			break;
-		}
-
 		case DEVICE_LIST: {
 			RPCRequest<Void, List<ClientDevice>> call = request.cast();
 			call.complete(preparsed.map(new TypeReference<List<ClientDevice>>() {}));
@@ -984,7 +1043,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 			if (request.isInitiator())
 				getChannelMembers(channel.getId());
 
-			vertx.runOnContext(v -> {
+			vertxContext.runOnContext(v -> {
 				userAgent.onJoinedChannel(channel);
 				call.complete(response);
 			});
@@ -1010,7 +1069,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 				getChannelMembers(channel.getId());
 
 			call.complete(response);
-			vertx.runOnContext(v -> userAgent.onJoinedChannel(channel));
+			vertxContext.runOnContext(v -> userAgent.onJoinedChannel(channel));
 			break;
 		}
 
@@ -1027,7 +1086,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 
 			call.complete(preparsed.map(Boolean.class));
 			Channel ch = channel != null ? channel : ChannelImpl.auto(message.getFrom());
-			vertx.runOnContext(v -> userAgent.onLeftChannel(ch));
+			vertxContext.runOnContext(v -> userAgent.onLeftChannel(ch));
 			break;
 		}
 
@@ -1050,7 +1109,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 
 			call.complete(response.revised(channel));
 			Channel ch = channel;
-			vertx.runOnContext(v -> userAgent.onChannelUpdated(ch));
+			vertxContext.runOnContext(v -> userAgent.onChannelUpdated(ch));
 		}
 
 		case CHANNEL_MEMBERS: {
@@ -1067,7 +1126,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 
 			call.complete(reponse);
 			Channel ch = channel != null ? channel : ChannelImpl.auto(message.getFrom());
-			vertx.runOnContext(v -> userAgent.onChannelMembers(ch, members));
+			vertxContext.runOnContext(v -> userAgent.onChannelMembers(ch, members));
 			break;
 		}
 
@@ -1129,10 +1188,30 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 	}
 
 	@Override
-	public CompletableFuture<List<ClientDevice>> listDevices() {
+	public CompletableFuture<Void> updateProfile(String name, boolean avatar) {
+		String newName = name == null ? null : Normalizer.normalize(name, Normalizer.Form.NFC);
+
+		Future<Void> future = apiClient.updateProfile(newName, avatar);
+		return VertxFuture.of(future);
+	}
+
+	@Override
+	public CompletableFuture<String> uploadAvatar(String contentType, byte[] avatar) {
+		Future<String> future = apiClient.uploadUserAvatar(contentType, null, avatar);
+		return VertxFuture.of(future);
+	}
+
+	@Override
+	public CompletableFuture<String> uploadAvatar(String contentType, String fileName) {
+		Future<String> future = apiClient.uploadUserAvatar(contentType, fileName);
+		return VertxFuture.of(future);
+	}
+
+	@Override
+	public CompletableFuture<List<ClientDevice>> getDevices() {
 		RPCRequest<Void, List<ClientDevice>> request = new RPCRequest<>(getNextIndex(), RPCMethod.DEVICE_LIST, null);
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			// NOTICE: Send to the device private outbox
 			sendRpcRequest(peer.getPeerId(), request);
 		});
@@ -1148,7 +1227,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		RPCRequest<Id, Boolean> request = new RPCRequest<>(
 				getNextIndex(), RPCMethod.DEVICE_REVOKE, deviceId);
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			// NOTICE: Send to the device private outbox
 			sendRpcRequest(peer.getPeerId(), request);
 		});
@@ -1169,7 +1248,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 				getNextIndex(), RPCMethod.CHANNEL_CREATE, params);
 		request.setCookie(sessionKeyPair, (kp) -> selfEncrypt(kp.privateKey().bytes()));
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			sendRpcRequest(peer.getPeerId(), request);
 		});
 
@@ -1184,7 +1263,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		RPCRequest<Void, Boolean> request = new RPCRequest<>(
 				getNextIndex(), RPCMethod.CHANNEL_REMOVE, null);
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			sendRpcRequest(channelId, request);
 		});
 
@@ -1223,7 +1302,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 				getNextIndex(), RPCMethod.CHANNEL_JOIN, ticket.proof());
 		request.setCookie(sessionKey, this::selfEncrypt);
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			sendRpcRequest(ticket.getChannelId(), request);
 		});
 
@@ -1238,7 +1317,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		RPCRequest<Void, Boolean> request = new RPCRequest<>(
 				getNextIndex(), RPCMethod.CHANNEL_LEAVE, null);
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			sendRpcRequest(channelId, request);
 		});
 
@@ -1307,7 +1386,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		RPCRequest<Void, Channel> request = new RPCRequest<>(
 				getNextIndex(), RPCMethod.CHANNEL_INFO, null);
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			sendRpcRequest(channelId, request);
 		});
 
@@ -1321,7 +1400,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		RPCRequest<Void, List<Channel.Member>> request = new RPCRequest<>(
 				getNextIndex(), RPCMethod.CHANNEL_MEMBERS, null);
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			sendRpcRequest(channelId, request);
 		});
 
@@ -1355,7 +1434,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		RPCRequest<Id, Boolean> request = new RPCRequest<>(
 				getNextIndex(), RPCMethod.CHANNEL_OWNER, newOwner);
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			sendRpcRequest(channelId, request);
 		});
 
@@ -1383,7 +1462,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		RPCRequest<Channel.Permission, Boolean> request = new RPCRequest<>(
 				getNextIndex(), RPCMethod.CHANNEL_PERMISSION, permission);
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			sendRpcRequest(channelId, request);
 		});
 
@@ -1411,7 +1490,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		RPCRequest<String, Boolean> request = new RPCRequest<>(
 				getNextIndex(), RPCMethod.CHANNEL_NAME, name);
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			sendRpcRequest(channelId, request);
 		});
 
@@ -1439,7 +1518,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		RPCRequest<String, Boolean> request = new RPCRequest<>(
 				getNextIndex(), RPCMethod.CHANNEL_NOTICE, notice);
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			sendRpcRequest(channelId, request);
 		});
 
@@ -1473,7 +1552,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		RPCRequest<RPCParameters.ChannelMemberRole, Boolean> request = new RPCRequest<>(
 				getNextIndex(), RPCMethod.CHANNEL_ROLE, new RPCParameters.ChannelMemberRole(members, role));
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			sendRpcRequest(channelId, request);
 		});
 
@@ -1504,7 +1583,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		RPCRequest<List<Id>, Boolean> request = new RPCRequest<>(
 				getNextIndex(), RPCMethod.CHANNEL_BAN, members);
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			sendRpcRequest(channelId, request);
 		});
 
@@ -1535,7 +1614,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		RPCRequest<List<Id>, Boolean> request = new RPCRequest<>(
 				getNextIndex(), RPCMethod.CHANNEL_UNBAN, members);
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			sendRpcRequest(channelId, request);
 		});
 
@@ -1566,7 +1645,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		RPCRequest<List<Id>, Boolean> request = new RPCRequest<>(
 				getNextIndex(), RPCMethod.CHANNEL_REMOVE, members);
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			sendRpcRequest(channelId, request);
 		});
 
@@ -1587,7 +1666,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		RPCRequest<List<Contact>, Boolean> request = new RPCRequest<>(
 				getNextIndex(), RPCMethod.CONTACT_PUT, contacts);
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			sendRpcRequest(outbox, request);
 		});
 
@@ -1604,7 +1683,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		RPCRequest<List<Id>, Boolean> request = new RPCRequest<>(
 				getNextIndex(), RPCMethod.CONTACT_REMOVE, contacts);
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			sendRpcRequest(outbox, request);
 		});
 
@@ -1615,7 +1694,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		RPCRequest<Void, List<Contact>> request = new RPCRequest<>(
 				getNextIndex(), RPCMethod.CONTACT_SYNC, null);
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			sendRpcRequest(outbox, request);
 		});
 
@@ -1626,7 +1705,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		RPCRequest<Void, String> request = new RPCRequest<>(
 				getNextIndex(), RPCMethod.CONTACT_CLEAR, null);
 
-		vertx.runOnContext((v) -> {
+		vertxContext.runOnContext((v) -> {
 			sendRpcRequest(outbox, request);
 		});
 
@@ -1654,16 +1733,16 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 						encryptedBody = ctx.encrypt(body);
 					} else {
 						log.error("Failed to send message to unknow recipient {}", message.getTo());
-						return Future.failedFuture(new UnknownRecipient(message.getTo().toString()));
+						throw new UnknownRecipient(message.getTo().toString());
 					}
 				} else if (type == Message.Types.CALL) {
 					// The body is encrypted using my private key and the recipient's public key.
-					// TODO: CHEKME - need cache the RPC crypto context?
+					// TODO: CHEKME - need cache the RPC crypto vertxContext?
 					CryptoContext ctx = user.createCryptoContext(message.getTo());
 					encryptedBody = ctx.encrypt(body);
 				} else {
 					log.error("INTERNAL ERROR: Failed to send unsupported message type {}", type);
-					return Future.failedFuture(new MessagingException("INTERNAL ERROR"));
+					throw new  MessagingException("INTERNAL ERROR");
 				}
 
 				encryptedMessage = message.dup(encryptedBody);
@@ -1676,13 +1755,19 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 			return mqttClient.publish(outbox, Buffer.buffer(payload), MqttQoS.AT_LEAST_ONCE, false, false)
 				.andThen((ar) -> {
 					if (ar.succeeded()) {
+						// waiting for PUBACK
+						pendingMessages.put(ar.result(), message);
+						// Waiting for receive from the outbox
+						sendingMessages.put(message.getSerialNumber(), message);
 						log.debug("Sent message to {}", message.getTo());
 					} else {
+						message.failed(ar.cause());
 						log.error("Sent message to {} failed", message.getTo(), ar.cause());
 					}
 				});
 		} catch (Exception e) {
 			log.error("Send message to {} failed", message.getTo(), e);
+			message.failed(e);
 			return Future.failedFuture(e);
 		}
 	}
@@ -1691,13 +1776,8 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 		MessageImpl msg = (MessageImpl)message;
 		Promise<Message> promise = msg.initSendPromise();
 
-		vertx.runOnContext((v) -> {
-			sendMessageInternal(msg)
-				.onSuccess(packetId -> {
-					pendingMessages.put(packetId, msg);
-				}).onFailure(e -> {
-					msg.failed(e);
-				});
+		vertxContext.runOnContext((v) -> {
+			sendMessageInternal(msg);
 		});
 
 		return VertxFuture.of(promise.future());
@@ -1706,6 +1786,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 	public Future<String> pushContactsUpdate(List<Contact> updatedContacts) {
 		try {
 			String currentVersion = userAgent.getContactsVersion();
+
 			RPCRequest<ContactsUpdate, String> request = new RPCRequest<>(
 					getNextIndex(), RPCMethod.CONTACT_PUSH,
 					new ContactsUpdate(currentVersion, updatedContacts));
@@ -1715,7 +1796,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 			for (Contact contact : updatedContacts)
 				tryRefreshProfile(contact);
 
-			vertx.runOnContext((v) -> {
+			vertxContext.runOnContext((v) -> {
 				sendRpcRequest(peer.getPeerId(), request);
 			});
 
@@ -1740,7 +1821,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 	}
 
 	@Override
-	public CompletableFuture<Contact> addContact(Id id, Id homePeerId, byte[] sessionKey, String name, boolean avatar) {
+	public CompletableFuture<Contact> addContact(Id id, Id homePeerId, byte[] sessionKey, String remark) {
 		if (id == null)
 			return VertxFuture.failedFuture(new NullPointerException("id"));
 
@@ -1754,7 +1835,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 			return VertxFuture.failedFuture(new IllegalArgumentException("invalid s private key"));
 		}
 
-		Contact contact = ContactImpl.create(id, homePeerId, sessionKey, name, avatar);
+		Contact contact = ContactImpl.create(id, homePeerId, sessionKey, remark);
 		return VertxFuture.of(pushContactsUpdate(Arrays.asList(contact)).map(v -> contact));
 	}
 
@@ -1863,7 +1944,7 @@ public class MessagingClientImpl extends AbstractVerticle implements MessagingCl
 	private Future<Contact> tryRefreshProfile(Contact contact) {
 		Promise<Contact> promise = Promise.promise();
 
-		vertx.runOnContext(v -> {
+		vertxContext.runOnContext(v -> {
 			log.debug("Fetching the profile {} ...", contact.getId());
 
 			apiClient.getProfile(contact.getId()).onSuccess(profile -> {
