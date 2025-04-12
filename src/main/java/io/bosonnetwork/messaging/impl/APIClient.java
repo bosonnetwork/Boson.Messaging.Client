@@ -2,6 +2,8 @@ package io.bosonnetwork.messaging.impl;
 
 import java.net.URI;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -20,6 +22,8 @@ import io.bosonnetwork.messaging.Profile;
 import io.bosonnetwork.messaging.UserProfile;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
+import io.vertx.core.file.OpenOptions;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpMethod;
@@ -199,6 +203,9 @@ public class APIClient {
 				return Future.failedFuture("HTTP error: unexpected Content-Type header in the response");
 
 			return res.body().map(buffer -> {
+				if (buffer == null || buffer.length() == 0)
+					return null;
+
 				JsonObject json = buffer.toJsonObject();
 				return json;
 			});
@@ -510,10 +517,143 @@ public class APIClient {
 		});
 	}
 
+	public Future<Void> updateProfile(String name, boolean avatar) {
+		byte[] profileDigest = Profile.digest(user.getId(), homePeerId, name, avatar, null);
+
+		var body = JsonObject.of(
+				"userName", name,
+				"avatar", avatar,
+				"profileSig", user.sign(profileDigest));
+
+		return httpRequest(HttpMethod.PUT, "/api/v1/profile",  getAccessToken(), body, 200).map(json -> {
+			return null;
+		});
+	}
+
 	public Future<Profile> getProfile(Id id) {
 		return httpRequest(HttpMethod.GET, "/api/v1/profile/" + id.toBase58String(), null, 200).map(json -> {
 			return json.mapTo(Profile.class);
 		});
+	}
+
+	private Future<String> uploadFile(HttpMethod method, String uri, String contentType, String fileName) {
+		Path path = Path.of(fileName);
+
+		if (contentType == null) {
+			try {
+				contentType = Files.probeContentType(path);
+			} catch (Exception e) {
+				contentType = "application/octet-stream";
+			}
+		}
+		String _contentType = contentType;
+		String contentDisposition = "attachment; filename=\"" + path.getFileName() + "\"";
+
+		OpenOptions openOpts = new OpenOptions()
+				.setCreate(false)
+				.setRead(true)
+				.setWrite(false);
+
+		return vertx.fileSystem().open(path.toAbsolutePath().toString(), openOpts).compose(file -> {
+			RequestOptions opts = requestOptions(method, uri)
+					.addHeader("Accept", "application/json")
+					.addHeader("Content-Type", _contentType)
+					.addHeader("Content-Disposition", contentDisposition)
+					.addHeader("Authorization", "Bearer " + accessToken);
+
+			return httpClient.request(opts).compose(req -> {
+				return req.send(file);
+			}).compose(res -> {
+				if (res.statusCode() == 401) { // Token expired? refresh token then retry
+					return refreshAccessToken().compose(newToken -> {
+						this.accessToken = newToken;
+						if (accessTokenRefreshHandler != null)
+							accessTokenRefreshHandler.accept(newToken);
+
+						// replay the request with the newly acquired token
+						return uploadFile(method, uri, _contentType, fileName);
+					});
+				}
+
+				if (res.statusCode() != 201)
+					return Future.failedFuture("HTTP error, status: " + res.statusCode());
+
+				String ct = res.getHeader("Content-Type");
+				if (ct == null)
+					return Future.failedFuture("HTTP error: Missing Content-Type header in the response");
+
+				int paramIdx = ct.indexOf(';');
+				String mediaType = paramIdx != -1 ? ct.substring(0, paramIdx) : ct;
+				if (!mediaType.equalsIgnoreCase("application/json"))
+					return Future.failedFuture("HTTP error: unexpected Content-Type header in the response");
+
+				return res.body().map(buffer -> {
+					JsonObject json = buffer.toJsonObject();
+					return json.getString("uri");
+				});
+			});
+		});
+	}
+
+	private Future<String> uploadData(HttpMethod method, String uri, String contentType, String fileName, byte[] data) {
+		String _contentType = contentType != null ? contentType : "application/octet-stream";
+		String contentDisposition = fileName == null ? null : ("attachment; filename=\"" + fileName + "\"");
+
+		RequestOptions opts = requestOptions(method, uri)
+			.addHeader("Accept", "application/json")
+			.addHeader("Content-Type", _contentType)
+			.addHeader("Authorization", "Bearer " + accessToken);
+
+		if (contentDisposition != null)
+			opts.addHeader("Content-Disposition", contentDisposition);
+
+		return httpClient.request(opts).compose(req -> {
+			return req.send(Buffer.buffer(data));
+		}).compose(res -> {
+			if (res.statusCode() == 401) { // Token expired? refresh token then retry
+				return refreshAccessToken().compose(newToken -> {
+					this.accessToken = newToken;
+					if (accessTokenRefreshHandler != null)
+						accessTokenRefreshHandler.accept(newToken);
+
+					// replay the request with the newly acquired token
+					return uploadData(method, uri, _contentType, fileName, data);
+				});
+			}
+
+			if (res.statusCode() != 201)
+				return Future.failedFuture("HTTP error, status: " + res.statusCode());
+
+			String ct = res.getHeader("Content-Type");
+			if (ct == null)
+				return Future.failedFuture("HTTP error: Missing Content-Type header in the response");
+
+			int paramIdx = ct.indexOf(';');
+			String mediaType = paramIdx != -1 ? ct.substring(0, paramIdx) : ct;
+			if (!mediaType.equalsIgnoreCase("application/json"))
+				return Future.failedFuture("HTTP error: unexpected Content-Type header in the response");
+
+			return res.body().map(buffer -> {
+				JsonObject json = buffer.toJsonObject();
+				return json.getString("uri");
+			});
+		});
+	}
+
+	public Future<String> uploadUserAvatar(String contentType, String fileName) {
+		return uploadFile(HttpMethod.PUT, "/api/v1/avatar", contentType, fileName);
+	}
+
+	public Future<String> uploadUserAvatar(String contentType, String fileName, byte[] data) {
+		return uploadData(HttpMethod.PUT, "/api/v1/avatar", contentType, fileName, data);
+	}
+
+	public Future<String> uploadChannelAvatar(Id channelId, String contentType, String fileName) {
+		return uploadFile(HttpMethod.PUT, "/api/v1/avatar/" + channelId.toBase58String(), contentType, fileName);
+	}
+
+	public Future<String> uploadChannelAvatar(Id channelId, String contentType, String fileName, byte[] data) {
+		return uploadData(HttpMethod.PUT, "/api/v1/avatar/" + channelId.toBase58String(), contentType, fileName, data);
 	}
 
 	public Future<ContactsUpdate> fetchContactsUpdate(String versionId) {

@@ -89,6 +89,9 @@ public class ClientBuilderImpl extends ClientBuilder {
 			if (!connectionListeners.isEmpty())
 				agent.setConnectionListeners(connectionListeners);
 
+			if (!profileListeners.isEmpty())
+				agent.setProfileListeners(profileListeners);
+
 			if (!messageListeners.isEmpty())
 				agent.setMessageListeners(messageListeners);
 

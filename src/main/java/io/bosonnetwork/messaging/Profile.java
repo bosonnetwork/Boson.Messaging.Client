@@ -4,7 +4,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.security.MessageDigest;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -15,27 +14,21 @@ import io.bosonnetwork.crypto.Hash;
 public class Profile {
 	@JsonProperty("id")
 	private Id id;
-	@JsonProperty("homePeerId")
-	@JsonAlias("p")
+	@JsonProperty("p")
 	private Id homePeerId;
-	@JsonProperty("homePeerSig")
-	@JsonAlias("ps")
+	@JsonProperty("ps")
 	private byte[] homePeerSig;
 
-	@JsonProperty("name")
-	@JsonAlias("n")
+	@JsonProperty("n")
 	private String name;
 
-	@JsonProperty("avatar")
-	@JsonAlias("a")
+	@JsonProperty("a")
 	private boolean avatar;
 
-	@JsonProperty("notice")
-	@JsonAlias("nt")
+	@JsonProperty("nt")
 	private String notice;
 
-	@JsonProperty("sig")
-	@JsonAlias("s")
+	@JsonProperty("s")
 	private byte[] sig;
 
 	@JsonCreator
@@ -55,7 +48,8 @@ public class Profile {
 		this.sig = sig;
 	}
 
-	protected void setId(Id id) {
+	// TODO: remove this
+	private void setId(Id id) {
 		this.id = id;
 	}
 

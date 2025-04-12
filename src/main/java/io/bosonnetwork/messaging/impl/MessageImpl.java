@@ -64,6 +64,16 @@ public class MessageImpl extends Message {
 		super.setCompleted(timestamp);
 	}
 
+	@Override
+	public boolean hasOriginalBody() {
+		return super.hasOriginalBody();
+	}
+
+	@Override
+	public Object getOriginalBody() {
+		return super.getOriginalBody();
+	}
+
 	protected Promise<Message> initSendPromise() {
 		if (this.promise == null)
 			this.promise = Promise.promise();

@@ -29,8 +29,13 @@ public interface MessagingClient {
 	// Message APIs
 	public Message.Builder message();
 
+	// Profile APIs
+	public CompletableFuture<Void> updateProfile(String name, boolean avatar);
+	public CompletableFuture<String> uploadAvatar(String contentType, byte[] avatar);
+	public CompletableFuture<String> uploadAvatar(String contentType, String fileName);
+
 	// Device APIs
-	public CompletableFuture<List<ClientDevice>> listDevices();
+	public CompletableFuture<List<ClientDevice>> getDevices();
 	public CompletableFuture<Boolean> revokeDevice(Id deviceId);
 
 	// channel APIs
@@ -62,9 +67,15 @@ public interface MessagingClient {
 	public CompletableFuture<Boolean> removeChannelMembers(Id channelId, List<Id> members);
 
 	// Contact APIs
-	public CompletableFuture<Contact> addContact(Id id, Id homePeerId, byte[] sessionKey, String name, boolean avatar);
-	public default CompletableFuture<Contact> addContact(Id id, byte[] sessionKey, String name, boolean avatar) {
-		return addContact(id, null, sessionKey, name, avatar);
+	public CompletableFuture<Contact> addContact(Id id, Id homePeerId, byte[] sessionKey, String remark);
+	public default CompletableFuture<Contact> addContact(Id id, Id homePeerId, byte[] sessionKey) {
+		return addContact(id, homePeerId, sessionKey);
+	}
+	public default CompletableFuture<Contact> addContact(Id id, byte[] sessionKey, String remark) {
+		return addContact(id, null, sessionKey, remark);
+	}
+	public default CompletableFuture<Contact> addContact(Id id, byte[] sessionKey) {
+		return addContact(id, null, sessionKey, null);
 	}
 
 	public CompletableFuture<Contact> getContact(Id id);

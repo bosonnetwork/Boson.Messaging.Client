@@ -58,6 +58,7 @@ public abstract class ClientBuilder {
 	protected Path repositoryDb;
 
 	protected List<ConnectionListener> connectionListeners;
+	protected List<ProfileListener> profileListeners;
 	protected List<MessageListener> messageListeners;
 	protected List<ChannelListener> channelListeners;
 	protected List<ContactListener> contactListeners;
@@ -68,6 +69,7 @@ public abstract class ClientBuilder {
 
 	protected ClientBuilder() {
 		this.connectionListeners = new ArrayList<>();
+		this.profileListeners = new ArrayList<>();
 		this.messageListeners = new ArrayList<>();
 		this.channelListeners = new ArrayList<>();
 		this.contactListeners = new ArrayList<>();
@@ -205,8 +207,20 @@ public abstract class ClientBuilder {
 	}
 
 	public ClientBuilder connectionListener(ConnectionListener connectionListener) {
-		Objects.requireNonNull(connectionListeners, "connectionListeners");
+		Objects.requireNonNull(connectionListener, "connectionListener");
 		this.connectionListeners.add(connectionListener);
+		return this;
+	}
+
+	public ClientBuilder profileListeners(List<ProfileListener> profileListeners) {
+		Objects.requireNonNull(profileListeners, "profileListeners");
+		this.profileListeners.addAll(profileListeners);
+		return this;
+	}
+
+	public ClientBuilder profileListener(ProfileListener profileListener) {
+		Objects.requireNonNull(profileListener, "profileListener");
+		this.profileListeners.add(profileListener);
 		return this;
 	}
 

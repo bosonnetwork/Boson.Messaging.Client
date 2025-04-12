@@ -32,6 +32,7 @@ import io.bosonnetwork.messaging.Message;
 import io.bosonnetwork.messaging.MessageListener;
 import io.bosonnetwork.messaging.MessagingPeerInfo;
 import io.bosonnetwork.messaging.MessagingRepository;
+import io.bosonnetwork.messaging.ProfileListener;
 import io.bosonnetwork.messaging.RepositoryException;
 import io.bosonnetwork.messaging.UserAgent;
 import io.bosonnetwork.messaging.UserProfile;
@@ -48,6 +49,7 @@ public class DefaultUserAgent implements UserAgent {
 	private MessagingRepository repository;
 
 	private List<ConnectionListener> connectionListeners;
+	private List<ProfileListener> profileListeners;
 	private List<MessageListener> messageListeners;
 	private List<ChannelListener> channelListeners;
 	private List<ContactListener> contactListeners;
@@ -63,6 +65,7 @@ public class DefaultUserAgent implements UserAgent {
 		this.vertx = vertx;
 
 		connectionListeners = Collections.emptyList();
+		profileListeners = Collections.emptyList();
 		messageListeners = Collections.emptyList();
 		channelListeners = Collections.emptyList();
 		contactListeners = Collections.emptyList();
@@ -374,6 +377,29 @@ public class DefaultUserAgent implements UserAgent {
 	}
 
 	@Override
+	public boolean addProfileListener(ProfileListener profileListener) {
+		Objects.requireNonNull(profileListener, "profileListener");
+		return addListener(profileListeners, profileListener, (newListeners) -> {
+			this.profileListeners = newListeners;
+		});
+	}
+
+	@Override
+	public boolean removeProfileListener(ProfileListener profileListener) {
+		Objects.requireNonNull(profileListener, "profileListener");
+		return removeListener(profileListeners, profileListener, (newListeners) -> {
+			this.profileListeners = newListeners;
+		});
+	}
+
+	protected void setProfileListeners(List<ProfileListener> listeners) {
+		if (listeners == null || listeners.isEmpty())
+			this.profileListeners = Collections.emptyList();
+		else
+			this.profileListeners = new ArrayList<>(listeners);
+	}
+
+	@Override
 	public boolean addMessageListener(MessageListener messageListener) {
 		Objects.requireNonNull(messageListener, "messageListener");
 		return addListener(messageListeners, messageListener, (newListeners) -> {
@@ -476,6 +502,8 @@ public class DefaultUserAgent implements UserAgent {
 		this.user = new UserProfileImpl(newProfile.getIdentity(), profile.getName(), profile.hasAvatar());
 
 		updateUserInfoConfig();
+
+		profileListeners.forEach(l -> l.onUserProfileAcquired(this.user));
 	}
 
 	@Override
@@ -484,6 +512,8 @@ public class DefaultUserAgent implements UserAgent {
 		this.user = new UserProfileImpl(identity, name, avatar);
 
 		updateUserInfoConfig();
+
+		profileListeners.forEach(l -> l.onUserProfileChanged(name, avatar));
 	}
 
 	////////////////////////////////////////////////////////////////////////////

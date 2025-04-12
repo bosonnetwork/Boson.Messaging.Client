@@ -22,19 +22,18 @@ public interface UserAgent
 	public boolean isConfigured();
 
 	public boolean addConnectionListener(ConnectionListener connectionListener);
-
 	public boolean removeConnectionListener(ConnectionListener connectionListener);
 
-	public boolean addMessageListener(MessageListener messageListener);
+	public boolean addProfileListener(ProfileListener profileListener);
+	public boolean removeProfileListener(ProfileListener profileListener);
 
+	public boolean addMessageListener(MessageListener messageListener);
 	public boolean removeMessageListener(MessageListener messageListener);
 
 	public boolean addChannelListener(ChannelListener channelListener);
-
 	public boolean removeChannelListener(ChannelListener channelListener);
 
 	public boolean addContactListener(ContactListener contactListener);
-
 	public boolean removeContactListener(ContactListener contactListener);
 
 	public List<Conversation> getConversations();
