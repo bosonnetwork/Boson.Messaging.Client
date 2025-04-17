@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -151,6 +150,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 				(System.currentTimeMillis() - EPOCH_BOSON) * 1000;
 
 		baseNano = System.nanoTime();
+
 	}
 
 	@Override
@@ -426,6 +426,8 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			MessageImpl message = MessageImpl.parse(payload);
 			message.setEncrypted(true);
 
+			log.trace("\uD83D\uDFE2 Decrypted message from {} ",  message.getFrom());
+
 			if (topic.equals(inbox)) {
 				processIncomingMessage(message);
 			} else if (topic.equals(outbox))
@@ -448,21 +450,28 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 				message.setEncrypted(false);
 			} else {
 				if (type == Message.Types.MESSAGE) {
-					// Message: sender -> me
-					// The body is encrypted using the sender's private key
-					// and the session public key associated with that sender.
-					Contact sender = userAgent.getContact(message.getFrom());
-					if (sender != null && sender.hasSessionKey()) {
-						if (sender instanceof Channel channel) {
-							CryptoContext ctx = channel.getRxCryptoContext(message.getFrom());
-							message.decryptBody(ctx);
-						} else {
-							CryptoContext ctx = sender.getRxCryptoContext();
-							message.decryptBody(ctx);
-						}
+					// - Message: sender -> me
+					//   The body is encrypted using the sender's private key
+					//   and the session public key associated with that sender.
+					// - Message: sender -> channel
+					//   The body is encrypted using the sender's private key
+					//   and the session public key of channel.
+
+					CryptoContext ctx = null;
+					if (isMe(message.getTo())) {
+						Contact sender = userAgent.getContact(message.getFrom());
+						if (sender != null && sender.hasSessionKey())
+							ctx = sender.getRxCryptoContext();
 					} else {
-						log.warn("Message from unknow sender {}, keep in encrypted", message.getFrom());
+						Channel channel = userAgent.getChannel(message.getTo());
+						if (channel != null && channel.hasSessionKey())
+							ctx = channel.getRxCryptoContext(message.getFrom());
 					}
+
+					if (ctx != null)
+						message.decryptBody(ctx);
+					else
+						log.warn("Message from unknow sender {}, keep in encrypted", message.getFrom());
 				} else if (type == Message.Types.CALL) {
 					// Channel RPC response: channel -> me
 					// The body is encrypted using sender's private key and my public key.
@@ -505,10 +514,10 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		if (selfSent != null) {
 			// message sent from this client device
 			// just use the original message
-			// System.out.println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> USING THE ORIGINAL MESSAGE");
+			log.trace("\uD83D\uDCE8 using the original message");
 			message = selfSent;
 		} else {
-			// System.out.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! USING THE PARSED MESSAGE");
+			log.trace("\uD83D\uDCE7 using the parsed message");
 			// message sent from other client device
 			byte[] body = message.getBody();
 			if (body != null && body.length > 0) {
@@ -692,36 +701,39 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		boolean isChannelMessage = !isMe(message.getTo());
 		Id convId = isChannelMessage ? message.getTo() : message.getFrom();
 
-		// check the contact
-		try {
-			Contact contact = userAgent.getContact(convId);
+		vertxContext.runOnContext(v -> {
+			userAgent.onMessage(message);
 
-			if (contact == null) {
-				contact = isChannelMessage ? ChannelImpl.auto(convId) : ContactImpl.auto(convId);
-				userAgent.putContact(contact);
+			// check if the contact need to be update
+			try {
+				Contact contact = userAgent.getContact(convId);
+				if (contact == null || contact.isStaled())
+					tryRefreshProfile(convId).onSuccess(profile -> {
+						userAgent.onContactProfile(convId, profile);
+					});
+			} catch (RepositoryException e) {
+				log.error("Failed to get and update the contact profile: ", convId, e);
 			}
-
-			if (contact.isStaled())
-				tryRefreshProfile(contact);
-		} catch (RepositoryException e) {
-			log.error("Failed to get and update the contact profile: ", convId, e);
-		}
-
-		userAgent.onMessage(message);
+		});
 	}
 
 	private void onSent(Message message) {
-		// check the contact
-		try {
-			Contact contact = userAgent.getContact(message.getTo());
+		vertxContext.runOnContext(v -> {
+			userAgent.onSent(message);
 
-			if (contact != null && contact.isStaled())
-				tryRefreshProfile(contact);
-		} catch (RepositoryException e) {
-			log.error("Failed to get the contact: ", message.getTo(), e);
-		}
-
-		userAgent.onSent(message);
+			// check if the contact need to be update
+			try {
+				Id convId = message.getTo();
+				Contact contact = userAgent.getContact(convId);
+				if (contact != null && contact.isStaled())
+					if (contact == null || contact.isStaled())
+						tryRefreshProfile(convId).onSuccess(profile -> {
+							userAgent.onContactProfile(convId, profile);
+						});
+			} catch (RepositoryException e) {
+				log.error("Failed to get the contact: ", message.getTo(), e);
+			}
+		});
 	}
 
 	private Future<Void> doConnect() {
@@ -978,7 +990,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		}
 
 		// intermediate response object with generic JsonNode result
-		RPCResponse<JsonNode> preparsed = null;
+		final RPCResponse<JsonNode> preparsed;
 		try {
 			preparsed = message.getBodyAs(new TypeReference<RPCResponse<JsonNode>>() {});
 		} catch (IOException e) {
@@ -994,20 +1006,28 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 
 		if (preparsed.failed()) {
 			log.error("RPC call {} failed: {}", preparsed.getId(), preparsed.getError());
-			request.complete(preparsed.cast());
+			vertxContext.runOnContext(v -> {
+				request.complete(preparsed.cast());
+			});
 			return;
 		}
 
 		switch (request.getMethod()) {
 		case DEVICE_LIST: {
 			RPCRequest<Void, List<ClientDevice>> call = request.cast();
-			call.complete(preparsed.map(new TypeReference<List<ClientDevice>>() {}));
+			RPCResponse<List<ClientDevice>> response = preparsed.map(new TypeReference<List<ClientDevice>>() {});
+			vertxContext.runOnContext(v -> {
+				call.complete(response);
+			});
 			break;
 		}
 
 		case DEVICE_REVOKE: {
 			RPCRequest<Id, Boolean> call = request.cast();
-			call.complete(preparsed.map(Boolean.class));
+			RPCResponse<Boolean> response = preparsed.map(Boolean.class);
+			vertxContext.runOnContext(v -> {
+				call.complete(response);
+			});
 			break;
 		}
 
@@ -1017,8 +1037,11 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			String baseVersionId = call.getParameters().getVersionId();
 			String newVersionId = response.getResult();
 			List<Contact> contacts = call.getParameters().getContacts();
-			userAgent.onContactsUpdated(baseVersionId, newVersionId, contacts);
-			call.complete(response);
+
+			vertxContext.runOnContext(v -> {
+				userAgent.onContactsUpdated(baseVersionId, newVersionId, contacts);
+				call.complete(response);
+			});
 			break;
 		}
 
@@ -1026,8 +1049,10 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			RPCRequest<Void, Boolean> call = request.cast();
 			RPCResponse<Boolean> response = preparsed.map(Boolean.class);
 			// always success
-			userAgent.onContactsCleared();
-			call.complete(response);
+			vertxContext.runOnContext(v -> {
+				userAgent.onContactsCleared();
+				call.complete(response);
+			});
 			break;
 		}
 
@@ -1052,7 +1077,10 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 
 		case CHANNEL_DELETE: {
 			RPCRequest<Void, Boolean> call = request.cast();
-			call.complete(preparsed.map(Boolean.class));
+			RPCResponse<Boolean> response = preparsed.map(Boolean.class);
+			vertxContext.runOnContext(v -> {
+				call.complete(response);
+			});
 			break;
 		}
 
@@ -1068,48 +1096,53 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			if (request.isInitiator())
 				getChannelMembers(channel.getId());
 
-			call.complete(response);
-			vertxContext.runOnContext(v -> userAgent.onJoinedChannel(channel));
+			vertxContext.runOnContext(v -> {
+				userAgent.onJoinedChannel(channel);
+				call.complete(response);
+			});
 			break;
 		}
 
 		case CHANNEL_LEAVE: {
 			RPCRequest<Void, Boolean> call = request.cast();
 
-			// Create a dummy channel object to notify the listener if the channel is not found.
 			ChannelImpl channel = null;
 			try {
 				channel = (ChannelImpl)userAgent.getChannel(message.getFrom());
 			} catch (Exception e) {
-				log.error("Failed to get the channel from user agent", e);
+				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
 			}
 
-			call.complete(preparsed.map(Boolean.class));
+			// Create a dummy channel object to notify the listener
+			// if the channel is not found or can not be retrieved
 			Channel ch = channel != null ? channel : ChannelImpl.auto(message.getFrom());
-			vertxContext.runOnContext(v -> userAgent.onLeftChannel(ch));
+			vertxContext.runOnContext(v -> {
+				userAgent.onLeftChannel(ch);
+				call.complete(preparsed.map(Boolean.class));
+			});
 			break;
 		}
 
 		case CHANNEL_INFO: {
 			RPCRequest<Void, Channel> call = request.cast();
 			RPCResponse<ChannelImpl> response = preparsed.map(ChannelImpl.class);
-			ChannelImpl channel;
+			ChannelImpl channel = null;
 			try {
 				channel = (ChannelImpl)userAgent.getChannel(message.getFrom());
-				if (channel != null) {
-					channel.update(response.getResult());
-				} else {
-					log.error("INTERNAL ERROR: try to update non-exists channel");
-					channel = response.getResult();
-				}
 			} catch (Exception e) {
-				log.error("INTERNAL ERROR: Failed to get the channel from user agent", e);
-				channel = response.getResult();
+				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
 			}
 
-			call.complete(response.revised(channel));
-			Channel ch = channel;
-			vertxContext.runOnContext(v -> userAgent.onChannelUpdated(ch));
+			if (channel != null)
+				channel.update(response.getResult());
+			else
+				channel = response.getResult();
+
+			Channel ch = channel; // just make compiler happy
+			vertxContext.runOnContext(v -> {
+				userAgent.onChannelUpdated(ch);
+				call.complete(response.revised(ch));
+			});
 		}
 
 		case CHANNEL_MEMBERS: {
@@ -1121,51 +1154,205 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			try {
 				channel = (ChannelImpl)userAgent.getChannel(message.getFrom());
 			} catch (Exception e) {
-				log.error("INTERNAL ERROR: Failed to get the channel from user agent", e);
+				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
 			}
 
-			call.complete(reponse);
 			Channel ch = channel != null ? channel : ChannelImpl.auto(message.getFrom());
-			vertxContext.runOnContext(v -> userAgent.onChannelMembers(ch, members));
+			vertxContext.runOnContext(v -> {
+				userAgent.onChannelMembers(ch, members);
+				call.complete(reponse);
+			});
 			break;
 		}
 
 		case CHANNEL_OWNER: {
 			RPCRequest<Id, Boolean> call = request.cast();
-			call.complete(preparsed.map(Boolean.class));
+			RPCResponse<Boolean> response = preparsed.map(Boolean.class);
+
+			ChannelImpl channel = null;
+			try {
+				channel = (ChannelImpl)userAgent.getChannel(message.getFrom());
+				channel.setOwner(call.getParameters());
+			} catch (RepositoryException e) {
+				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
+			}
+
+			final Channel ch = channel; // just make compiler happy
+			vertxContext.runOnContext(v -> {
+				userAgent.onChannelUpdated(ch);
+				call.complete(response);
+			});
 			break;
 		}
 
 		case CHANNEL_PERMISSION: {
 			RPCRequest<Channel.Permission, Boolean> call = request.cast();
-			call.complete(preparsed.map(Boolean.class));
+			RPCResponse<Boolean> response = preparsed.map(Boolean.class);
+
+			ChannelImpl channel = null;
+			try {
+				channel = (ChannelImpl)userAgent.getChannel(message.getFrom());
+				channel.setPermission(call.getParameters());
+			} catch (RepositoryException e) {
+				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
+			}
+
+			final Channel ch = channel; // just make compiler happy
+			vertxContext.runOnContext(v -> {
+				userAgent.onChannelUpdated(ch);
+				call.complete(response);
+			});
 			break;
 		}
 
-		case CHANNEL_NAME:
+		case CHANNEL_NAME: {
+			RPCRequest<String, Boolean> call = request.cast();
+			RPCResponse<Boolean> response = preparsed.map(Boolean.class);
+
+			ChannelImpl channel = null;
+			try {
+				channel = (ChannelImpl)userAgent.getChannel(message.getFrom());
+				channel.setName(call.getParameters());
+			} catch (RepositoryException e) {
+				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
+			}
+
+			final Channel ch = channel; // just make compiler happy
+			vertxContext.runOnContext(v -> {
+				userAgent.onChannelUpdated(ch);
+				call.complete(response);
+			});
+			break;
+		}
+
 		case CHANNEL_NOTICE: {
 			RPCRequest<String, Boolean> call = request.cast();
-			call.complete(preparsed.map(Boolean.class));
+			RPCResponse<Boolean> response = preparsed.map(Boolean.class);
+
+			ChannelImpl channel = null;
+			try {
+				channel = (ChannelImpl)userAgent.getChannel(message.getFrom());
+				channel.setNotice(call.getParameters());
+			} catch (RepositoryException e) {
+				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
+			}
+
+			final Channel ch = channel; // just make compiler happy
+			vertxContext.runOnContext(v -> {
+				userAgent.onChannelUpdated(ch);
+				call.complete(response);
+			});
 			break;
 		}
 
 		case CHANNEL_ROLE: {
 			RPCRequest<ChannelMemberRole, Boolean> call = request.cast();
-			call.complete(preparsed.map(Boolean.class));
+			RPCResponse<Boolean> response = preparsed.map(Boolean.class);
+
+			ChannelImpl channel = null;
+			try {
+				channel = (ChannelImpl)userAgent.getChannel(message.getFrom());
+			} catch (RepositoryException e) {
+				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
+			}
+
+			Channel.Role role = call.getParameters().getRole();
+			List<Channel.Member> changed = mapToMembers(channel, call.getParameters().getMembers());
+
+			// Create a dummy channel object to notify the listener
+			// if the channel is not found or can not be retrieved
+			Channel ch = channel != null ? channel : ChannelImpl.auto(message.getFrom());
+			vertxContext.runOnContext(v -> {
+				userAgent.onChannelMembersRoleChanged(ch, changed, role);
+				call.complete(response);
+			});
 			break;
 		}
 
-		case CHANNEL_BAN:
-		case CHANNEL_UNBAN:
+		case CHANNEL_BAN: {
+			RPCRequest<List<Id>, Boolean> call = request.cast();
+			RPCResponse<Boolean> response = preparsed.map(Boolean.class);
+
+			ChannelImpl channel = null;
+			try {
+				channel = (ChannelImpl)userAgent.getChannel(message.getFrom());
+			} catch (RepositoryException e) {
+				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
+			}
+
+			List<Channel.Member> changed = mapToMembers(channel, call.getParameters());
+
+			// Create a dummy channel object to notify the listener
+			// if the channel is not found or can not be retrieved
+			Channel ch = channel != null ? channel : ChannelImpl.auto(message.getFrom());
+			vertxContext.runOnContext(v -> {
+				userAgent.onChannelMembersBanned(ch, changed);
+				call.complete(response);
+			});
+			break;
+		}
+
+		case CHANNEL_UNBAN: {
+			RPCRequest<List<Id>, Boolean> call = request.cast();
+			RPCResponse<Boolean> response = preparsed.map(Boolean.class);
+
+			ChannelImpl channel = null;
+			try {
+				channel = (ChannelImpl)userAgent.getChannel(message.getFrom());
+			} catch (RepositoryException e) {
+				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
+			}
+
+			List<Channel.Member> changed = mapToMembers(channel, call.getParameters());
+
+			// Create a dummy channel object to notify the listener
+			// if the channel is not found or can not be retrieved
+			Channel ch = channel != null ? channel : ChannelImpl.auto(message.getFrom());
+			vertxContext.runOnContext(v -> {
+				userAgent.onChannelMembersUnbanned(ch, changed);
+				call.complete(response);
+			});
+			break;
+		}
+
 		case CHANNEL_REMOVE: {
 			RPCRequest<List<Id>, Boolean> call = request.cast();
-			call.complete(preparsed.map(Boolean.class));
+			RPCResponse<Boolean> response = preparsed.map(Boolean.class);
+
+			ChannelImpl channel = null;
+			try {
+				channel = (ChannelImpl)userAgent.getChannel(message.getFrom());
+			} catch (RepositoryException e) {
+				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
+			}
+
+			List<Channel.Member> removed = mapToMembers(channel, call.getParameters());
+
+			// Create a dummy channel object to notify the listener
+			// if the channel is not found or can not be retrieved
+			Channel ch = channel != null ? channel : ChannelImpl.auto(message.getFrom());
+			vertxContext.runOnContext(v -> {
+				userAgent.onChannelMembersRemoved(ch, removed);
+				call.complete(response);
+			});
 			break;
 		}
 
 		default:
 			log.error("INTERNAL ERROR: invalid RPC call method {}", request.getMethod().value());
 		}
+	}
+
+	private List<Channel.Member> mapToMembers(ChannelImpl channel, List<Id> ids) {
+		return ids.stream()
+				.map(id -> {
+					Channel.Member member = null;
+					if (channel != null) {
+						member = channel.getMember(id);
+					}
+
+					return member != null ? member : Channel.Member.unknown(id);
+				}).collect(Collectors.toList());
 	}
 
 	private Future<Integer> sendRpcRequest(Id recipient, RPCRequest<?, ?> request) {
@@ -1777,13 +1964,14 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		Promise<Message> promise = msg.initSendPromise();
 
 		vertxContext.runOnContext((v) -> {
+			userAgent.onSending(message);
 			sendMessageInternal(msg);
 		});
 
 		return VertxFuture.of(promise.future());
 	}
 
-	public Future<String> pushContactsUpdate(List<Contact> updatedContacts) {
+	private Future<String> pushContactsUpdate(List<Contact> updatedContacts) {
 		try {
 			String currentVersion = userAgent.getContactsVersion();
 
@@ -1791,30 +1979,12 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 					getNextIndex(), RPCMethod.CONTACT_PUSH,
 					new ContactsUpdate(currentVersion, updatedContacts));
 
-			userAgent.putContacts(updatedContacts);
-
-			for (Contact contact : updatedContacts)
-				tryRefreshProfile(contact);
-
 			vertxContext.runOnContext((v) -> {
+				userAgent.onContactsUpdating(currentVersion, updatedContacts);
 				sendRpcRequest(peer.getPeerId(), request);
 			});
 
-			return request.getFuture().andThen(ar -> {
-				if (ar.succeeded()) {
-					try {
-						for (Contact contact : updatedContacts)
-							contact.setSynced();
-
-						userAgent.putContactsUpdate(ar.result(), updatedContacts);
-					} catch (RepositoryException e) {
-						// TODO: how to handle this error
-						throw new CompletionException(e);
-					}
-				} else {
-					log.error("Failed to push contact updates", ar.cause());
-				}
-			});
+			return request.getFuture();
 		} catch (Exception e) {
 			return Future.failedFuture(e);
 		}
@@ -1941,28 +2111,16 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		}
 	}
 
-	private Future<Contact> tryRefreshProfile(Contact contact) {
-		Promise<Contact> promise = Promise.promise();
+	private Future<Profile> tryRefreshProfile(Id id) {
+		Promise<Profile> promise = Promise.promise();
 
 		vertxContext.runOnContext(v -> {
-			log.debug("Fetching the profile {} ...", contact.getId());
+			log.debug("Fetching the profile {} ...", id);
 
-			apiClient.getProfile(contact.getId()).onSuccess(profile -> {
-				try {
-					contact.update(profile);
-				} catch (Exception e) {
-					log.error("Failed to update the profile {}: {}", contact.getId(), e.getMessage());
-				}
-
-				try {
-					userAgent.putContact(contact);
-				} catch (Exception e) {
-					log.error("Failed to save the contact {} after update its profile", contact.getId(), e);
-				}
-
-				promise.complete(contact);
+			apiClient.getProfile(id).onSuccess(profile -> {
+				promise.complete(profile);
 			}).onFailure(e -> {
-				log.error("Failed to fetch the profile {}", contact.getId(), e);
+				log.error("Failed to fetch the profile {}", id, e);
 				promise.fail(e);
 			});
 		});

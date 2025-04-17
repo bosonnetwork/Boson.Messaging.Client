@@ -211,6 +211,12 @@ public abstract class Contact implements Comparable<Contact> {
 		return name;
 	}
 
+	protected void setName(String name) {
+		this.name = name;
+		displayName = null;
+		touch();
+	}
+
 	public boolean getAvatar() {
 		return avatar;
 	}

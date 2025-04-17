@@ -78,8 +78,23 @@ public class ChannelImpl extends Channel {
 	}
 
 	@Override
+	protected void setOwner(Id owner) {
+		super.setOwner(owner);
+	}
+
+	@Override
 	protected void setPermission(Permission permission) {
 		super.setPermission(permission);
+	}
+
+	@Override
+	protected void setName(String name) {
+		super.setName(name);
+	}
+
+	@Override
+	protected void setNotice(String notice) {
+		super.setNotice(notice);
 	}
 
 	private Map<Id, Member> members() {
