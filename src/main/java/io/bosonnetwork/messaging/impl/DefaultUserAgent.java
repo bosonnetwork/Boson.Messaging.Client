@@ -32,6 +32,7 @@ import io.bosonnetwork.messaging.Message;
 import io.bosonnetwork.messaging.MessageListener;
 import io.bosonnetwork.messaging.MessagingPeerInfo;
 import io.bosonnetwork.messaging.MessagingRepository;
+import io.bosonnetwork.messaging.Profile;
 import io.bosonnetwork.messaging.ProfileListener;
 import io.bosonnetwork.messaging.RepositoryException;
 import io.bosonnetwork.messaging.UserAgent;
@@ -532,6 +533,7 @@ public class DefaultUserAgent implements UserAgent {
 	public void onMessage(Message message) {
 		boolean isChannelMessage = !isMe(message.getTo());
 		Id convId = isChannelMessage ? message.getTo() : message.getFrom();
+
 		((MessageImpl)message).setConversationId(convId);
 		putMessage(message);
 
@@ -696,6 +698,7 @@ public class DefaultUserAgent implements UserAgent {
 	public void onChannelDeleted(Channel channelId) {
 		// Keep all the local channel information and messages
 		// just notify the user agent that the channel is deleted
+
 		channelListeners.forEach(l -> l.onChannelDeleted(channelId));
 	}
 
@@ -819,6 +822,8 @@ public class DefaultUserAgent implements UserAgent {
 
 		List<Contact> merged = new ArrayList<>();
 		for (Contact updated : contacts) {
+			updated.setSynced();
+
 			Contact local = locals.get(updated.getId());
 			if (local == null) {
 				merged.add(updated);
@@ -831,6 +836,18 @@ public class DefaultUserAgent implements UserAgent {
 		}
 
 		return merged;
+	}
+
+	@Override
+	public void onContactsUpdating(String versionId, List<Contact> contacts) {
+		try {
+			// TODO: check the versionId id, should be same with the current local version
+			repository.putContacts(contacts);
+		} catch (RepositoryException e) {
+			log.error("Failed to save the contacts to the repository.");
+		}
+
+		contactListeners.forEach(l -> l.onContactsUpdating(versionId, contacts));
 	}
 
 	@Override
@@ -854,6 +871,22 @@ public class DefaultUserAgent implements UserAgent {
 		}
 
 		contactListeners.forEach(l -> l.onContactsCleared());
+	}
+
+	@Override
+	public void onContactProfile(Id contactId, Profile profile) {
+		try {
+			Contact contact = getContact(contactId);
+			if (contact == null) {
+				log.warn("NOTICE: Profile update for a non-existent contact — this should not happen.");
+				return; // ignore
+			}
+
+			contact.update(profile);
+			putContact(contact);
+		} catch (RepositoryException e) {
+
+		}
 	}
 
 	@Override
@@ -884,15 +917,12 @@ public class DefaultUserAgent implements UserAgent {
 		return repository.getContact(contactId);
 	}
 
-
-	@Override
-	public void putContact(Contact contact) throws RepositoryException {
+	private void putContact(Contact contact) throws RepositoryException {
 		Objects.requireNonNull(contact, "contact");
 		repository.putContact(contact);
 	}
 
-	@Override
-	public void putContacts(Collection<Contact> contacts) throws RepositoryException {
+	private void putContacts(Collection<Contact> contacts) throws RepositoryException {
 		Objects.requireNonNull(contacts, "contacts");
 		if (contacts.isEmpty())
 			return;

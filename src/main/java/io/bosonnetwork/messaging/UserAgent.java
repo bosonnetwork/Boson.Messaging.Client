@@ -77,12 +77,6 @@ public interface UserAgent
 
 	public Contact getContact(Id contactId) throws RepositoryException;
 
-	public default void putContact(Contact contact) throws RepositoryException {
-		putContacts(Arrays.asList(contact));
-	}
-
-	public void putContacts(Collection<Contact> contacts) throws RepositoryException;
-
 	public default void removeContact(Id contactId) throws RepositoryException {
 		removeContacts(Arrays.asList(contactId));
 	}

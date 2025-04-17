@@ -93,6 +93,9 @@ public abstract class Channel extends Contact {
 		@JsonProperty(value = "id", required = true)
 		private Id id;
 
+		@JsonProperty(value = "p", required = true)
+		private Id homePeerId;
+
 		@JsonProperty(value = "r", required = true)
 		private Role role;
 
@@ -101,15 +104,24 @@ public abstract class Channel extends Contact {
 
 		private transient Contact contact;
 
-		public Member(Id id, Role role, long joined) {
+		@JsonCreator
+		protected Member(@JsonProperty(value = "id", required = true) Id id,
+				@JsonProperty(value = "p", required = true) Id homePeerId,
+				@JsonProperty(value = "r", required = true) Role role,
+				@JsonProperty(value = "j", required = true) long joined) {
 			this.id = id;
+			this.homePeerId = homePeerId;
 			this.role = role;
 			this.joined = joined;
 		}
 
+		public Member(Id id,  Role role, long joined) {
+			this(id, null, role, joined);
+		}
+
 		// only used for local
 		public static Member unknown(Id id) {
-			return new Member(id, null, -1);
+			return new Member(id, null, null, -1);
 		}
 
 		public Id getId() {
@@ -219,6 +231,11 @@ public abstract class Channel extends Contact {
 	protected void setPermission(Permission permission) {
 		this.permission = permission;
 		touch();
+	}
+
+	@Override
+	protected void setName(String name) {
+		super.setName(name);
 	}
 
 	public String getNotice() {
