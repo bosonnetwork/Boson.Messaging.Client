@@ -1,5 +1,4 @@
 package io.bosonnetwork.messaging.impl;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -8,7 +7,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.messaging.Channel;
@@ -29,14 +27,14 @@ public class Notification<DT> {
 
 	public static final class Events {
 		public static final int USER_PROFILE = 1;
-		public static final int CHANNEL_DELETED = 2;
-		public static final int CHANNEL_JOINED = 3;
-		public static final int CHANNEL_LEFT = 4;
-		public static final int CHANNEL_PROFILE = 5; // owner, permission, name, notice
-		public static final int CHANNEL_ROLE = 6;
-		public static final int CHANNEL_BANNED = 7;
-		public static final int CHANNEL_UNBANNED = 8;
-		public static final int CHANNEL_REMOVED = 9;
+		public static final int CHANNEL_PROFILE = 2; // owner, permission, name, notice
+		public static final int CHANNEL_DELETED = 3;
+		public static final int CHANNEL_MEMBER_JOINED = 4;
+		public static final int CHANNEL_MEMBER_LEFT = 5;
+		public static final int CHANNEL_MEMBERS_ROLE = 6;
+		public static final int CHANNEL_MEMBERS_BANNED = 7;
+		public static final int CHANNEL_MEMBERS_UNBANNED = 8;
+		public static final int CHANNEL_MEMBERS_REMOVED = 9;
 	};
 
 	@JsonCreator
@@ -69,7 +67,7 @@ public class Notification<DT> {
 		return data;
 	}
 
-	public <T> Notification<T> map(Class<T> clazz) {
+	private <T> Notification<T> map(Class<T> clazz) {
 		if (data == null) {
 			@SuppressWarnings("unchecked")
 			Notification<T> n = (Notification<T>)this;
@@ -80,7 +78,7 @@ public class Notification<DT> {
 		return new Notification<>(event, operator, mappedData);
 	}
 
-	public <T> Notification<T> map(TypeReference<T> type) {
+	private <T> Notification<T> map(TypeReference<T> type) {
 		if (data == null) {
 			@SuppressWarnings("unchecked")
 			Notification<T> n = (Notification<T>)this;
@@ -91,33 +89,43 @@ public class Notification<DT> {
 		return new Notification<>(event, operator, mappedData);
 	}
 
-	public static class Preparsed extends Notification<JsonNode> {}
-
-	public static class UserProfileUpdated extends Notification<Profile> {}
-
-	public static class ChannelDeleted extends Notification<Void> {}
-	public static class ChannelJoined extends Notification<Channel.Member> {}
-	public static class ChannelLeft extends Notification<Void> {}
-	public static class ChannelProfileUpdated extends Notification<Channel> {}
-
-	public static class ChannelRole extends Notification<ChannelRole.Data> {
-		public static class Data {
-			@JsonProperty("r")
-			private Channel.Role role;
-			@JsonProperty("id")
-			private List<Id> memberIds;
-
-			public Channel.Role getRole() {
-				return role;
-			}
-
-			public List<Id> getMemberIds() {
-				return Collections.unmodifiableList(memberIds);
-			}
-		}
+	public Notification<Profile> asUserProfile() {
+		return map(Profile.class);
 	}
 
-	public static class ChannelBanned extends Notification<List<Id>> {}
-	public static class ChannelUnbanned extends Notification<List<Id>> {}
-	public static class ChannelRemoved extends Notification<List<Id>> {}
+	public Notification<Channel> asChannelProfile() {
+		return map(Channel.class);
+	}
+
+	@SuppressWarnings("unchecked")
+	public Notification<Void> asChannelDeleted() {
+		return (Notification<Void>)this;
+	}
+
+	public Notification<Channel.Member> asChannelMemberJoined() {
+		return map(Channel.Member.class);
+	}
+
+	@SuppressWarnings("unchecked")
+	public Notification<Void> asChannelMemberLeft() {
+		return (Notification<Void>)this;
+	}
+
+	public record ChannelMembersRoleUpdated(@JsonProperty("r") Channel.Role role, @JsonProperty("id") List<Id> members) {}
+
+	public Notification<ChannelMembersRoleUpdated> asChannelMembersRole() {
+		return map(ChannelMembersRoleUpdated.class);
+	}
+
+	public Notification<List<Id>> asChannelMembersBanned() {
+		return map(new TypeReference<List<Id>>() {});
+	}
+
+	public Notification<List<Id>> asChannelMembersUnbanned() {
+		return map(new TypeReference<List<Id>>() {});
+	}
+
+	public Notification<List<Id>> asChannelMembersRemoved() {
+		return map(new TypeReference<List<Id>>() {});
+	}
 }

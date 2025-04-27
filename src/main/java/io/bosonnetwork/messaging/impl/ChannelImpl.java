@@ -2,12 +2,16 @@ package io.bosonnetwork.messaging.impl;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Callable;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.crypto.Signature.KeyPair;
@@ -15,7 +19,7 @@ import io.bosonnetwork.messaging.Channel;
 
 public class ChannelImpl extends Channel {
 	private HashMap<Id, Member> members;
-	private Callable<List<Member>> memberLoader;
+	private Function<Id, List<Member>> memberLoader;
 
 	public ChannelImpl(Id id, Id homePeerId, boolean auto, byte[] sessionKey, String name, boolean avatar,
 			 String notice, Id owner, Permission permission, String remark, String tags,
@@ -58,8 +62,19 @@ public class ChannelImpl extends Channel {
 		return new ChannelImpl(id, null);
 	}
 
-	protected void setMembers(Callable<List<Member>> memberLoader) {
+	private static final Logger log = LoggerFactory.getLogger(ChannelImpl.class);
+
+	public void setMembers(Function<Id, List<Member>> memberLoader) {
 		this.memberLoader = memberLoader;
+	}
+
+	@Override
+	public void setMembers(Collection<Member> members) {
+		HashMap<Id, Member> newMembers = new HashMap<>(members.size());
+		for (Member member : members)
+			newMembers.put(member.getId(), member);
+
+		this.members = newMembers;
 	}
 
 	@Override
@@ -102,7 +117,7 @@ public class ChannelImpl extends Channel {
 			HashMap<Id, Member> map = new HashMap<>();
 
 			try {
-				List<Member> lst = memberLoader.call();
+				List<Member> lst = memberLoader.apply(getId());
 				lst.forEach(m -> map.put(m.getId(), m));
 				members = map;
 			} catch (Exception e) {
@@ -113,22 +128,13 @@ public class ChannelImpl extends Channel {
 		return members;
 	}
 
-	protected void invalidateMembers() {
+	public void invalidateMembers() {
 		members = null;
 	}
 
 	@Override
 	protected List<Member> setMembersRole(List<Id> memberIds, Role role) {
 		return super.setMembersRole(memberIds, role);
-	}
-
-	@Override
-	protected List<Member> removeMembers(List<Id> memberIds) {
-		Map<Id, Member> members = members();
-
-		return memberIds.stream().map(id -> {
-			return members.remove(id);
-		}).collect(Collectors.toList());
 	}
 
 	@Override
@@ -139,6 +145,15 @@ public class ChannelImpl extends Channel {
 	@Override
 	protected Member removeMember(Id memberId) {
 		return members.remove(memberId);
+	}
+
+	@Override
+	protected List<Member> removeMembers(List<Id> memberIds) {
+		Map<Id, Member> members = members();
+
+		return memberIds.stream().map(id -> {
+			return members.remove(id);
+		}).collect(Collectors.toList());
 	}
 
 	@Override
