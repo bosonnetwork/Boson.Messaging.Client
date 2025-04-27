@@ -30,6 +30,7 @@ import io.bosonnetwork.messaging.Conversation;
 import io.bosonnetwork.messaging.Message;
 import io.bosonnetwork.messaging.MessagingRepository;
 import io.bosonnetwork.messaging.RepositoryException;
+import io.bosonnetwork.messaging.impl.ChannelImpl;
 import io.bosonnetwork.messaging.impl.ConversationImpl;
 import io.bosonnetwork.messaging.impl.MessageImpl;
 import io.bosonnetwork.util.jdbi.BosonPlugin;
@@ -246,13 +247,13 @@ public class Database implements MessagingRepository {
 		});
 
 		if (conversation != null) {
-			Contact contact = contactCache.getIfPresent(conversation.getId());
-			if (contact != null) {
+			Contact contact = contactCache.get(conversation.getId(), id -> {
+				return conversation.getInterlocutor();
+			});
+
+			// same contact instance?
+			if (contact != conversation.getInterlocutor())
 				((ConversationImpl)conversation).updateInterlocutor(contact);
-			} else {
-				contact = conversation.getInterlocutor();
-				contactCache.put(contact.getId(), contact);
-			}
 		}
 
 		return conversation;
@@ -266,13 +267,13 @@ public class Database implements MessagingRepository {
 		});
 
 		conversations.forEach((conversation) -> {
-			Contact contact = contactCache.getIfPresent(conversation.getId());
-			if (contact != null) {
+			Contact contact = contactCache.get(conversation.getId(), id -> {
+				return conversation.getInterlocutor();
+			});
+
+			// same contact instance?
+			if (contact != conversation.getInterlocutor())
 				((ConversationImpl)conversation).updateInterlocutor(contact);
-			} else {
-				contact = conversation.getInterlocutor();
-				contactCache.put(contact.getId(), contact);
-			}
 		});
 
 		return conversations;
@@ -312,17 +313,22 @@ public class Database implements MessagingRepository {
 			Contacts dao = handle.attach(Contacts.class);
 
 			for (Contact contact : updated) {
-				if (contact instanceof Channel ch)
+				if (contact instanceof ChannelImpl ch) {
 					dao.putChannel(ch);
-				else
+					ch.setMembers(this::getChannelMembers);
+				} else {
 					dao.putContact(contact);
+				}
 			}
 
 			dao.putVersion(versionId, System.currentTimeMillis());
 		});
 
-		for (Contact contact : updated)
-			contactCache.put(contact.getId(), contact);
+		for (Contact contact : updated) {
+			contactCache.asMap().compute(contact.getId(), (id, existing) -> {
+				return existing == contact ? existing : contact;
+			});
+		}
 	}
 
 	@Override
@@ -331,13 +337,17 @@ public class Database implements MessagingRepository {
 
 		useHandle(handle -> {
 			Contacts dao = handle.attach(Contacts.class);
-			if (contact instanceof Channel ch)
+			if (contact instanceof ChannelImpl ch) {
 				dao.putChannel(ch);
-			else
+				ch.setMembers(this::getChannelMembers);
+			} else {
 				dao.putContact(contact);
+			}
 		});
 
-		contactCache.put(contact.getId(), contact);
+		contactCache.asMap().compute(contact.getId(), (id, existing) -> {
+			return existing == contact ? existing : contact;
+		});
 	}
 
 	@Override
@@ -351,34 +361,41 @@ public class Database implements MessagingRepository {
 			Contacts dao = handle.attach(Contacts.class);
 
 			for (Contact contact : contacts) {
-				if (contact instanceof Channel ch)
+				if (contact instanceof ChannelImpl ch) {
 					dao.putChannel(ch);
-				else
+					ch.setMembers(this::getChannelMembers);
+				} else {
 					dao.putContact(contact);
+				}
 			}
 		});
 
-		for (Contact contact : contacts)
-			contactCache.put(contact.getId(), contact);
+		for (Contact contact : contacts) {
+			contactCache.asMap().compute(contact.getId(), (id, existing) -> {
+				return existing == contact ? existing : contact;
+			});
+		}
 	}
 
 	@Override
 	public Contact getContact(Id contactId) throws RepositoryException {
-		Contact contact = contactCache.getIfPresent(contactId);
-		if (contact != null)
-			return contact;
+		Contact existing = contactCache.getIfPresent(contactId);
+		if (existing != null)
+			return existing;
 
-		contact = withHandle(handle -> {
+		Contact contact = withHandle(handle -> {
 			Contacts dao = handle.attach(Contacts.class);
-			return dao.getContact(contactId);
+			Contact c = dao.getContact(contactId);
+			if (c instanceof ChannelImpl ch)
+				ch.setMembers(this::getChannelMembers);
+
+			return c;
 		});
 
 		if (contact != null)
-			contactCache.put(contact.getId(), contact);
-		// else // no need to retain the resolving cache entry for non-existent contacts
-		//	deviceCache.put(clientId, ClientDevice.VOID);
-
-		return contact;
+			return contactCache.get(contact.getId(), id -> contact);
+		else
+			return contact;
 	}
 
 	@Override
@@ -387,12 +404,10 @@ public class Database implements MessagingRepository {
 			Contacts dao = handle.attach(Contacts.class);
 			return dao.getContacts(contactIds);
 		}).stream().map(c -> {
-			Contact contact = contactCache.getIfPresent(c.getId());
-			if (contact != null)
-				return contact;
+			if (c instanceof ChannelImpl ch)
+				ch.setMembers(this::getChannelMembers);
 
-			contactCache.put(c.getId(), c);
-			return c;
+			return contactCache.get(c.getId(), id -> c);
 		}).collect(Collectors.toList());
 	}
 
@@ -402,12 +417,10 @@ public class Database implements MessagingRepository {
 			Contacts dao = handle.attach(Contacts.class);
 			return dao.getAllContacts();
 		}).stream().map(c -> {
-			Contact contact = contactCache.getIfPresent(c.getId());
-			if (contact != null)
-				return contact;
+			if (c instanceof ChannelImpl ch)
+				ch.setMembers(this::getChannelMembers);
 
-			contactCache.put(c.getId(), c);
-			return c;
+			return contactCache.get(c.getId(), id -> c);
 		}).collect(Collectors.toList());
 	}
 
@@ -417,12 +430,10 @@ public class Database implements MessagingRepository {
 			Contacts dao = handle.attach(Contacts.class);
 			return dao.getAllUserContacts();
 		}).stream().map(c -> {
-			Contact contact = contactCache.getIfPresent(c.getId());
-			if (contact != null)
-				return contact;
+			if (c instanceof ChannelImpl ch)
+				ch.setMembers(this::getChannelMembers);
 
-			contactCache.put(c.getId(), c);
-			return c;
+			return contactCache.get(c.getId(), id -> c);
 		}).collect(Collectors.toList());
 	}
 
@@ -432,27 +443,17 @@ public class Database implements MessagingRepository {
 			Contacts dao = handle.attach(Contacts.class);
 			return dao.getAllContacts(type);
 		}).stream().map(c -> {
-			Contact contact = contactCache.getIfPresent(c.getId());
-			if (contact != null)
-				return contact;
+			if (c instanceof ChannelImpl ch)
+				ch.setMembers(this::getChannelMembers);
 
-			contactCache.put(c.getId(), c);
-			return c;
+			return contactCache.get(c.getId(), id -> c);
 		}).collect(Collectors.toList());
 	}
 
 	@Override
 	public boolean existsContact(Id contactId) throws RepositoryException {
 		Objects.requireNonNull(contactId, "contactId");
-
-		Contact contact = contactCache.getIfPresent(contactId);
-		if (contact != null)
-			return true;
-
-		return withHandle(handle -> {
-			Contacts dao = handle.attach(Contacts.class);
-			return dao.existsContact(contactId);
-		});
+		return getContact(contactId) != null;
 	}
 
 	@Override
@@ -504,19 +505,23 @@ public class Database implements MessagingRepository {
 	}
 
 	@Override
-	public void putChannelMember(Id channelId, Member member) throws RepositoryException {
-		Objects.requireNonNull(channelId, "channelId");
+	public void putChannelMember(Channel channel, Member member) throws RepositoryException {
+		Objects.requireNonNull(channel, "channel");
 		Objects.requireNonNull(member, "member");
 
 		useHandle((handle) -> {
 			Contacts dao = handle.attach(Contacts.class);
-			dao.putChannelMember(channelId, member);
+			dao.putChannelMember(channel.getId(), member);
 		});
+
+		ChannelImpl cached = (ChannelImpl)contactCache.getIfPresent(channel.getId());
+		if (cached != null && cached != channel)
+			cached.invalidateMembers();
 	}
 
 	@Override
-	public void putChannelMembers(Id channelId, Collection<Member> members) throws RepositoryException {
-		Objects.requireNonNull(channelId, "channelId");
+	public void putChannelMembers(Channel channel, Collection<Member> members) throws RepositoryException {
+		Objects.requireNonNull(channel, "channel");
 		Objects.requireNonNull(members, "members");
 
 		if (members.isEmpty())
@@ -524,13 +529,17 @@ public class Database implements MessagingRepository {
 
 		useHandle((handle) -> {
 			Contacts dao = handle.attach(Contacts.class);
-			dao.putChannelMembers(channelId, members);
+			dao.putChannelMembers(channel.getId(), members);
 		});
+
+		ChannelImpl cached = (ChannelImpl)contactCache.getIfPresent(channel.getId());
+		if (cached != null && cached != channel)
+			cached.invalidateMembers();
 	}
 
 	@Override
-	public void refillChannelMembers(Id channelId, Collection<Member> members) throws RepositoryException {
-		Objects.requireNonNull(channelId, "channelId");
+	public void refillChannelMembers(Channel channel, Collection<Member> members) throws RepositoryException {
+		Objects.requireNonNull(channel, "channel");
 		Objects.requireNonNull(members, "members");
 
 		if (members.isEmpty())
@@ -538,35 +547,44 @@ public class Database implements MessagingRepository {
 
 		useTransaction(handle -> {
 			Contacts dao = handle.attach(Contacts.class);
-			dao.removeAllChannelMembers(channelId);
-			dao.putChannelMembers(channelId, members);
+			dao.removeAllChannelMembers(channel.getId());
+			dao.putChannelMembers(channel.getId(), members);
 		});
+
+		ChannelImpl cached = (ChannelImpl)contactCache.getIfPresent(channel.getId());
+		if (cached != null && cached != channel)
+			cached.invalidateMembers();
+	}
+
+	private List<Member> getChannelMembers(Id channelId) {
+		try {
+			return withHandle(handle -> {
+				Contacts dao = handle.attach(Contacts.class);
+				return dao.getAllChannelMembers(channelId);
+			});
+		} catch (RepositoryException e) {
+			throw new RuntimeException(e);
+		}
 	}
 
 	@Override
-	public List<Member> getAllChannelMembers(Id channelId) throws RepositoryException {
-		Objects.requireNonNull(channelId, "channelId");
-
-		return withHandle(handle -> {
-			Contacts dao = handle.attach(Contacts.class);
-			return dao.getAllChannelMembers(channelId);
-		});
-	}
-
-	@Override
-	public void removeChannelMember(Id channelId, Id memberId) throws RepositoryException {
-		Objects.requireNonNull(channelId, "channelId");
+	public void removeChannelMember(Channel channel, Id memberId) throws RepositoryException {
+		Objects.requireNonNull(channel, "channel");
 		Objects.requireNonNull(memberId, "memberId");
 
 		useHandle(handle -> {
 			Contacts dao = handle.attach(Contacts.class);
-			dao.removeChannelMember(channelId, memberId);
+			dao.removeChannelMember(channel.getId(), memberId);
 		});
+
+		ChannelImpl cached = (ChannelImpl)contactCache.getIfPresent(channel.getId());
+		if (cached != null && cached != channel)
+			cached.invalidateMembers();
 	}
 
 	@Override
-	public void removeChannelMembers(Id channelId, Collection<Id> memberIds) throws RepositoryException {
-		Objects.requireNonNull(channelId, "channelId");
+	public void removeChannelMembers(Channel channel, Collection<Id> memberIds) throws RepositoryException {
+		Objects.requireNonNull(channel, "channel");
 		Objects.requireNonNull(memberIds, "memberIds");
 
 		if (memberIds.isEmpty())
@@ -574,35 +592,47 @@ public class Database implements MessagingRepository {
 
 		useHandle(handle -> {
 			Contacts dao = handle.attach(Contacts.class);
-			dao.removeChannelMembers(channelId, memberIds);
+			dao.removeChannelMembers(channel.getId(), memberIds);
 		});
+
+		ChannelImpl cached = (ChannelImpl)contactCache.getIfPresent(channel.getId());
+		if (cached != null && cached != channel)
+			cached.invalidateMembers();
 	}
 
 	@Override
-	public void removeAllChannelMembers(Id channelId) throws RepositoryException {
-		Objects.requireNonNull(channelId, "channelId");
+	public void removeAllChannelMembers(Channel channel) throws RepositoryException {
+		Objects.requireNonNull(channel, "channel");
 
 		useHandle(handle -> {
 			Contacts dao = handle.attach(Contacts.class);
-			dao.removeAllChannelMembers(channelId);
+			dao.removeAllChannelMembers(channel.getId());
 		});
+
+		ChannelImpl cached = (ChannelImpl)contactCache.getIfPresent(channel.getId());
+		if (cached != null && cached != channel)
+			cached.invalidateMembers();
 	}
 
 	@Override
-	public void setChannelMemberRole(Id channelId, Id memberId, Role role) throws RepositoryException {
-		Objects.requireNonNull(channelId, "channelId");
+	public void setChannelMemberRole(Channel channel, Id memberId, Role role) throws RepositoryException {
+		Objects.requireNonNull(channel, "channel");
 		Objects.requireNonNull(memberId, "memberId");
 		Objects.requireNonNull(role, "role");
 
 		useHandle(handle -> {
 			Contacts dao = handle.attach(Contacts.class);
-			dao.updateChannelMemberRole(channelId, memberId, role);
+			dao.updateChannelMemberRole(channel.getId(), memberId, role);
 		});
+
+		ChannelImpl cached = (ChannelImpl)contactCache.getIfPresent(channel.getId());
+		if (cached != null && cached != channel)
+			cached.invalidateMembers();
 	}
 
 	@Override
-	public void setChannelMembersRole(Id channelId, List<Id> memberIds, Role role) throws RepositoryException {
-		Objects.requireNonNull(channelId, "channelId");
+	public void setChannelMembersRole(Channel channel, List<Id> memberIds, Role role) throws RepositoryException {
+		Objects.requireNonNull(channel, "channel");
 		Objects.requireNonNull(memberIds, "memberIds");
 		Objects.requireNonNull(role, "role");
 
@@ -611,7 +641,11 @@ public class Database implements MessagingRepository {
 
 		useHandle(handle -> {
 			Contacts dao = handle.attach(Contacts.class);
-			dao.updateChannelMembersRole(channelId, memberIds, role);
+			dao.updateChannelMembersRole(channel.getId(), memberIds, role);
 		});
+
+		ChannelImpl cached = (ChannelImpl)contactCache.getIfPresent(channel.getId());
+		if (cached != null && cached != channel)
+			cached.invalidateMembers();
 	}
 }

@@ -686,7 +686,7 @@ public class DefaultUserAgent implements UserAgent {
 
 		try {
 			// remove self from the channel
-			repository.removeChannelMember(ch.getId(), user.getId());
+			repository.removeChannelMember(channel, user.getId());
 		} catch (RepositoryException e) {
 			log.error("Failed to remove the channel member from the repository", e);
 		}
@@ -715,9 +715,10 @@ public class DefaultUserAgent implements UserAgent {
 
 	@Override
 	public void onChannelMembers(Channel channel, List<Member> members) {
+		((ChannelImpl)channel).setMembers(members);
+
 		try {
-			repository.refillChannelMembers(channel.getId(), members);
-			((ChannelImpl)channel).invalidateMembers();
+			repository.refillChannelMembers(channel, members);
 		} catch (RepositoryException e) {
 			log.error("Failed to save the channel members to the repository", e);
 		}
@@ -725,9 +726,10 @@ public class DefaultUserAgent implements UserAgent {
 
 	@Override
 	public void onChannelMemberJoined(Channel channel, Member member) {
+		((ChannelImpl)channel).addMember(member);
+
 		try {
-			((ChannelImpl)channel).addMember(member);
-			repository.putChannelMember(channel.getId(), member);
+			repository.putChannelMember(channel, member);
 		} catch (RepositoryException e) {
 			log.error("Failed to save the channel member to the repository.");
 		}
@@ -737,9 +739,10 @@ public class DefaultUserAgent implements UserAgent {
 
 	@Override
 	public void onChannelMemberLeft(Channel channel, Member member) {
+		((ChannelImpl)channel).removeMember(member.getId());
+
 		try {
-			((ChannelImpl)channel).removeMember(member.getId());
-			repository.removeChannelMember(channel.getId(), member.getId());
+			repository.removeChannelMember(channel, member.getId());
 		} catch (RepositoryException e) {
 			log.error("Failed to remove the channel member from the repository.");
 		}
@@ -753,7 +756,7 @@ public class DefaultUserAgent implements UserAgent {
 		List<Channel.Member> members = ((ChannelImpl)channel).setMembersRole(ids, Role.BANNED);
 
 		try {
-			repository.putChannelMembers(channel.getId(), members);
+			repository.putChannelMembers(channel, members);
 		} catch (RepositoryException e) {
 			log.error("Failed to save the channel members to the repository.");
 		}
@@ -767,7 +770,7 @@ public class DefaultUserAgent implements UserAgent {
 		List<Channel.Member> members = ((ChannelImpl)channel).setMembersRole(ids, Role.MEMBER);
 
 		try {
-			repository.putChannelMembers(channel.getId(), members);
+			repository.putChannelMembers(channel, members);
 		} catch (RepositoryException e) {
 			log.error("Failed to save the channel members to the repository.");
 		}
@@ -781,7 +784,7 @@ public class DefaultUserAgent implements UserAgent {
 		List<Channel.Member> members = ((ChannelImpl)channel).setMembersRole(ids, role);
 
 		try {
-			repository.putChannelMembers(channel.getId(), members);
+			repository.putChannelMembers(channel, members);
 		} catch (RepositoryException e) {
 			log.error("Failed to save the channel members to the repository.");
 		}
@@ -795,7 +798,7 @@ public class DefaultUserAgent implements UserAgent {
 		((ChannelImpl)channel).removeMembers(ids);
 
 		try {
-			repository.removeChannelMembers(channel.getId(), ids);
+			repository.removeChannelMembers(channel, ids);
 		} catch (RepositoryException e) {
 			log.error("Failed to remove the channel member from the repository.");
 		}

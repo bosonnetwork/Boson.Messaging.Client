@@ -7,7 +7,7 @@ import org.jdbi.v3.sqlobject.statement.SqlQuery;
 import org.jdbi.v3.sqlobject.statement.SqlUpdate;
 
 public interface Configuration {
-	@SqlUpdate("INSERT INTO configuration VALUES(:key, :value)")
+	@SqlUpdate("INSERT INTO configuration VALUES(:key, :value) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value")
 	int put(@Bind("key") String key, @Bind("value") byte[] value);
 
 	@SqlQuery("SELECT value FROM configuration WHERE key = ?")

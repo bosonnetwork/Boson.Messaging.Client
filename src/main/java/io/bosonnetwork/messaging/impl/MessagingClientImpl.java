@@ -168,7 +168,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			Map<String, Object> config = userAgent.getProperties("api");
 			if (config != null && !config.isEmpty())
 				return (String)config.get("accessToken");
-		} catch (Exception e) {
+		} catch (RepositoryException e) {
 			log.error("Load API client config failed: {}", e.getMessage(), e);
 			throw new IllegalStateException("config: invalid API client config", e);
 		}
@@ -418,83 +418,95 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 
 	private void onMqttMessage(MqttPublishMessage mm) {
 		String topic = mm.topicName();
-		log.debug("{} got message at topic: {}", user.getId(), topic);
+		log.debug("Got message from: {}", topic);
 
 		try {
 			// decrypt the message envelope
 			byte[] payload = serverContext.decrypt(mm.payload().getBytes());
 			MessageImpl message = MessageImpl.parse(payload);
+			if (!message.isValid()) {
+				log.error("Invalid message from: {}, ignored", topic);
+				return;
+			}
+
 			message.setEncrypted(true);
 
 			log.trace("\uD83D\uDFE2 Decrypted message from {} ",  message.getFrom());
 
-			if (topic.equals(inbox)) {
-				processIncomingMessage(message);
-			} else if (topic.equals(outbox))
-				processOutgoingMessage(message);
-			else if (topic.equals(broadcast))
-				processBroadcast(message);
+			// enqueue the process handle to the event loop
+			vertxContext.runOnContext((v) -> {
+				try {
+					if (topic.equals(inbox)) {
+						processIncomingMessage(message);
+					} else if (topic.equals(outbox))
+						processOutgoingMessage(message);
+					else if (topic.equals(broadcast))
+						processBroadcast(message);
+				} catch (Exception e) {
+					log.error("Failed to process message from: {}", topic, e);
+				}
+			});
 		} catch (Exception e) {
-			log.error("Failed to process the MQTT message", e);
+			log.error("Failed to process message from: {}", topic, e);
 		}
 	}
 
 	private void processIncomingMessage(MessageImpl message) throws CryptoException, RepositoryException {
 		int type = message.getMessageType();
-
 		byte[] body = message.getBody();
-		if (body != null && body.length > 0) {
-			if (message.getFrom().equals(peer.getPeerId())) {
-				// service RPC response or user notification: servicePeer -> me
-				// body is encrypted with the message envelope
-				message.setEncrypted(false);
-			} else {
+
+		if (body != null && body.length > 0 && !message.getFrom().equals(peer.getPeerId())) {
+			if (isMe(message.getTo())) {
 				if (type == Message.Types.MESSAGE) {
-					// - Message: sender -> me
-					//   The body is encrypted using the sender's private key
-					//   and the session public key associated with that sender.
-					// - Message: sender -> channel
-					//   The body is encrypted using the sender's private key
-					//   and the session public key of channel.
-
-					CryptoContext ctx = null;
-					if (isMe(message.getTo())) {
-						Contact sender = userAgent.getContact(message.getFrom());
-						if (sender != null && sender.hasSessionKey())
-							ctx = sender.getRxCryptoContext();
-					} else {
-						Channel channel = userAgent.getChannel(message.getTo());
-						if (channel != null && channel.hasSessionKey())
-							ctx = channel.getRxCryptoContext(message.getFrom());
-					}
-
-					if (ctx != null)
-						message.decryptBody(ctx);
-					else
-						log.warn("Message from unknow sender {}, keep in encrypted", message.getFrom());
+					// Message: sender -> me
+					// The body is encrypted using the sender's private key
+					// and the session public key associated with that sender.
+					Contact sender = userAgent.getContact(message.getFrom());
+					if (sender != null && sender.hasSessionKey())
+						message.decryptBody(sender.getRxCryptoContext());
 				} else if (type == Message.Types.CALL) {
-					// Channel RPC response: channel -> me
-					// The body is encrypted using sender's private key and my public key.
-					CryptoContext ctx = user.createCryptoContext(message.getFrom());
-					message.decryptBody(ctx);
-				} else if (type == Message.Types.NOTIFICATION) {
-					// Channel notification: channel -> channel
-					// The body is encrypted using the channel's private key
-					// and the channel session's public key
-					Channel channel = userAgent.getChannel(message.getFrom());
-					if (channel != null && channel.hasSessionKey()) {
-						CryptoContext ctx = channel.getRxCryptoContext();
-						message.decryptBody(ctx);
-					} else {
-						log.warn("Notification from unknow sender {}, keep in encrypted", message.getFrom());
-					}
-				}
+					// Call: sender(user | channel) -> me
+					// The body is encrypted using the sender's private key
+					// and my public key.
 
-				// Ignore unknown message types here. Errors will be logged below.
+					// TODO: CHECKME - cache the CryptoContext?
+					message.decryptBody(user.createCryptoContext(message.getFrom()));
+				} else if (type == Message.Types.NOTIFICATION) {
+					// Notification: !homePeer -> me
+					// The body is encrypted using the sender's private key
+					// and my public key.
+
+					// TODO: CHECKME - cache the CryptoContext?
+					message.decryptBody(user.createCryptoContext(message.getFrom()));
+				}
+			} else {
+				// Message: sender -> channel
+				Channel channel = userAgent.getChannel(message.getTo());
+				if (channel != null && channel.hasSessionKey()) {
+					if (type == Message.Types.MESSAGE) {
+						// Message: sender -> channel
+						// The body is encrypted using the sender's private key
+						// and the session public key of channel.
+						message.decryptBody(channel.getRxCryptoContext(message.getFrom()));
+					} else if (type == Message.Types.NOTIFICATION) {
+						// Message: channel -> channel
+						// The body is encrypted using the channel's private key
+						// and the channel session's public key
+						message.decryptBody(channel.getRxCryptoContext());
+					}
+
+					// should no call to channel received
+				}
 			}
+
+			// Otherwise, the message remains encrypted
+
 		} else {
 			message.setEncrypted(false);
 		}
+
+		if (message.isEncrypted())
+			log.warn("Message from unknow sender {}, keep in encrypted", message.getFrom());
 
 		if (type == Message.Types.MESSAGE)
 			onMessage(message);
@@ -502,14 +514,12 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			processRpcResponse(message);
 		else if (type == Message.Types.NOTIFICATION)
 			processNotification(message);
-		else
-			log.warn("Unknown incoming message type {} from {}, ignore", type, message.getFrom());
 	}
 
 	private void processOutgoingMessage(MessageImpl message) throws CryptoException, RepositoryException {
 		int type = message.getMessageType();
-
 		long sn = message.getSerialNumber();
+
 		MessageImpl selfSent = sendingMessages.remove(sn);
 		if (selfSent != null) {
 			// message sent from this client device
@@ -520,36 +530,36 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			log.trace("\uD83D\uDCE7 using the parsed message");
 			// message sent from other client device
 			byte[] body = message.getBody();
-			if (body != null && body.length > 0) {
-				if (message.getTo().equals(peer.getPeerId())) {
-					// service RPC requests: me -> servicePeer
-					// body is encrypted with the message envelope
-					message.setEncrypted(false);
-				} else {
-					if (type == Message.Types.MESSAGE) {
-						// The body is encrypted using my private key and the recipient's session public key.
-						Contact contact = userAgent.getContact(message.getTo());
-						if (contact != null && contact.hasSessionKey()) {
-							CryptoContext ctx = contact.getTxCryptoContext(() -> {
-								return user.createCryptoContext(contact.getSessionId());
-							});
-							message.decryptBody(ctx);
-						} else {
-							log.warn("Message to unknow contact {}, keep in encrypted", message.getTo());
-						}
-					} else if (type == Message.Types.CALL) {
-						// The body is encrypted using my private key and the recipient's public key.
-						// TODO: CHEKME - need cache the RPC crypto vertxContext?
-						CryptoContext ctx = user.createCryptoContext(message.getTo());
+
+			if (body != null && body.length > 0 && !message.getTo().equals(peer.getPeerId())) {
+				if (type == Message.Types.MESSAGE) {
+					// The body is encrypted using my private key and the recipient's session public key.
+					Contact contact = userAgent.getContact(message.getTo());
+					if (contact != null && contact.hasSessionKey()) {
+						CryptoContext ctx = contact.getTxCryptoContext(() -> {
+							return user.createCryptoContext(contact.getSessionId());
+						});
 						message.decryptBody(ctx);
 					}
-
-					// Ignore other message types(notification) here. Errors will be logged below.
+				} else if (type == Message.Types.CALL) {
+					// channel RPC request: me -> channel
+					// The body is encrypted using my private key and the channel's public key.
+					// TODO: CHECKME - need cache the CryptoContext?
+					message.decryptBody(user.createCryptoContext(message.getTo()));
 				}
+
+				if (message.isEncrypted())
+					log.warn("\uD83D\uDCE7 Message to unknow sender {}, keep in encrypted", message.getFrom());
+
+				// Ignore other message types(notification) here. Errors will be logged below.
 			} else {
+				// service RPC requests: me -> servicePeer
+				// body is encrypted together with the message envelope.
+				// Or: empty body
 				message.setEncrypted(false);
 			}
 		}
+
 
 		if (type == Message.Types.MESSAGE)
 			onSent(message);
@@ -557,136 +567,6 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			processRpcRequest(message);
 		else
 			log.error("INTERNAL ERROR: unexpected outgoing message type {}", type);
-	}
-
-	private void processNotification(Message message) {
-		try {
-			Notification<JsonNode> preparsed = message.getBodyAs(
-					new TypeReference<Notification<JsonNode>>() {});
-
-			// ((MessageImpl)message).setBody(notification);
-
-			// No need to check if the notification is self-triggered.
-			// The messaging service will exclude the operator from receiving it.
-			/*
-			if (isMe(notification.getOperator()))
-				return;
-			*/
-
-			switch (preparsed.getEvent()) {
-			case Notification.Events.USER_PROFILE: {
-				Notification<Profile> notification = preparsed.map(Profile.class);
-				Profile profile = notification.getData();
-				if (!isMe(profile.getId()) && !profile.isGenuine()) {
-					log.warn("User updated its profile, but the Profile invalid");
-					return;
-				} else {
-					log.info("User updated its profile");
-				}
-
-				userAgent.onUserProfileChanged(profile.getName(), profile.hasAvatar());
-				break;
-			}
-
-			case Notification.Events.CHANNEL_DELETED: {
-				Channel channel = userAgent.getChannel(message.getTo());
-				userAgent.onChannelDeleted(channel);
-				break;
-			}
-
-			case Notification.Events.CHANNEL_JOINED: {
-				Channel channel = userAgent.getChannel(message.getTo());
-				Notification<Channel.Member> notification = preparsed.map(Channel.Member.class);
-				userAgent.onChannelMemberJoined(channel, notification.getData());
-				break;
-			}
-
-			case Notification.Events.CHANNEL_LEFT: {
-				Channel channel = userAgent.getChannel(message.getTo());
-				Channel.Member member = channel.getMember(preparsed.getOperator());
-				if (member == null)
-					member = Channel.Member.unknown(preparsed.getOperator());
-				userAgent.onChannelMemberLeft(channel, member);
-				break;
-			}
-
-			case Notification.Events.CHANNEL_PROFILE: {
-				Channel channel = userAgent.getChannel(message.getTo());
-				Notification<Channel> notification = preparsed.map(Channel.class);
-				channel.update(notification.getData());
-				userAgent.onChannelUpdated(channel);
-				break;
-			}
-
-			case Notification.Events.CHANNEL_ROLE: {
-				Channel channel = userAgent.getChannel(message.getTo());
-				Notification<Notification.ChannelRole.Data> notification = preparsed.map(
-						Notification.ChannelRole.Data.class);
-				Notification.ChannelRole.Data data = notification.getData();
-				Channel.Role role = data.getRole();
-				List<Channel.Member> members = data.getMemberIds().stream().map(id -> {
-					Channel.Member member = channel.getMember(id);
-					if (member == null)
-						member = Channel.Member.unknown(id);
-
-					return member;
-				}).collect(Collectors.toList());
-				userAgent.onChannelMembersRoleChanged(channel, members, role);
-				break;
-			}
-
-			case Notification.Events.CHANNEL_BANNED: {
-				Channel channel = userAgent.getChannel(message.getTo());
-				Notification<List<Id>> notification = preparsed.map(new TypeReference<List<Id>>() {});
-				List<Channel.Member> members = notification.getData().stream().map(id -> {
-					Channel.Member member = channel.getMember(id);
-					if (member == null)
-						member = Channel.Member.unknown(id);
-
-					return member;
-				}).collect(Collectors.toList());
-				userAgent.onChannelMembersBanned(channel, members);
-				break;
-			}
-
-			case Notification.Events.CHANNEL_UNBANNED: {
-				Channel channel = userAgent.getChannel(message.getTo());
-				Notification<List<Id>> notification = preparsed.map(new TypeReference<List<Id>>() {});
-				List<Channel.Member> members = notification.getData().stream().map(id -> {
-					Channel.Member member = channel.getMember(id);
-					if (member == null)
-						member = Channel.Member.unknown(id);
-
-					return member;
-				}).collect(Collectors.toList());
-				userAgent.onChannelMembersUnbanned(channel, members);
-				break;
-			}
-
-			case Notification.Events.CHANNEL_REMOVED: {
-				Channel channel = userAgent.getChannel(message.getTo());
-				Notification<List<Id>> notification = preparsed.map(new TypeReference<List<Id>>() {});
-				List<Channel.Member> members = notification.getData().stream().map(id -> {
-					Channel.Member member = channel.getMember(id);
-					if (member == null)
-						member = Channel.Member.unknown(id);
-
-					return member;
-				}).collect(Collectors.toList());
-				userAgent.onChannelMembersRemoved(channel, members);
-				break;
-			}
-
-			default:
-				log.error("INTERNAL ERROR: unknown channel notification {}", preparsed.getEvent());
-			}
-		} catch (RepositoryException e) {
-			log.error("storage", e);
-		} catch (IOException e) {
-			log.error("INTERNAL ERROR: message parsing error", e);
-		} catch (Exception e) {
-			log.error("INTERNAL ERROR: unexpected error", e);
-		}
 	}
 
 	private void processBroadcast(MessageImpl message) {
@@ -701,39 +581,35 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		boolean isChannelMessage = !isMe(message.getTo());
 		Id convId = isChannelMessage ? message.getTo() : message.getFrom();
 
-		vertxContext.runOnContext(v -> {
-			userAgent.onMessage(message);
+		userAgent.onMessage(message);
 
-			// check if the contact need to be update
-			try {
-				Contact contact = userAgent.getContact(convId);
+		// check if the contact need to be update
+		try {
+			Contact contact = userAgent.getContact(convId);
+			if (contact == null || contact.isStaled())
+				tryRefreshProfile(convId).onSuccess(profile -> {
+					userAgent.onContactProfile(convId, profile);
+				});
+		} catch (RepositoryException e) {
+			log.error("Failed to get and update the contact profile: ", convId, e);
+		}
+	}
+
+	private void onSent(Message message) {
+		userAgent.onSent(message);
+
+		// check if the contact need to be update
+		try {
+			Id convId = message.getTo();
+			Contact contact = userAgent.getContact(convId);
+			if (contact != null && contact.isStaled())
 				if (contact == null || contact.isStaled())
 					tryRefreshProfile(convId).onSuccess(profile -> {
 						userAgent.onContactProfile(convId, profile);
 					});
-			} catch (RepositoryException e) {
-				log.error("Failed to get and update the contact profile: ", convId, e);
-			}
-		});
-	}
-
-	private void onSent(Message message) {
-		vertxContext.runOnContext(v -> {
-			userAgent.onSent(message);
-
-			// check if the contact need to be update
-			try {
-				Id convId = message.getTo();
-				Contact contact = userAgent.getContact(convId);
-				if (contact != null && contact.isStaled())
-					if (contact == null || contact.isStaled())
-						tryRefreshProfile(convId).onSuccess(profile -> {
-							userAgent.onContactProfile(convId, profile);
-						});
-			} catch (RepositoryException e) {
-				log.error("Failed to get the contact: ", message.getTo(), e);
-			}
-		});
+		} catch (RepositoryException e) {
+			log.error("Failed to get the contact: ", message.getTo(), e);
+		}
 	}
 
 	private Future<Void> doConnect() {
@@ -852,6 +728,139 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		} catch (CryptoException e) {
 			log.error("INTERNAL ERROR!!! This should never heppen.");
 			throw new IllegalStateException(e);
+		}
+	}
+
+	private void processNotification(Message message) {
+		try {
+			Notification<JsonNode> preparsed = message.getBodyAs(
+					new TypeReference<Notification<JsonNode>>() {});
+
+			// No need to check if the notification is self-triggered.
+			// The messaging service will exclude the operator from receiving it.
+			/*
+			if (isMe(notification.getOperator()))
+				return;
+			*/
+
+			switch (preparsed.getEvent()) {
+			case Notification.Events.USER_PROFILE: {
+				Notification<Profile> notification = preparsed.asUserProfile();
+				Profile profile = notification.getData();
+				if (!isMe(profile.getId()) && !profile.isGenuine()) {
+					log.warn("User updated its profile, but the Profile invalid");
+					return;
+				} else {
+					log.info("User updated its profile");
+				}
+
+				userAgent.onUserProfileChanged(profile.getName(), profile.hasAvatar());
+				break;
+			}
+
+			case Notification.Events.CHANNEL_PROFILE: {
+				Notification<Channel> notification = preparsed.asChannelProfile();
+				Channel channel = userAgent.getChannel(message.getTo());
+				channel.update(notification.getData());
+				userAgent.onChannelUpdated(channel);
+				break;
+			}
+
+			case Notification.Events.CHANNEL_DELETED: {
+				Channel channel = userAgent.getChannel(message.getTo());
+				userAgent.onChannelDeleted(channel);
+				break;
+			}
+
+			case Notification.Events.CHANNEL_MEMBER_JOINED: {
+				Notification<Channel.Member> notification = preparsed.asChannelMemberJoined();
+				Channel channel = userAgent.getChannel(message.getTo());
+				userAgent.onChannelMemberJoined(channel, notification.getData());
+				break;
+			}
+
+			case Notification.Events.CHANNEL_MEMBER_LEFT: {
+				Id memberId = preparsed.getOperator();
+				Channel channel = userAgent.getChannel(message.getTo());
+				Channel.Member member = channel.getMember(memberId);
+				if (member == null)
+					member = Channel.Member.unknown(memberId);
+				userAgent.onChannelMemberLeft(channel, member);
+				break;
+			}
+
+			case Notification.Events.CHANNEL_MEMBERS_ROLE: {
+				Notification<Notification.ChannelMembersRoleUpdated> notification = preparsed.asChannelMembersRole();
+				Channel.Role role = notification.getData().role();
+				List<Id> ids = notification.getData().members();
+				Channel channel = userAgent.getChannel(message.getTo());
+				List<Channel.Member> members = ids.stream().map(id -> {
+					Channel.Member member = channel.getMember(id);
+					if (member == null)
+						member = Channel.Member.unknown(id);
+
+					return member;
+				}).collect(Collectors.toList());
+
+				userAgent.onChannelMembersRoleChanged(channel, members, role);
+				break;
+			}
+
+			case Notification.Events.CHANNEL_MEMBERS_BANNED: {
+				Notification<List<Id>> notification = preparsed.asChannelMembersBanned();
+				List<Id> ids = notification.getData();
+				Channel channel = userAgent.getChannel(message.getTo());
+				List<Channel.Member> members = ids.stream().map(id -> {
+					Channel.Member member = channel.getMember(id);
+					if (member == null)
+						member = Channel.Member.unknown(id);
+
+					return member;
+				}).collect(Collectors.toList());
+
+				userAgent.onChannelMembersBanned(channel, members);
+				break;
+			}
+
+			case Notification.Events.CHANNEL_MEMBERS_UNBANNED: {
+				Notification<List<Id>> notification = preparsed.asChannelMembersUnbanned();
+				List<Id> ids = notification.getData();
+				Channel channel = userAgent.getChannel(message.getTo());
+				List<Channel.Member> members = ids.stream().map(id -> {
+					Channel.Member member = channel.getMember(id);
+					if (member == null)
+						member = Channel.Member.unknown(id);
+
+					return member;
+				}).collect(Collectors.toList());
+
+				userAgent.onChannelMembersUnbanned(channel, members);
+				break;
+			}
+
+			case Notification.Events.CHANNEL_MEMBERS_REMOVED: {
+				Notification<List<Id>> notification = preparsed.asChannelMembersRemoved();
+				List<Id> ids = notification.getData();
+				Channel channel = userAgent.getChannel(message.getTo());
+				List<Channel.Member> members = ids.stream().map(id -> {
+					Channel.Member member = channel.getMember(id);
+					if (member == null)
+						member = Channel.Member.unknown(id);
+
+					return member;
+				}).collect(Collectors.toList());
+
+				userAgent.onChannelMembersRemoved(channel, members);
+				break;
+			}
+
+			default:
+				log.error("INTERNAL ERROR: unknown channel notification {}", preparsed.getEvent());
+			}
+		} catch (IOException e) {
+			log.error("INTERNAL ERROR: message parsing error", e);
+		} catch (Exception e) {
+			log.error("INTERNAL ERROR: unexpected error", e);
 		}
 	}
 
@@ -1006,9 +1015,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 
 		if (preparsed.failed()) {
 			log.error("RPC call {} failed: {}", preparsed.getId(), preparsed.getError());
-			vertxContext.runOnContext(v -> {
-				request.complete(preparsed.cast());
-			});
+			request.complete(preparsed.cast());
 			return;
 		}
 
@@ -1016,18 +1023,14 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		case DEVICE_LIST: {
 			RPCRequest<Void, List<ClientDevice>> call = request.cast();
 			RPCResponse<List<ClientDevice>> response = preparsed.map(new TypeReference<List<ClientDevice>>() {});
-			vertxContext.runOnContext(v -> {
-				call.complete(response);
-			});
+			call.complete(response);
 			break;
 		}
 
 		case DEVICE_REVOKE: {
 			RPCRequest<Id, Boolean> call = request.cast();
 			RPCResponse<Boolean> response = preparsed.map(Boolean.class);
-			vertxContext.runOnContext(v -> {
-				call.complete(response);
-			});
+			call.complete(response);
 			break;
 		}
 
@@ -1038,10 +1041,8 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			String newVersionId = response.getResult();
 			List<Contact> contacts = call.getParameters().getContacts();
 
-			vertxContext.runOnContext(v -> {
-				userAgent.onContactsUpdated(baseVersionId, newVersionId, contacts);
-				call.complete(response);
-			});
+			userAgent.onContactsUpdated(baseVersionId, newVersionId, contacts);
+			call.complete(response);
 			break;
 		}
 
@@ -1049,10 +1050,8 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			RPCRequest<Void, Boolean> call = request.cast();
 			RPCResponse<Boolean> response = preparsed.map(Boolean.class);
 			// always success
-			vertxContext.runOnContext(v -> {
-				userAgent.onContactsCleared();
-				call.complete(response);
-			});
+			userAgent.onContactsCleared();
+			call.complete(response);
 			break;
 		}
 
@@ -1064,23 +1063,20 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			ChannelImpl channel = (ChannelImpl)response.getResult();
 			channel.setSessionKey(call.getCookie(this::selfDecrypt));
 
-			// fetch the channel members
-			if (request.isInitiator())
-				getChannelMembers(channel.getId());
+			userAgent.onJoinedChannel(channel);
+			call.complete(response);
 
-			vertxContext.runOnContext(v -> {
-				userAgent.onJoinedChannel(channel);
-				call.complete(response);
-			});
+			// delayed to fetch the channel members
+			if (request.isInitiator()) {
+				vertxContext.runOnContext(v -> getChannelMembers(channel.getId()));
+			}
 			break;
 		}
 
 		case CHANNEL_DELETE: {
 			RPCRequest<Void, Boolean> call = request.cast();
 			RPCResponse<Boolean> response = preparsed.map(Boolean.class);
-			vertxContext.runOnContext(v -> {
-				call.complete(response);
-			});
+			call.complete(response);
 			break;
 		}
 
@@ -1092,14 +1088,13 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			ChannelImpl channel = (ChannelImpl)response.getResult();
 			channel.setSessionKey(call.getCookie(this::selfDecrypt));
 
-			// fetch the channel members
-			if (request.isInitiator())
-				getChannelMembers(channel.getId());
+			userAgent.onJoinedChannel(channel);
+			call.complete(response);
 
-			vertxContext.runOnContext(v -> {
-				userAgent.onJoinedChannel(channel);
-				call.complete(response);
-			});
+			// delayed to fetch the channel members
+			if (request.isInitiator()) {
+				vertxContext.runOnContext(v -> getChannelMembers(channel.getId()));
+			}
 			break;
 		}
 
@@ -1116,10 +1111,8 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			// Create a dummy channel object to notify the listener
 			// if the channel is not found or can not be retrieved
 			Channel ch = channel != null ? channel : ChannelImpl.auto(message.getFrom());
-			vertxContext.runOnContext(v -> {
-				userAgent.onLeftChannel(ch);
-				call.complete(preparsed.map(Boolean.class));
-			});
+			userAgent.onLeftChannel(ch);
+			call.complete(preparsed.map(Boolean.class));
 			break;
 		}
 
@@ -1138,11 +1131,8 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			else
 				channel = response.getResult();
 
-			Channel ch = channel; // just make compiler happy
-			vertxContext.runOnContext(v -> {
-				userAgent.onChannelUpdated(ch);
-				call.complete(response.revised(ch));
-			});
+			userAgent.onChannelUpdated(channel);
+			call.complete(response.revised(channel));
 		}
 
 		case CHANNEL_MEMBERS: {
@@ -1158,10 +1148,8 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			}
 
 			Channel ch = channel != null ? channel : ChannelImpl.auto(message.getFrom());
-			vertxContext.runOnContext(v -> {
-				userAgent.onChannelMembers(ch, members);
-				call.complete(reponse);
-			});
+			userAgent.onChannelMembers(ch, members);
+			call.complete(reponse);
 			break;
 		}
 
@@ -1177,11 +1165,8 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
 			}
 
-			final Channel ch = channel; // just make compiler happy
-			vertxContext.runOnContext(v -> {
-				userAgent.onChannelUpdated(ch);
-				call.complete(response);
-			});
+			userAgent.onChannelUpdated(channel);
+			call.complete(response);
 			break;
 		}
 
@@ -1197,11 +1182,8 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
 			}
 
-			final Channel ch = channel; // just make compiler happy
-			vertxContext.runOnContext(v -> {
-				userAgent.onChannelUpdated(ch);
-				call.complete(response);
-			});
+			userAgent.onChannelUpdated(channel);
+			call.complete(response);
 			break;
 		}
 
@@ -1217,11 +1199,8 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
 			}
 
-			final Channel ch = channel; // just make compiler happy
-			vertxContext.runOnContext(v -> {
-				userAgent.onChannelUpdated(ch);
-				call.complete(response);
-			});
+			userAgent.onChannelUpdated(channel);
+			call.complete(response);
 			break;
 		}
 
@@ -1237,11 +1216,8 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
 			}
 
-			final Channel ch = channel; // just make compiler happy
-			vertxContext.runOnContext(v -> {
-				userAgent.onChannelUpdated(ch);
-				call.complete(response);
-			});
+			userAgent.onChannelUpdated(channel);
+			call.complete(response);
 			break;
 		}
 
@@ -1262,10 +1238,8 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			// Create a dummy channel object to notify the listener
 			// if the channel is not found or can not be retrieved
 			Channel ch = channel != null ? channel : ChannelImpl.auto(message.getFrom());
-			vertxContext.runOnContext(v -> {
-				userAgent.onChannelMembersRoleChanged(ch, changed, role);
-				call.complete(response);
-			});
+			userAgent.onChannelMembersRoleChanged(ch, changed, role);
+			call.complete(response);
 			break;
 		}
 
@@ -1285,10 +1259,8 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			// Create a dummy channel object to notify the listener
 			// if the channel is not found or can not be retrieved
 			Channel ch = channel != null ? channel : ChannelImpl.auto(message.getFrom());
-			vertxContext.runOnContext(v -> {
-				userAgent.onChannelMembersBanned(ch, changed);
-				call.complete(response);
-			});
+			userAgent.onChannelMembersBanned(ch, changed);
+			call.complete(response);
 			break;
 		}
 
@@ -1308,10 +1280,8 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			// Create a dummy channel object to notify the listener
 			// if the channel is not found or can not be retrieved
 			Channel ch = channel != null ? channel : ChannelImpl.auto(message.getFrom());
-			vertxContext.runOnContext(v -> {
-				userAgent.onChannelMembersUnbanned(ch, changed);
-				call.complete(response);
-			});
+			userAgent.onChannelMembersUnbanned(ch, changed);
+			call.complete(response);
 			break;
 		}
 
@@ -1331,10 +1301,8 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			// Create a dummy channel object to notify the listener
 			// if the channel is not found or can not be retrieved
 			Channel ch = channel != null ? channel : ChannelImpl.auto(message.getFrom());
-			vertxContext.runOnContext(v -> {
-				userAgent.onChannelMembersRemoved(ch, removed);
-				call.complete(response);
-			});
+			userAgent.onChannelMembersRemoved(ch, removed);
+			call.complete(response);
 			break;
 		}
 
@@ -1839,67 +1807,6 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		return VertxFuture.of(request.getFuture());
 	}
 
-
-
-	// TODO:
-	/*
-	protected CompletableFuture<Boolean> putContacts(List<Contact> contacts) {
-		if (contacts == null)
-			return CompletableFuture.failedFuture(new NullPointerException("contacts"));
-
-		if (contacts.isEmpty())
-			return CompletableFuture.completedFuture(true);
-
-		RPCRequest<List<Contact>, Boolean> request = new RPCRequest<>(
-				getNextIndex(), RPCMethod.CONTACT_PUT, contacts);
-
-		vertxContext.runOnContext((v) -> {
-			sendRpcRequest(outbox, request);
-		});
-
-		return request.getFuture();
-	}
-
-	protected CompletableFuture<Boolean> removeContacts(List<Id> contacts) {
-		if (contacts == null)
-			return CompletableFuture.failedFuture(new NullPointerException("contacts"));
-
-		if (contacts.isEmpty())
-			return CompletableFuture.completedFuture(true);
-
-		RPCRequest<List<Id>, Boolean> request = new RPCRequest<>(
-				getNextIndex(), RPCMethod.CONTACT_REMOVE, contacts);
-
-		vertxContext.runOnContext((v) -> {
-			sendRpcRequest(outbox, request);
-		});
-
-		return request.getFuture();
-	}
-
-	protected CompletableFuture<Void> syncContacts() {
-		RPCRequest<Void, List<Contact>> request = new RPCRequest<>(
-				getNextIndex(), RPCMethod.CONTACT_SYNC, null);
-
-		vertxContext.runOnContext((v) -> {
-			sendRpcRequest(outbox, request);
-		});
-
-		return request.getFuture();
-	}
-
-	protected CompletableFuture<Void> clearContacts() {
-		RPCRequest<Void, String> request = new RPCRequest<>(
-				getNextIndex(), RPCMethod.CONTACT_CLEAR, null);
-
-		vertxContext.runOnContext((v) -> {
-			sendRpcRequest(outbox, request);
-		});
-
-		return request.getFuture();
-	}
-	*/
-
 	private Future<Integer> sendMessageInternal(MessageImpl message) {
 		try {
 			int type = message.getMessageType();
@@ -1924,7 +1831,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 					}
 				} else if (type == Message.Types.CALL) {
 					// The body is encrypted using my private key and the recipient's public key.
-					// TODO: CHEKME - need cache the RPC crypto vertxContext?
+					// TODO: CHEKME - need cache the RPC CryptoContext?
 					CryptoContext ctx = user.createCryptoContext(message.getTo());
 					encryptedBody = ctx.encrypt(body);
 				} else {

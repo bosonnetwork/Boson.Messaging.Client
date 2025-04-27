@@ -208,6 +208,12 @@ public abstract class Message {
 		return messageType;
 	}
 
+	public boolean isValid() {
+		return version == VERSION && from != null && to != null &&
+				messageType >= Types.MESSAGE && messageType <= Types.NOTIFICATION &&
+				created > 0;
+	}
+
 	public Map<String, Object> getProperties() {
 		return properties == null || properties.isEmpty() ? Collections.emptyMap() : Collections.unmodifiableMap(properties);
 	}

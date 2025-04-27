@@ -58,33 +58,6 @@ public interface Contacts {
 			""")
 	int[] putContacts(@BindBean Collection<Contact> contacts);
 
-	@SqlQuery("SELECT * FROM contacts WHERE id = ?")
-	@RegisterRowMapper(ContactRowMapper.class)
-	Contact getContact(Id id);
-
-	@SqlQuery("SELECT * FROM contacts WHERE id IN (<ids>)")
-	@RegisterRowMapper(ContactRowMapper.class)
-	List<Contact> getContacts(@BindList("ids") List<Id> ids);
-
-	@SqlQuery("SELECT * FROM contacts")
-	@RegisterRowMapper(ContactRowMapper.class)
-	List<Contact> getAllContacts();
-
-	@SqlQuery("SELECT * FROM contacts WHERE auto = false AND deleted = false")
-	@RegisterRowMapper(ContactRowMapper.class)
-	List<Contact> getAllUserContacts();
-
-	@SqlQuery("SELECT * FROM contacts WHERE type = ?")
-	@RegisterRowMapper(ContactRowMapper.class)
-	List<Contact> getAllContacts(int type);
-
-	@SqlQuery("SELECT * FROM contacts WHERE auto = false AND modified = true")
-	@RegisterRowMapper(ContactRowMapper.class)
-	List<Contact> getModifiedContacts();
-
-	@SqlQuery("UPDATE contacts SET modified = :modified WHERE id IN (<ids>)")
-	int updateContactsModifiedStatus(@BindList("ids") List<Id> ids, @Bind("modified") boolean modified);
-
 	// Channels
 	@SqlUpdate("""
 			INSERT INTO contacts(id, type, auto, homePeerId, sessionKey, name, avatar, notice, owner, permission, remark, tags, muted, blocked, created, lastModified, lastUpdated, deleted, revision)
@@ -116,15 +89,34 @@ public interface Contacts {
 	@RegisterArgumentFactory(PermissionArgumentFactory.class)
 	int[] putChannels(@BindBean Collection<Channel> channels);
 
-	/*
-	@SqlQuery("SELECT * FROM contacts WHERE type = 2 AND id = ?")
-	@RegisterRowMapper(ChannelRowMapper.class)
-	Channel getChannel(Id id);
+	// shared
+	@SqlQuery("SELECT * FROM contacts WHERE id = ?")
+	@RegisterRowMapper(ContactRowMapper.class)
+	Contact getContact(Id id);
 
-	@SqlQuery("SELECT * FROM contacts WHERE type = 2")
-	@RegisterRowMapper(ChannelRowMapper.class)
-	List<Channel> getAllChannels();
-	*/
+	@SqlQuery("SELECT * FROM contacts WHERE id IN (<ids>)")
+	@RegisterRowMapper(ContactRowMapper.class)
+	List<Contact> getContacts(@BindList("ids") List<Id> ids);
+
+
+	@SqlQuery("SELECT * FROM contacts")
+	@RegisterRowMapper(ContactRowMapper.class)
+	List<Contact> getAllContacts();
+
+	@SqlQuery("SELECT * FROM contacts WHERE auto = false AND deleted = false")
+	@RegisterRowMapper(ContactRowMapper.class)
+	List<Contact> getAllUserContacts();
+
+	@SqlQuery("SELECT * FROM contacts WHERE type = ?")
+	@RegisterRowMapper(ContactRowMapper.class)
+	List<Contact> getAllContacts(int type);
+
+	@SqlQuery("SELECT * FROM contacts WHERE auto = false AND modified = true")
+	@RegisterRowMapper(ContactRowMapper.class)
+	List<Contact> getModifiedContacts();
+
+	@SqlQuery("UPDATE contacts SET modified = :modified WHERE id IN (<ids>)")
+	int updateContactsModifiedStatus(@BindList("ids") List<Id> ids, @Bind("modified") boolean modified);
 
 	// Contacts and channels
 	@SqlQuery("SELECT EXISTS (SELECT 1 FROM contacts WHERE id = ?)")

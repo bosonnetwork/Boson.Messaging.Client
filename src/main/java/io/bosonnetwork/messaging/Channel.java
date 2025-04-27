@@ -1,5 +1,6 @@
 package io.bosonnetwork.messaging;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -284,6 +285,8 @@ public abstract class Channel extends Contact {
 	// Return a modifiable copy of the members to make it easier for apps to sort or filter
 	public abstract List<Member> getMembers();
 
+	protected abstract void setMembers(Collection<Member> members);
+
 	public abstract Member getMember(Id id);
 
 	protected List<Member> setMembersRole(List<Id> memberIds, Role role) {
@@ -294,11 +297,11 @@ public abstract class Channel extends Contact {
 		}).collect(Collectors.toList());
 	}
 
-	protected abstract List<Member> removeMembers(List<Id> memberIds);
-
 	protected abstract void addMember(Member member);
 
 	protected abstract Member removeMember(Id memberId);
+
+	protected abstract List<Member> removeMembers(List<Id> memberIds);
 
 	public boolean isOwner(Id id) {
 		return id.equals(owner);
