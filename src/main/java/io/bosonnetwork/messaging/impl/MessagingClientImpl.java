@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -95,7 +96,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 	private final String outbox;
 
 	private final long baseIndex;
-	private final long baseNano;
+	private final AtomicInteger index;
 
 	private MessagingServiceInfo serviceInfo;
 
@@ -146,11 +147,8 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		// base index: last 4 bytes of device id as unsigned int +
 		//				microseconds since 2020-01-01T00:00:00z
 		ByteBuffer bb = ByteBuffer.wrap(device.getId().bytes());
-		baseIndex = Integer.toUnsignedLong(bb.getInt(Id.BYTES - Integer.BYTES)) +
-				(System.currentTimeMillis() - EPOCH_BOSON) * 1000;
-
-		baseNano = System.nanoTime();
-
+		baseIndex = Integer.toUnsignedLong(bb.getInt(Id.BYTES - Integer.BYTES)) << 24;
+		index = new AtomicInteger(0);
 	}
 
 	@Override
@@ -342,8 +340,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 	}
 
 	protected long getNextIndex() {
-		long offset = (System.nanoTime() - baseNano) / 1000;
-		return baseIndex + offset;
+		return baseIndex + index.getAndIncrement();
 	}
 
 	private boolean isMe(Id id) {
@@ -431,7 +428,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 
 			message.setEncrypted(true);
 
-			log.trace("\uD83D\uDFE2 Decrypted message from {} ",  message.getFrom());
+			// log.trace("\uD83D\uDFE2 Decrypted message from {} ",  message.getFrom());
 
 			// enqueue the process handle to the event loop
 			vertxContext.runOnContext((v) -> {
@@ -517,17 +514,17 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 	}
 
 	private void processOutgoingMessage(MessageImpl message) throws CryptoException, RepositoryException {
-		int type = message.getMessageType();
-		long sn = message.getSerialNumber();
+		final int type = message.getMessageType();
+		final long sn = message.getSerialNumber();
 
 		MessageImpl selfSent = sendingMessages.remove(sn);
-		if (selfSent != null) {
+		if (selfSent != null && selfSent.getTo().equals(message.getTo()) && selfSent.getMessageType() == type) {
 			// message sent from this client device
 			// just use the original message
-			log.trace("\uD83D\uDCE8 using the original message");
+			// log.trace("\uD83D\uDCE8 using the original message");
 			message = selfSent;
 		} else {
-			log.trace("\uD83D\uDCE7 using the parsed message");
+			// log.trace("\uD83D\uDCE7 using the parsed message");
 			// message sent from other client device
 			byte[] body = message.getBody();
 
@@ -549,7 +546,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 				}
 
 				if (message.isEncrypted())
-					log.warn("\uD83D\uDCE7 Message to unknow sender {}, keep in encrypted", message.getFrom());
+					log.warn("Message to unknow sender {}, keep in encrypted", message.getFrom());
 
 				// Ignore other message types(notification) here. Errors will be logged below.
 			} else {
@@ -759,6 +756,9 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			}
 
 			case Notification.Events.CHANNEL_PROFILE: {
+				if (isMe(preparsed.getOperator()))
+					break;
+
 				Notification<Channel> notification = preparsed.asChannelProfile();
 				Channel channel = userAgent.getChannel(message.getTo());
 				channel.update(notification.getData());
@@ -767,6 +767,9 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			}
 
 			case Notification.Events.CHANNEL_DELETED: {
+				if (isMe(preparsed.getOperator()))
+					break;
+
 				Channel channel = userAgent.getChannel(message.getTo());
 				userAgent.onChannelDeleted(channel);
 				break;
@@ -790,66 +793,50 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			}
 
 			case Notification.Events.CHANNEL_MEMBERS_ROLE: {
+				if (isMe(preparsed.getOperator()))
+					break;
+
 				Notification<Notification.ChannelMembersRoleUpdated> notification = preparsed.asChannelMembersRole();
 				Channel.Role role = notification.getData().role();
 				List<Id> ids = notification.getData().members();
 				Channel channel = userAgent.getChannel(message.getTo());
-				List<Channel.Member> members = ids.stream().map(id -> {
-					Channel.Member member = channel.getMember(id);
-					if (member == null)
-						member = Channel.Member.unknown(id);
-
-					return member;
-				}).collect(Collectors.toList());
-
+				List<Channel.Member> members = mapToMembers(channel, ids);
 				userAgent.onChannelMembersRoleChanged(channel, members, role);
 				break;
 			}
 
 			case Notification.Events.CHANNEL_MEMBERS_BANNED: {
+				if (isMe(preparsed.getOperator()))
+					break;
+
 				Notification<List<Id>> notification = preparsed.asChannelMembersBanned();
 				List<Id> ids = notification.getData();
 				Channel channel = userAgent.getChannel(message.getTo());
-				List<Channel.Member> members = ids.stream().map(id -> {
-					Channel.Member member = channel.getMember(id);
-					if (member == null)
-						member = Channel.Member.unknown(id);
-
-					return member;
-				}).collect(Collectors.toList());
-
+				List<Channel.Member> members = mapToMembers(channel, ids);
 				userAgent.onChannelMembersBanned(channel, members);
 				break;
 			}
 
 			case Notification.Events.CHANNEL_MEMBERS_UNBANNED: {
+				if (isMe(preparsed.getOperator()))
+					break;
+
 				Notification<List<Id>> notification = preparsed.asChannelMembersUnbanned();
 				List<Id> ids = notification.getData();
 				Channel channel = userAgent.getChannel(message.getTo());
-				List<Channel.Member> members = ids.stream().map(id -> {
-					Channel.Member member = channel.getMember(id);
-					if (member == null)
-						member = Channel.Member.unknown(id);
-
-					return member;
-				}).collect(Collectors.toList());
-
+				List<Channel.Member> members = mapToMembers(channel, ids);
 				userAgent.onChannelMembersUnbanned(channel, members);
 				break;
 			}
 
 			case Notification.Events.CHANNEL_MEMBERS_REMOVED: {
+				if (isMe(preparsed.getOperator()))
+					break;
+
 				Notification<List<Id>> notification = preparsed.asChannelMembersRemoved();
 				List<Id> ids = notification.getData();
 				Channel channel = userAgent.getChannel(message.getTo());
-				List<Channel.Member> members = ids.stream().map(id -> {
-					Channel.Member member = channel.getMember(id);
-					if (member == null)
-						member = Channel.Member.unknown(id);
-
-					return member;
-				}).collect(Collectors.toList());
-
+				List<Channel.Member> members = mapToMembers(channel, ids);
 				userAgent.onChannelMembersRemoved(channel, members);
 				break;
 			}
@@ -871,13 +858,16 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		}
 
 		if (message.hasOriginalBody()) {
-			RPCRequest<?, ?> original = (RPCRequest<?, ?>)message.getOriginalBody();
-			if (!pendingCalls.containsKey(original.getId())) {
-				log.error("INTERNAL ERROR: RPC request not found, ignored");
+			try {
+				RPCRequest<?, ?> original = (RPCRequest<?, ?>)message.getOriginalBody();
+				if (!pendingCalls.containsKey(original.getId())) {
+					log.error("INTERNAL ERROR: RPC request not found, ignored");
+				}
+			} catch (Exception e) {
+				log.error("!!!INTERNAL ERROR: not a RPCRequest message", e);
 			}
 
 			// this call was initiated by self, do nothing
-			// log.info("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
 			return;
 		}
 
@@ -887,6 +877,12 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			preparsed = message.getBodyAs(new TypeReference<RPCRequest<JsonNode, ?>>() {});
 		} catch (IOException e) {
 			log.error("Malformed RPC request from {}, parse failed", message.getFrom(), e);
+			return;
+		}
+
+		// FALL-BACK: for unmatched local RPC requests
+		if (pendingCalls.containsKey(preparsed.getId())) {
+			log.warn("!!! RPC request found and initiated by self, but no matched message !!!");
 			return;
 		}
 
@@ -1076,6 +1072,18 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		case CHANNEL_DELETE: {
 			RPCRequest<Void, Boolean> call = request.cast();
 			RPCResponse<Boolean> response = preparsed.map(Boolean.class);
+
+			ChannelImpl channel = null;
+			try {
+				channel = (ChannelImpl)userAgent.getChannel(message.getFrom());
+			} catch (Exception e) {
+				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
+			}
+
+			// Create a dummy channel object to notify the listener
+			// if the channel is not found or can not be retrieved
+			Channel ch = channel != null ? channel : ChannelImpl.auto(message.getFrom());
+			userAgent.onChannelDeleted(ch);
 			call.complete(response);
 			break;
 		}
@@ -1122,14 +1130,13 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			ChannelImpl channel = null;
 			try {
 				channel = (ChannelImpl)userAgent.getChannel(message.getFrom());
+				if (channel != null)
+					channel.update(response.getResult());
+				else
+					channel = response.getResult();
 			} catch (Exception e) {
 				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
 			}
-
-			if (channel != null)
-				channel.update(response.getResult());
-			else
-				channel = response.getResult();
 
 			userAgent.onChannelUpdated(channel);
 			call.complete(response.revised(channel));
@@ -1147,6 +1154,8 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
 			}
 
+			// Create a dummy channel object to notify the listener
+			// if the channel is not found or can not be retrieved
 			Channel ch = channel != null ? channel : ChannelImpl.auto(message.getFrom());
 			userAgent.onChannelMembers(ch, members);
 			call.complete(reponse);
@@ -1160,6 +1169,11 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			ChannelImpl channel = null;
 			try {
 				channel = (ChannelImpl)userAgent.getChannel(message.getFrom());
+				if (channel == null)
+					// Create a dummy channel object to notify the listener
+					// if the channel is not found or can not be retrieved
+					channel = (ChannelImpl)ChannelImpl.auto(message.getFrom());
+
 				channel.setOwner(call.getParameters());
 			} catch (RepositoryException e) {
 				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
@@ -1177,6 +1191,11 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			ChannelImpl channel = null;
 			try {
 				channel = (ChannelImpl)userAgent.getChannel(message.getFrom());
+				if (channel == null)
+					// Create a dummy channel object to notify the listener
+					// if the channel is not found or can not be retrieved
+					channel = (ChannelImpl)ChannelImpl.auto(message.getFrom());
+
 				channel.setPermission(call.getParameters());
 			} catch (RepositoryException e) {
 				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
@@ -1194,6 +1213,11 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			ChannelImpl channel = null;
 			try {
 				channel = (ChannelImpl)userAgent.getChannel(message.getFrom());
+				if (channel == null)
+					// Create a dummy channel object to notify the listener
+					// if the channel is not found or can not be retrieved
+					channel = (ChannelImpl)ChannelImpl.auto(message.getFrom());
+
 				channel.setName(call.getParameters());
 			} catch (RepositoryException e) {
 				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
@@ -1211,6 +1235,11 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			ChannelImpl channel = null;
 			try {
 				channel = (ChannelImpl)userAgent.getChannel(message.getFrom());
+				if (channel == null)
+					// Create a dummy channel object to notify the listener
+					// if the channel is not found or can not be retrieved
+					channel = (ChannelImpl)ChannelImpl.auto(message.getFrom());
+
 				channel.setNotice(call.getParameters());
 			} catch (RepositoryException e) {
 				log.error("INTERNAL ERROR: Failed to retrieve the channel from the user agent.", e);
@@ -1311,7 +1340,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		}
 	}
 
-	private List<Channel.Member> mapToMembers(ChannelImpl channel, List<Id> ids) {
+	private List<Channel.Member> mapToMembers(Channel channel, List<Id> ids) {
 		return ids.stream()
 				.map(id -> {
 					Channel.Member member = null;
