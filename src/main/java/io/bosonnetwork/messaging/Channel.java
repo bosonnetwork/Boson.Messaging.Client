@@ -259,7 +259,7 @@ public abstract class Channel extends Contact {
 		super.update(profile);
 	}
 
-	protected void update(Channel channel) {
+	public void update(Channel channel) {
 		this.permission = channel.permission;
 		this.owner = channel.owner;
 		this.notice = channel.notice;

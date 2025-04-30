@@ -111,7 +111,14 @@ public class Notification<DT> {
 		return (Notification<Void>)this;
 	}
 
-	public record ChannelMembersRoleUpdated(@JsonProperty("r") Channel.Role role, @JsonProperty("id") List<Id> members) {}
+
+	public record ChannelMembersRoleUpdated(
+			@JsonProperty(value = "r", required = true) Channel.Role role,
+			@JsonProperty(value = "id", required = true) List<Id> members) {
+		@JsonCreator
+		public ChannelMembersRoleUpdated {
+		}
+	}
 
 	public Notification<ChannelMembersRoleUpdated> asChannelMembersRole() {
 		return map(ChannelMembersRoleUpdated.class);

@@ -144,7 +144,7 @@ public class ChannelImpl extends Channel {
 
 	@Override
 	protected Member removeMember(Id memberId) {
-		return members.remove(memberId);
+		return members().remove(memberId);
 	}
 
 	@Override
@@ -169,11 +169,6 @@ public class ChannelImpl extends Channel {
 	@Override
 	public Member getMember(Id id) {
 		return members().get(id);
-	}
-
-	@Override
-	protected void update(Channel channel) {
-		super.update(channel);
 	}
 
 	@Override
