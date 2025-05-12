@@ -679,28 +679,28 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 
 	@Override
 	public CompletableFuture<Void> connect() {
-		CompletableFuture<Void> future = new CompletableFuture<>();
+		Promise<Void> promise = Promise.promise();
 
 		vertxContext.runOnContext((v) -> {
 			doConnect()
-				.onSuccess(na -> future.complete(null))
-				.onFailure(e -> future.completeExceptionally(e));
+				.onSuccess(na -> promise.complete(null))
+				.onFailure(e -> promise.fail(e));
 		});
 
-		return future;
+		return VertxFuture.of(promise.future());
 	}
 
 	@Override
 	public CompletableFuture<Void> disconnect() {
-		CompletableFuture<Void> future = new CompletableFuture<>();
+		Promise<Void> promise = Promise.promise();
 
 		vertxContext.runOnContext((v) -> {
 			doDisconnect()
-				.onSuccess(na -> future.complete(null))
-				.onFailure(e -> future.completeExceptionally(e));
+				.onSuccess(na -> promise.complete(null))
+				.onFailure(e -> promise.fail(e));
 		});
 
-		return future;
+		return VertxFuture.of(promise.future());
 	}
 
 	@Override
