@@ -9,7 +9,7 @@ import org.jdbi.v3.core.extension.Extensions;
 import org.jdbi.v3.core.statement.Slf4JSqlLogger;
 import org.jdbi.v3.sqlobject.SqlObjectPlugin;
 
-import io.bosonnetwork.util.jdbi.BosonPlugin;
+import io.bosonnetwork.utils.jdbi.BosonPlugin;
 import io.bosonnetwork.utils.FileUtils;
 
 public class TestDatabase {
