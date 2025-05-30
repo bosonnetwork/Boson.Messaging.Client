@@ -10,6 +10,8 @@ import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import io.vertx.core.Vertx;
 import org.jdbi.v3.core.HandleCallback;
 import org.jdbi.v3.core.HandleConsumer;
 import org.jdbi.v3.core.Jdbi;
@@ -18,8 +20,6 @@ import org.jdbi.v3.core.statement.Slf4JSqlLogger;
 import org.jdbi.v3.sqlobject.SqlObjectPlugin;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.github.benmanes.caffeine.cache.Cache;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.messaging.Channel;
@@ -33,9 +33,8 @@ import io.bosonnetwork.messaging.RepositoryException;
 import io.bosonnetwork.messaging.impl.ChannelImpl;
 import io.bosonnetwork.messaging.impl.ConversationImpl;
 import io.bosonnetwork.messaging.impl.MessageImpl;
-import io.bosonnetwork.util.jdbi.BosonPlugin;
+import io.bosonnetwork.utils.jdbi.BosonPlugin;
 import io.bosonnetwork.utils.vertx.VertxBackedCaffeine;
-import io.vertx.core.Vertx;
 
 public class Database implements MessagingRepository {
 	private static final String MEMORY = ":memory:";
