@@ -9,7 +9,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
 
 import io.bosonnetwork.messaging.RPCException;
-import io.bosonnetwork.utils.Json;
+import io.bosonnetwork.json.Json;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 

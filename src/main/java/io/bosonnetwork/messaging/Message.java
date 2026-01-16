@@ -17,14 +17,14 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufOutputStream;
+import io.vertx.core.json.JsonObject;
 
 import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.crypto.CryptoException;
-import io.bosonnetwork.utils.Json;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufOutputStream;
-import io.vertx.core.json.JsonObject;
+import io.bosonnetwork.json.Json;
 
 public abstract class Message {
 	public static final int VERSION = 1;
@@ -235,11 +235,11 @@ public abstract class Message {
 	}
 
 	public Map<String, Object> getBodyAsMap() throws IOException {
-		return body == null ? null : getBodyAs(Json.MAP_TYPE);
+		return body == null ? null : getBodyAs(Json.mapType());
 	}
 
 	public JsonObject getBodyAsJson() throws IOException {
-		return body != null ? new JsonObject(getBodyAs(Json.MAP_TYPE)) : null;
+		return body != null ? new JsonObject(getBodyAs(Json.mapType())) : null;
 	}
 
 	public <T> T getBodyAs(Class<T> clazz) throws IOException {

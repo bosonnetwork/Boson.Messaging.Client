@@ -13,7 +13,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.messaging.Message;
 import io.bosonnetwork.messaging.impl.MessageImpl;
-import io.bosonnetwork.utils.Json;
+import io.bosonnetwork.json.Json;
 
 public class MessageRowMapper implements RowMapper<Message> {
 	protected static Message map(ResultSet rs) throws SQLException {

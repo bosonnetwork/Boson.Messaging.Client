@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import io.vertx.core.Vertx;
 
 import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
@@ -16,7 +17,6 @@ import io.bosonnetwork.crypto.CryptoBox;
 import io.bosonnetwork.crypto.CryptoException;
 import io.bosonnetwork.crypto.Signature;
 import io.bosonnetwork.messaging.impl.ContactBuilder;
-import io.vertx.core.Vertx;
 
 @JsonDeserialize(builder = ContactBuilder.class)
 public abstract class Contact implements Comparable<Contact> {
@@ -150,7 +150,7 @@ public abstract class Contact implements Comparable<Contact> {
 		if (Vertx.currentContext() == null)
 			return null;
 
-		return Vertx.currentContext().getLocal("SelfEncryptionContext");
+		return Vertx.currentContext().get("SelfEncryptionContext");
 	}
 
 	@JsonProperty("sk")

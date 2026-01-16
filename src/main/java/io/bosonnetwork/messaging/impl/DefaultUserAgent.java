@@ -13,12 +13,14 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+import io.vertx.core.Vertx;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.Identity;
 import io.bosonnetwork.crypto.CryptoIdentity;
+import io.bosonnetwork.json.Json;
 import io.bosonnetwork.messaging.Channel;
 import io.bosonnetwork.messaging.Channel.Member;
 import io.bosonnetwork.messaging.Channel.Role;
@@ -37,8 +39,6 @@ import io.bosonnetwork.messaging.ProfileListener;
 import io.bosonnetwork.messaging.RepositoryException;
 import io.bosonnetwork.messaging.UserAgent;
 import io.bosonnetwork.messaging.UserProfile;
-import io.bosonnetwork.utils.Json;
-import io.vertx.core.Vertx;
 
 public class DefaultUserAgent implements UserAgent {
 	private final Vertx vertx;
@@ -167,7 +167,7 @@ public class DefaultUserAgent implements UserAgent {
 		if (key.startsWith("."))
 			throw new IllegalArgumentException("invalid key");
 
-		return repository.getConfig(key, Json.MAP_TYPE);
+		return repository.getConfig(key, Json.mapType());
 	}
 
 	@Override
@@ -258,7 +258,7 @@ public class DefaultUserAgent implements UserAgent {
 			throw new IllegalStateException("messaging repository not configured");
 
 		try {
-			Map<String, Object> userInfo = repository.getConfig(".user", Json.MAP_TYPE);
+			Map<String, Object> userInfo = repository.getConfig(".user", Json.mapType());
 			if (userInfo != null && !userInfo.isEmpty()) {
 				byte[] privateKey = (byte[])userInfo.get("privateKey");
 				CryptoIdentity id = new CryptoIdentity(privateKey);
@@ -272,7 +272,7 @@ public class DefaultUserAgent implements UserAgent {
 		}
 
 		try {
-			Map<String, Object> deviceInfo = repository.getConfig(".device", Json.MAP_TYPE);
+			Map<String, Object> deviceInfo = repository.getConfig(".device", Json.mapType());
 			if (deviceInfo != null && !deviceInfo.isEmpty()) {
 				byte[] privateKey = (byte[])deviceInfo.get("privateKey");
 				CryptoIdentity id = privateKey == null ? null : new CryptoIdentity(privateKey);
@@ -286,7 +286,7 @@ public class DefaultUserAgent implements UserAgent {
 		}
 
 		try {
-			Map<String, Object> peerInfo = repository.getConfig(".peer", Json.MAP_TYPE);
+			Map<String, Object> peerInfo = repository.getConfig(".peer", Json.mapType());
 			if (peerInfo != null && !peerInfo.isEmpty()) {
 				byte[] id = (byte[])peerInfo.get("peerId");
 				Id peerId = Id.of(id);

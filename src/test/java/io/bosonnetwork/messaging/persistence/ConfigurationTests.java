@@ -10,7 +10,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
-import io.bosonnetwork.utils.Json;
+import io.bosonnetwork.json.Json;
 import net.datafaker.Faker;
 
 public class ConfigurationTests {

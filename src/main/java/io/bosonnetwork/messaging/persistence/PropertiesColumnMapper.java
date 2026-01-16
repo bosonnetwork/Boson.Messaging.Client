@@ -10,7 +10,7 @@ import org.jdbi.v3.core.statement.StatementContext;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 
-import io.bosonnetwork.utils.Json;
+import io.bosonnetwork.json.Json;
 
 public class PropertiesColumnMapper implements ColumnMapper<Map<String, Object>> {
 	@Override

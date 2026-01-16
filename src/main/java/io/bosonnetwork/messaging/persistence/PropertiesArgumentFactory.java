@@ -12,7 +12,7 @@ import org.jdbi.v3.core.config.ConfigRegistry;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 
-import io.bosonnetwork.utils.Json;
+import io.bosonnetwork.json.Json;
 
 public class PropertiesArgumentFactory extends AbstractArgumentFactory<Map<String, Object>> {
 	public PropertiesArgumentFactory() {
