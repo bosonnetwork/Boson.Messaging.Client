@@ -34,7 +34,7 @@ import io.bosonnetwork.messaging.impl.ChannelImpl;
 import io.bosonnetwork.messaging.impl.ConversationImpl;
 import io.bosonnetwork.messaging.impl.MessageImpl;
 import io.bosonnetwork.utils.jdbi.BosonPlugin;
-import io.bosonnetwork.utils.vertx.VertxBackedCaffeine;
+import io.bosonnetwork.vertx.VertxCaffeine;
 
 public class Database implements MessagingRepository {
 	private static final String MEMORY = ":memory:";
@@ -48,7 +48,7 @@ public class Database implements MessagingRepository {
 	private Database(Vertx vertx, Jdbi jdbi) {
 		this.jdbi = jdbi;
 
-		contactCache = VertxBackedCaffeine.newBuilder(vertx)
+		contactCache = VertxCaffeine.newBuilder(vertx)
 				.recordStats()
 				.initialCapacity(64)
 				.maximumSize(1024)

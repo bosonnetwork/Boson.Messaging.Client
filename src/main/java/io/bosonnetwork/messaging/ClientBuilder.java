@@ -12,21 +12,18 @@ import java.util.concurrent.CompletionException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import io.vertx.core.CompositeFuture;
+import io.vertx.core.Future;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.Identity;
 import io.bosonnetwork.LookupOption;
-import io.bosonnetwork.Network;
 import io.bosonnetwork.Node;
-import io.bosonnetwork.NodeInfo;
-import io.bosonnetwork.PeerInfo;
 import io.bosonnetwork.crypto.CryptoIdentity;
 import io.bosonnetwork.crypto.Signature.KeyPair;
 import io.bosonnetwork.messaging.impl.APIClient.MessagingServiceId;
-import io.vertx.core.CompositeFuture;
-import io.vertx.core.Future;
 
 public abstract class ClientBuilder {
 	// Vertx options
@@ -272,50 +269,36 @@ public abstract class ClientBuilder {
 
 		log.info("Looking up peer {} ...", peerId);
 
-		return Future.fromCompletionStage(deviceNode.findPeer(peerId, 0, LookupOption.ARBITRARY)).map((pil) -> {
+		return Future.fromCompletionStage(deviceNode.findPeer(peerId, 0, 4, LookupOption.ARBITRARY)).map((pil) -> {
 			if (pil.isEmpty()) {
+				log.error("Peer not found {}", peerId);
+				throw new CompletionException("Peer not found: " + peerId, null);
+			}
+
+			if (nodeId != null) {
+				pil.removeIf(pi -> !Objects.equals(nodeId, pi.getNodeId()));
+				if (pil.isEmpty()) {
 					log.error("Peer not found {}", peerId);
 					throw new CompletionException("Peer not found: " + peerId, null);
 				}
-
-				PeerInfo pi = pil.get(0);
-				if (nodeId == null)
-					nodeId = pi.getNodeId();
-				else {
-					if (!nodeId.equals(pi.getNodeId())) {
-						log.error("Peer node id does not match the expected node id.");
-						throw new CompletionException("Peer node id does not match the expected node id.", null);
-					}
+			}
+			List<URL> urls = new ArrayList<>();
+			pil.forEach(pi -> {
+				try {
+					urls.add(new URL(pi.getEndpoint()));
+				} catch (MalformedURLException e) {
+					// ignore and skip
+					log.error("Invalid messaging peer URL", e);
 				}
-
-				log.info("Found peer {}, node id: {}", peerId, pi.getNodeId());
-				return pi;
-			}).compose((pi) -> {
-				log.info("Looking up node {} ...", pi.getNodeId());
-
-				return Future.fromCompletionStage(deviceNode.findNode(pi.getNodeId(), LookupOption.ARBITRARY)).map((r) -> {
-					NodeInfo ni = r.get(Network.IPv4);
-					if (ni == null) {
-						log.error("Node not found {}", pi.getNodeId());
-						throw new CompletionException("Node not found: " + pi.getNodeId(), null);
-					}
-
-					List<URL> urls = new ArrayList<>(3);
-					try {
-						if (pi.hasAlternativeURL())
-							urls.add(new URL(pi.getAlternativeURL()));
-
-						urls.add(new URL("https", ni.getAddress().getHostString(), pi.getPort(), "/"));
-						urls.add(new URL("http",  ni.getAddress().getHostString(), pi.getPort(), "/"));
-					} catch (MalformedURLException e) {
-						log.error("Invalid messaging peer URL", e);
-						throw new CompletionException("Invalid messaging peer URL", e);
-					}
-
-					log.info("Found node {}", pi.getNodeId());
-					return urls;
-				});
 			});
+
+			if (urls.isEmpty()) {
+				log.error("Peer not found {}", peerId);
+				throw new CompletionException("Peer not found: " + peerId, null);
+			}
+
+			return urls;
+		});
 	}
 
 	protected abstract Future<MessagingServiceId> getServiceIds(URL url);

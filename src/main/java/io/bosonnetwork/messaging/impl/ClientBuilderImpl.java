@@ -16,7 +16,7 @@ import io.bosonnetwork.messaging.UserAgent;
 import io.bosonnetwork.messaging.UserProfile;
 import io.bosonnetwork.messaging.impl.APIClient.MessagingServiceId;
 import io.bosonnetwork.messaging.persistence.Database;
-import io.bosonnetwork.utils.vertx.VertxFuture;
+import io.bosonnetwork.vertx.VertxFuture;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;

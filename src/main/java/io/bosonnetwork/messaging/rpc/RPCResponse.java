@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
 
-import io.bosonnetwork.utils.Json;
+import io.bosonnetwork.json.Json;
 
 public class RPCResponse<R> {
 	@JsonProperty(value = "i", required = true)

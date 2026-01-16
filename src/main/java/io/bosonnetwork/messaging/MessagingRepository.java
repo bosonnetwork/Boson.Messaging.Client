@@ -9,7 +9,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.messaging.Channel.Member;
 import io.bosonnetwork.messaging.Channel.Role;
-import io.bosonnetwork.utils.Json;
+import io.bosonnetwork.json.Json;
 
 public interface MessagingRepository {
 	// Configuration ///////////////////////////////////////////////////////////

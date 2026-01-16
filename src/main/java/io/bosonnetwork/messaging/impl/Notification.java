@@ -11,7 +11,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.messaging.Channel;
 import io.bosonnetwork.messaging.Profile;
-import io.bosonnetwork.utils.Json;
+import io.bosonnetwork.json.Json;
 
 public class Notification<DT> {
 	@JsonProperty("e")

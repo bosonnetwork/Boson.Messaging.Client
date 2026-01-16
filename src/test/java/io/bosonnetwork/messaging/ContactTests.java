@@ -24,7 +24,7 @@ import io.bosonnetwork.crypto.Signature.KeyPair;
 import io.bosonnetwork.crypto.Signature.PrivateKey;
 import io.bosonnetwork.messaging.impl.ChannelImpl;
 import io.bosonnetwork.messaging.impl.ContactImpl;
-import io.bosonnetwork.utils.Json;
+import io.bosonnetwork.json.Json;
 
 public class ContactTests {
 	private static Map<Id, PrivateKey> keys = new HashMap<>();

@@ -17,11 +17,23 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import io.netty.handler.codec.mqtt.MqttQoS;
+import io.vertx.core.Context;
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
+import io.vertx.core.Verticle;
+import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
+import io.vertx.core.internal.ContextInternal;
+import io.vertx.core.net.PemTrustOptions;
+import io.vertx.mqtt.MqttClient;
+import io.vertx.mqtt.MqttClientOptions;
+import io.vertx.mqtt.messages.MqttPublishMessage;
+import io.vertx.mqtt.messages.MqttSubAckMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
@@ -54,19 +66,7 @@ import io.bosonnetwork.messaging.rpc.RPCParameters.ChannelMemberRole;
 import io.bosonnetwork.messaging.rpc.RPCRequest;
 import io.bosonnetwork.messaging.rpc.RPCResponse;
 import io.bosonnetwork.utils.Base58;
-import io.bosonnetwork.utils.vertx.VertxFuture;
-import io.netty.handler.codec.mqtt.MqttQoS;
-import io.vertx.core.Context;
-import io.vertx.core.Future;
-import io.vertx.core.Promise;
-import io.vertx.core.Verticle;
-import io.vertx.core.Vertx;
-import io.vertx.core.buffer.Buffer;
-import io.vertx.core.net.PemTrustOptions;
-import io.vertx.mqtt.MqttClient;
-import io.vertx.mqtt.MqttClientOptions;
-import io.vertx.mqtt.messages.MqttPublishMessage;
-import io.vertx.mqtt.messages.MqttSubAckMessage;
+import io.bosonnetwork.vertx.VertxFuture;
 
 public class MessagingClientImpl implements Verticle, MessagingClient {
 	// since Jan 01 2020 00:00:00 GMT+0000
@@ -205,8 +205,12 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		apiClient.setAccessToken(loadAccessToken());
 		apiClient.setAccessTokenRefreshHandler(this::updateAccessToken);
 
-		selfContext = user.createCryptoContext(user.getId());
-		vertxContext.putLocal("SelfEncryptionContext", selfContext);
+		try {
+			selfContext = user.createCryptoContext(user.getId());
+		} catch (CryptoException e) {
+			throw new RuntimeException(e);
+		}
+		vertxContext.put("SelfEncryptionContext", selfContext);
 
 		String currentVersionId = null;
 		try {
@@ -236,7 +240,11 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			return apiClient.getServiceInfo().map(info -> {
 				serviceInfo = info;
 
-				serverContext = user.createCryptoContext(peer.getPeerId());
+				try {
+					serverContext = user.createCryptoContext(peer.getPeerId());
+				} catch (CryptoException e) {
+					throw new RuntimeException(e);
+				}
 
 				// MqttClientOptions acts like a static data bean/POJO and does not support dynamic options.
 				// Additionally, the MqttClient creates a copy of the options when the instance is created.
@@ -534,7 +542,11 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 					Contact contact = userAgent.getContact(message.getTo());
 					if (contact != null && contact.hasSessionKey()) {
 						CryptoContext ctx = contact.getTxCryptoContext(() -> {
-							return user.createCryptoContext(contact.getSessionId());
+							try {
+								return user.createCryptoContext(contact.getSessionId());
+							} catch (CryptoException e) {
+								throw new RuntimeException(e);
+							}
 						});
 						message.decryptBody(ctx);
 					}
@@ -1557,8 +1569,13 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		byte[] sig = user.sign(shasum.digest());
 
 		byte[] sk = channel.getSessionKeyPair().privateKey().bytes();
-		if (invitee != null)
-			sk = user.encrypt(invitee, sk);
+		if (invitee != null) {
+			try {
+				sk = user.encrypt(invitee, sk);
+			} catch (CryptoException e) {
+				throw new RuntimeException(e);
+			}
+		}
 
 		return new InviteTicket(channelId, user.getId(), invitee == null, expire, sig, sk);
 	}
@@ -1851,7 +1868,11 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 					Contact recipient = userAgent.getContact(message.getTo());
 					if (recipient != null && recipient.hasSessionKey()) {
 						CryptoContext ctx = recipient.getTxCryptoContext(() -> {
-							return user.createCryptoContext(recipient.getSessionId());
+							try {
+								return user.createCryptoContext(recipient.getSessionId());
+							} catch (CryptoException e) {
+								throw new RuntimeException(e);
+							}
 						});
 						encryptedBody = ctx.encrypt(body);
 					} else {
@@ -2061,6 +2082,35 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			});
 		});
 
+		return promise.future();
+	}
+
+	@Override
+	public Future<?> deploy(Context context) {
+		init(context.owner(), context);
+		ContextInternal internal = (ContextInternal) context;
+		Promise<Void> promise = internal.promise();
+		try {
+			start(promise);
+		} catch (Throwable t) {
+			if (!promise.tryFail(t)) {
+				internal.reportException(t);
+			}
+		}
+		return promise.future();
+	}
+
+	@Override
+	public Future<?> undeploy(Context context) {
+		ContextInternal internal = (ContextInternal) context;
+		Promise<Void> promise = internal.promise();
+		try {
+			stop(promise);
+		} catch (Throwable t) {
+			if (!promise.tryFail(t)) {
+				internal.reportException(t);
+			}
+		}
 		return promise.future();
 	}
 }

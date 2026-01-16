@@ -30,14 +30,6 @@ public class ClientDevice {
 	@JsonProperty("la")
 	private String lastAddress;
 
-	/**
-	 * Creates an ephemeral {@code Credential} object for client with
-	 * specified public key and nonce.
-	 *
-	 * @param clientId the target MQTT client id.
-	 * @param clientPk the client side session encryption public key(CryptoBox).
-	 * @param nonce the session nonce.
-	 */
 	@JsonCreator
 	ClientDevice(@JsonProperty(value = "id", required = true) Id id,
 			@JsonProperty(value = "n", required = true) String deviceName,

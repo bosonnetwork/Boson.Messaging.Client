@@ -12,14 +12,6 @@ import java.util.function.Consumer;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-
-import io.bosonnetwork.Id;
-import io.bosonnetwork.Identity;
-import io.bosonnetwork.crypto.CryptoBox.Nonce;
-import io.bosonnetwork.crypto.CryptoIdentity;
-import io.bosonnetwork.crypto.Signature;
-import io.bosonnetwork.messaging.Profile;
-import io.bosonnetwork.messaging.UserProfile;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -30,6 +22,14 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpVersion;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonObject;
+
+import io.bosonnetwork.Id;
+import io.bosonnetwork.Identity;
+import io.bosonnetwork.crypto.CryptoBox.Nonce;
+import io.bosonnetwork.crypto.CryptoIdentity;
+import io.bosonnetwork.crypto.Signature;
+import io.bosonnetwork.messaging.Profile;
+import io.bosonnetwork.messaging.UserProfile;
 
 public class APIClient {
 	private final Vertx vertx;
@@ -56,7 +56,6 @@ public class APIClient {
 				.setSsl(apiURL.getProtocol().equals("https"))
 				.setTrustAll(true)
 				.setVerifyHost(false)
-				.setMaxPoolSize(128)
 				.setKeepAlive(true)
 				.setConnectTimeout(10000)
 				.setKeepAliveTimeout(120)
