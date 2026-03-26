@@ -1477,13 +1477,13 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		if (ticket.isExpired())
 			return VertxFuture.failedFuture(new IllegalArgumentException("ticket expired"));
 
-		if (!ticket.isValid(getUserId()))
+		if (!ticket.isValid())
 			return VertxFuture.failedFuture(new IllegalArgumentException("ticket is not valid"));
 
 		byte[] sessionKey = null;
 		try {
 			// check the private key
-			if (ticket.isPublic()) {
+			if (ticket.isBearerTicket()) {
 				sessionKey = ticket.getSessionKey();
 			} else {
 				sessionKey = user.decrypt(ticket.getInviter(), ticket.getSessionKey());
@@ -1495,7 +1495,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		}
 
 		RPCRequest<InviteTicket, Channel> request = new RPCRequest<>(
-				getNextIndex(), RPCMethod.CHANNEL_JOIN, ticket.proof());
+				getNextIndex(), RPCMethod.CHANNEL_JOIN, ticket.stub());
 		request.setCookie(sessionKey, this::selfEncrypt);
 
 		vertxContext.runOnContext((v) -> {
@@ -1577,7 +1577,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			}
 		}
 
-		return new InviteTicket(channelId, user.getId(), invitee == null, expire, sig, sk);
+		return new InviteTicket(channelId, user.getId(), invitee, expire, sig, sk);
 	}
 
 	private Future<Channel> getChannelInfo(Id channelId) {
