@@ -1,3 +1,25 @@
+/*
+ * Copyright (c) 2023 -      bosonnetwork.io
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 package io.bosonnetwork.messaging;
 
 import java.util.List;
@@ -5,36 +27,95 @@ import java.util.List;
 import io.bosonnetwork.messaging.Channel.Member;
 import io.bosonnetwork.messaging.Channel.Role;
 
-public interface ChannelListener {
-	// Myself joined a new channel
-	// The channel object already include the member private key
-	public void onJoinedChannel(Channel channel);
+/**
+ * Listener for channel-related events in the messaging system.
+ * Implementations of this interface can be used to monitor channel lifecycle,
+ * membership changes, and property updates.
+ */
+interface ChannelListener {
+	/**
+	 * Called when the current user has joined a new channel.
+	 * The channel object already includes the member's private key.
+	 *
+	 * @param channel the channel that was joined
+	 */
+	void onJoinedChannel(Channel channel);
 
-	public void onLeftChannel(Channel channel);
+	/**
+	 * Called when the current user has left a channel.
+	 *
+	 * @param channel the channel that was left
+	 */
+	void onLeftChannel(Channel channel);
 
-	// The channel was deleted by the owner
-	public void onChannelDeleted(Channel channel);
+	/**
+	 * Called when a channel was deleted by its owner.
+	 *
+	 * @param channel the channel that was deleted
+	 */
+	void onChannelDeleted(Channel channel);
 
-	// The channel info was updated
-	public void onChannelUpdated(Channel channel);
+	/**
+	 * Called when the channel information (such as name or description) was updated.
+	 *
+	 * @param channel the updated channel
+	 */
+	void onChannelUpdated(Channel channel);
 
-	// The channel members full list updated
-	public void onChannelMembers(Channel channel, List<Member> members);
+	/**
+	 * Called when the full list of channel members has been updated.
+	 *
+	 * @param channel the channel whose members were updated
+	 * @param members the complete list of current members
+	 */
+	void onChannelMembers(Channel channel, List<Member> members);
 
-	// The channel has a new member joined.
-	public void onChannelMemberJoined(Channel channel, Member member);
+	/**
+	 * Called when a new member has joined the channel.
+	 *
+	 * @param channel the channel joined
+	 * @param member  the member who joined
+	 */
+	void onChannelMemberJoined(Channel channel, Member member);
 
-	// THe channel has a member left.
-	public void onChannelMemberLeft(Channel channel, Member member);
+	/**
+	 * Called when a member has left the channel.
+	 *
+	 * @param channel the channel left
+	 * @param member  the member who left
+	 */
+	void onChannelMemberLeft(Channel channel, Member member);
 
-	// THe channel has a member left.
-	public void onChannelMembersRemoved(Channel channel, List<Member> members);
+	/**
+	 * Called when members have been removed from the channel by an administrator.
+	 *
+	 * @param channel the channel from which members were removed
+	 * @param members the list of members removed
+	 */
+	void onChannelMembersRemoved(Channel channel, List<Member> members);
 
-	// THe channel has a member left.
-	public void onChannelMembersBanned(Channel channel, List<Member> banned);
+	/**
+	 * Called when members have been banned from the channel.
+	 *
+	 * @param channel the channel where members were banned
+	 * @param banned  the list of banned members
+	 */
+	void onChannelMembersBanned(Channel channel, List<Member> banned);
 
-	// THe channel has a member left.
-	public void onChannelMembersUnbanned(Channel channel, List<Member> unbanned);
+	/**
+	 * Called when members have been unbanned from the channel.
+	 *
+	 * @param channel  the channel where members were unbanned
+	 * @param unbanned the list of unbanned members
+	 */
+	void onChannelMembersUnbanned(Channel channel, List<Member> unbanned);
 
-	public void onChannelMembersRoleChanged(Channel channel, List<Member> changed, Role role);
+	/**
+	 * Called when the role of one or more members in the channel has changed.
+	 *
+	 * @param channel the channel where the role change occurred
+	 * @param changed the list of members whose roles were updated
+	 * @param role    the new role assigned to these members
+	 */
+	void onChannelMembersRoleChanged(Channel channel, List<Member> changed, Role role);
 }

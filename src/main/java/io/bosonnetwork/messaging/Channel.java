@@ -1,154 +1,291 @@
 package io.bosonnetwork.messaging;
+
+import java.io.PrintStream;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonValue;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
 import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
-import io.bosonnetwork.messaging.impl.ChannelBuilder;
+import io.bosonnetwork.crypto.CryptoException;
 
-@JsonDeserialize(builder = ChannelBuilder.class)
 public abstract class Channel extends Contact {
-	@JsonProperty("o")
-	@JsonInclude(Include.NON_NULL)
-	private Id owner;
+	/**
+	 * The unique identifier of the channel's owner (the creator or current administrator).
+	 */
+	@JsonProperty(value = "o", required = true)
+	private Id ownerId;
 
-	@JsonProperty("pm")
-	@JsonInclude(Include.NON_DEFAULT)
+	/**
+	 * The join permissions for the channel (e.g., PUBLIC, MEMBER_INVITE, OWNER_INVITE).
+	 */
+	@JsonProperty(value = "p", required = true)
 	private Permission permission;
 
-	// @JsonProperty("nt")
-	// @JsonInclude(Include.NON_EMPTY)
+	/**
+	 * A brief notice or descriptive information about the channel.
+	 */
+	@JsonProperty(value = "nt")
+	@JsonInclude(JsonInclude.Include.NON_EMPTY)
 	private String notice;
 
-	private Map<Id, CryptoContext> memberCryptoContexts;
+	/**
+	 * Indicates whether the channel is actively being announced to the network.
+	 */
+	@JsonProperty(value = "a")
+	@JsonInclude(JsonInclude.Include.NON_DEFAULT)
+	private boolean announce;
 
-	public static enum Permission {
-		PUBLIC(0), MEMBER_INVITE(1), MODERATOR_INVITE(2), OWNER_INVITE(3);
+	/**
+	 * A thread-safe map of channel members, indexed by their unique IDs.
+	 * Uses Copy-On-Write logic: a new map is created on member additions or removals.
+	 */
+	private volatile Map<Id, Member> _members;
 
-		private int value;
+	/**
+	 * Cached receiver crypto contexts for each member.
+	 */
+	private Map<Id, CryptoContext> memberRxCryptoContexts;
 
-		Permission(int value) {
-			this.value = value;
-		}
+	/**
+	 * Represents the set of permissions that can be applied to a channel.
+	 * Each value defines the level of authorization for user interaction and
+	 * invitation rights within the context of a channel.
+	 */
+	public enum Permission {
+		/**
+		 * Indicates that the channel is open to all users without requiring any specific
+		 * invitation or approval. Users can freely join and interact without restrictions.
+		 */
+		PUBLIC,
+		// new members should be invited by the members
+		/**
+		 * Represents a permission level where new members can only join a channel
+		 * if they are explicitly invited by existing members. This enforces a more
+		 * controlled and selective process for adding participants to the channel.
+		 */
+		MEMBER_INVITE,
+		/**
+		 * Represents a permission level where new members can only join a channel
+		 * if they are invited by a moderator. This ensures that moderators have
+		 * control over who can participate in the channel, providing an added layer
+		 * of oversight and security.
+		 */
+		MODERATOR_INVITE,
+		/**
+		 * Represents a permission level where new members can only join a channel
+		 * if they are invited by the owner. This provides the highest degree of control
+		 * over whom is allowed to participate, ensuring that only individuals explicitly
+		 * approved by the owner can join.
+		 */
+		OWNER_INVITE;
 
+		/**
+		 * Returns the ordinal value of the enum constant, which represents its position
+		 * in the declaration order. This value is used for serialization purposes
+		 * and can be mapped back to the corresponding enum constant.
+		 *
+		 * @return the integer ordinal value of the enum constant
+		 */
 		@JsonValue
 		public int value() {
-			return value;
+			return ordinal();
 		}
 
+		/**
+		 * Converts an integer value to the corresponding {@code Permission} enum constant.
+		 * The mapping is based on the ordinal positions of the constants:
+		 *
+		 * @param value the integer value representing a {@code Permission} level
+		 * @return the corresponding {@code Permission} enum constant
+		 * @throws IllegalArgumentException if the provided value is not a valid permission
+		 */
 		@JsonCreator
 		public static Permission valueOf(int value) {
 			return switch (value) {
-			case 0 -> PUBLIC;
-			case 1 -> MEMBER_INVITE;
-			case 2 -> MODERATOR_INVITE;
-			case 3 -> OWNER_INVITE;
-			default -> throw new IllegalArgumentException("Invalid permission value");
+				case 0 -> PUBLIC;
+				case 1 -> MEMBER_INVITE;
+				case 2 -> MODERATOR_INVITE;
+				case 3 -> OWNER_INVITE;
+				default -> throw new IllegalArgumentException("Invalid permission value");
 			};
 		}
 	}
 
-	public static enum Role {
-		OWNER(0), MODERATOR(1), MEMBER(2), BANNED(-1);
+	/**
+	 * Represents the roles a member can have within a channel.
+	 * Each role is associated with a specific integer value for identification purposes.
+	 */
+	public enum Role {
+		/**
+		 * The creator or principal administrator of the channel.
+		 */
+		OWNER(0),
+		/**
+		 * A member with elevated permissions to manage the channel.
+		 */
+		MODERATOR(1),
+		/**
+		 * A regular member with standard permissions.
+		 */
+		MEMBER(2),
+		/**
+		 * A member who is restricted from accessing the channel.
+		 */
+		BANNED(-1);
 
-		private int value;
+		private final int value;
 
 		Role(int value) {
 			this.value = value;
 		}
 
+		/**
+		 * Retrieves the integer value associated with this role.
+		 * This value is used for serialization purposes and can be mapped
+		 * back to the corresponding enum constant.
+		 *
+		 * @return the integer value representing the role.
+		 */
 		@JsonValue
 		public int value() {
 			return value;
 		}
 
+		/**
+		 * Checks if the current role represents a banned user.
+		 *
+		 * @return {@code true} if the current role is {@code BANNED}; {@code false} otherwise.
+		 */
 		public boolean isBanned() {
 			return value == BANNED.value;
 		}
 
+		/**
+		 * Maps an integer value to its corresponding {@code Role} enumeration constant.
+		 * This method is primarily used for deserialization of roles from their numeric representation.
+		 *
+		 * @param value the integer value representing a specific role.
+		 * @return the {@code Role} corresponding to the given integer value.
+		 * @throws IllegalArgumentException if the provided value does not map to any valid role.
+		 */
 		@JsonCreator
 		public static Role valueOf(int value) {
 			return switch (value) {
-			case 0 -> OWNER;
-			case 1 -> MODERATOR;
-			case 2 -> MEMBER;
-			case -1 -> BANNED;
-			default -> throw new IllegalArgumentException("Invalid role value");
+				case 0 -> OWNER;
+				case 1 -> MODERATOR;
+				case 2 -> MEMBER;
+				case -1 -> BANNED;
+				default -> throw new IllegalArgumentException("Invalid role value");
 			};
 		}
 	}
 
+	/**
+	 * Represents a member in a channel, containing details such as the member's unique identifier,
+	 * home peer identifier, role, join timestamp, and the last updated timestamp.
+	 * This class provides various methods to access and manipulate a member's role and identity.
+	 */
 	public static class Member {
 		@JsonProperty(value = "id", required = true)
-		private Id id;
-
-		@JsonProperty(value = "p", required = true)
-		private Id homePeerId;
-
+		private final Id id;
 		@JsonProperty(value = "r", required = true)
-		private Role role;
-
+		private final Role role;
 		@JsonProperty(value = "j", required = true)
-		private long joined;
+		private final long joined;
 
 		private transient Contact contact;
 
+		/**
+		 * Constructs a new Member instance with the specified parameters.
+		 *
+		 * @param id          The unique identifier for the member. Must not be null.
+		 * @param role        The role assigned to the member (e.g., OWNER, MEMBER, MODERATOR). Must not be null.
+		 * @param joined      The timestamp indicating when the member joined. If set to 0, the current system time is used.
+		 */
 		@JsonCreator
-		protected Member(@JsonProperty(value = "id", required = true) Id id,
-				@JsonProperty(value = "p", required = true) Id homePeerId,
-				@JsonProperty(value = "r", required = true) Role role,
-				@JsonProperty(value = "j", required = true) long joined) {
+		public Member(@JsonProperty(value = "id", required = true) Id id,
+					  @JsonProperty(value = "r", required = true) Role role,
+					  @JsonProperty(value = "j", required = true) long joined) {
 			this.id = id;
-			this.homePeerId = homePeerId;
 			this.role = role;
 			this.joined = joined;
 		}
 
-		public Member(Id id,  Role role, long joined) {
-			this(id, null, role, joined);
-		}
-
-		// only used for local
-		public static Member unknown(Id id) {
-			return new Member(id, null, null, -1);
-		}
-
+		/**
+		 * Retrieves the unique identifier associated with this member.
+		 *
+		 * @return the unique identifier of the member.
+		 */
 		public Id getId() {
 			return id;
 		}
 
+		/**
+		 * Retrieves the role assigned to this member.
+		 *
+		 * @return the role of the member, such as OWNER, MEMBER, MODERATOR, or BANNED.
+		 */
 		public Role getRole() {
 			return role;
 		}
 
-		protected void setRole(Role role) {
-			this.role = role;
+		/**
+		 * Updates the role of the member and returns a new {@code Member} instance
+		 * with the updated role while preserving the other properties.
+		 *
+		 * @param role The new role to assign to the member. Must not be null.
+		 * @return A new {@code Member} instance with the specified role.
+		 */
+		protected Member setRole(Role role) {
+			return new Member(id, role, joined);
 		}
 
+		/**
+		 * Checks whether the member holds the role of an owner.
+		 *
+		 * @return {@code true} if the member's role is {@code OWNER};
+		 *         {@code false} otherwise.
+		 */
 		public boolean isOwner() {
 			return role == Role.OWNER;
 		}
 
+		/**
+		 * Checks whether the member holds the role of a moderator.
+		 *
+		 * @return {@code true} if the member's role is {@code MODERATOR};
+		 *         {@code false} otherwise.
+		 */
 		public boolean isModerator() {
 			return role == Role.MODERATOR;
 		}
 
+		/**
+		 * Checks whether the member is banned.
+		 *
+		 * @return {@code true} if the member's role is {@code BANNED};
+		 *         {@code false} otherwise.
+		 */
 		public boolean isBanned() {
 			return role == Role.BANNED;
 		}
 
+		/**
+		 * Retrieves the timestamp indicating when the member joined.
+		 *
+		 * @return the join timestamp of the member in milliseconds since the epoch.
+		 */
 		public long getJoined() {
 			return joined;
 		}
@@ -157,7 +294,7 @@ public abstract class Channel extends Contact {
 			return contact;
 		}
 
-		// TODO: remove this method
+		// TODO: remove this method,
 		public void setContact(Contact contact) {
 			this.contact = contact;
 		}
@@ -166,11 +303,18 @@ public abstract class Channel extends Contact {
 			return contact != null ? contact.getDisplayName() : id.toAbbrString();
 		}
 
+		/**
+		 * Determines if the provided {@code Member} instance is the same as this instance.
+		 *
+		 * @param member The {@code Member} to compare with this instance. Must not be null.
+		 * @return {@code true} if the provided {@code Member} is the same as this instance,
+		 *         or if their unique identifiers are equal; {@code false} otherwise.
+		 */
 		public boolean is(Member member) {
 			if (this == member)
 				return true;
 
-			return this.getId().equals(member.getId());
+			return this.id.equals(member.id);
 		}
 
 		@Override
@@ -189,81 +333,111 @@ public abstract class Channel extends Contact {
 
 		@Override
 		public String toString() {
-			StringBuffer repr = new StringBuffer(128);
-
-			repr.append(getId().toBase58String()).append(", ")
-				.append(role).append(", ")
-				.append(Instant.ofEpochMilli(joined));
-
-			return repr.toString();
+			return "Member: " + id +
+					", role=" + role +
+					", joined=" + Instant.ofEpochMilli(joined);
 		}
 	}
 
-	// for local storage
-	protected Channel(Id id, Id homePeerId,  boolean auto, byte[] sessionKey, String name, boolean avatar,
-			String notice, Id owner, Permission permission, String remark, String tags,
-			boolean muted, long created, long lastModified, long lastUpdated,
-			boolean deleted, int revision, boolean modified) {
-		super(id, homePeerId, auto, sessionKey, name, avatar, remark, tags,
-				muted, false, created, lastModified, lastUpdated, deleted, revision, modified);
-
-		this.notice = notice;
-		this.owner = owner;
+	// Constructor for database OR mapping
+	protected Channel(Id id, byte[] sessionKey, Id ownerId, Permission permission,  String name, String notice,
+					  boolean announce, String remark, String tags, boolean muted, boolean blocked,
+					  long createdAt, long updatedAt, int revision) {
+		super(id, sessionKey, name, remark, tags, muted, blocked, createdAt, updatedAt, revision);
+		this.ownerId = ownerId;
 		this.permission = permission;
+		this.notice = notice;
+		this.announce = announce;
 	}
 
-	protected Channel(Id id, Id homePeerId) {
-		super(id, homePeerId);
+	protected Channel(Id id, byte[] sessionKey, String name, String remark, String tags,
+					  boolean muted, boolean blocked, long createdAt, long updatedAt, int revision) {
+		super(id, sessionKey, name, remark, tags, muted, blocked, createdAt, updatedAt, revision);
+	}
+
+	@Override
+	public Contact.Type getType() {
+		return Contact.Type.CHANNEL;
 	}
 
 	public Id getOwner() {
-		return owner;
+		return ownerId;
 	}
 
-	protected void setOwner(Id owner) {
-		this.owner = owner;
-		touch();
+	protected void setPermission(Permission permission) {
+		this.permission = permission;
 	}
 
 	public Permission getPermission() {
 		return permission;
 	}
 
-	protected void setPermission(Permission permission) {
-		this.permission = permission;
-		touch();
-	}
-
-	@Override
-	protected void setName(String name) {
-		super.setName(name);
+	protected void setNotice(String notice) {
+		this.notice = notice;
 	}
 
 	public String getNotice() {
 		return notice;
 	}
 
-	protected void setNotice(String notice) {
-		this.notice = notice;
+	protected void setAnnounce(boolean announce) {
+		this.announce = announce;
 	}
 
-	@Override
-	public void setBlocked(boolean blocked) {
-		// Do nothing on channel contact.
-		throw new UnsupportedOperationException();
+	public boolean isAnnounce() {
+		return announce;
 	}
 
-	@Override
-	public void update(Profile profile) {
-		this.notice = profile.getNotice();
-		super.update(profile);
+	public int size() {
+		return getMembersMap().size();
 	}
 
-	public void update(Channel channel) {
-		this.permission = channel.permission;
-		this.owner = channel.owner;
-		this.notice = channel.notice;
-		super.update(channel);
+	public int banned() {
+		return getMembersMap().values().stream().mapToInt(m -> m.isBanned() ? 1 : 0).sum();
+	}
+
+	// only for the constructor and tests
+	void setMembers(Collection<Member> members) {
+		Objects.requireNonNull(members, "members");
+		LinkedHashMap<Id, Member> newMembers = new LinkedHashMap<>();
+		for (Member m : members)
+			newMembers.put(m.getId(), m);
+
+		if (!newMembers.containsKey(ownerId))
+			throw new IllegalStateException("Owner must be in members");
+
+		setMembers(newMembers);
+	}
+
+	void setMembers(Map<Id, Member> members) {
+		Objects.requireNonNull(members, "members");
+		this._members = Collections.unmodifiableMap(members);
+	}
+
+	Map<Id, Member> copyMembers() {
+		return new LinkedHashMap<>(_members);
+	}
+
+	private Map<Id, Member> getMembersMap() {
+		return _members;
+	}
+
+	public List<Member> getMembers() {
+		return List.copyOf(getMembersMap().values());
+	}
+
+	/**
+	 * Retrieves a member from the current channel using their unique identifier.
+	 *
+	 * @param memberId the unique identifier of the member to retrieve
+	 * @return the {@code Member} associated with the provided {@code memberId}, or {@code null} if no such member exists
+	 */
+	public Member getMember(Id memberId) {
+		return getMembersMap().get(memberId);
+	}
+
+	public boolean hasMember(Id memberId) {
+		return getMembersMap().containsKey(memberId);
 	}
 
 	public CryptoContext getRxCryptoContext(Id memberId) {
@@ -272,90 +446,103 @@ public abstract class Channel extends Contact {
 		if (!hasSessionKey())
 			return null;
 
-		if (memberCryptoContexts == null)
-			memberCryptoContexts = new HashMap<>();
+		if (memberRxCryptoContexts == null)
+			memberRxCryptoContexts = new HashMap<>();
 
-		return memberCryptoContexts.computeIfAbsent(memberId, id -> {
-			return createCryptoContext(id);
+		return memberRxCryptoContexts.computeIfAbsent(memberId, id -> {
+			try {
+				return createCryptoContext(id);
+			} catch (CryptoException e) {
+				// TODO: use sneaky throw?
+				throw new IllegalStateException("Failed to create crypto context", e);
+			}
 		});
 	}
 
-	public abstract int size();
-
-	// Return a modifiable copy of the members to make it easier for apps to sort or filter
-	public abstract List<Member> getMembers();
-
-	protected abstract void setMembers(Collection<Member> members);
-
-	public abstract Member getMember(Id id);
-
-	protected List<Member> setMembersRole(List<Id> memberIds, Role role) {
-		return memberIds.stream().map(id -> {
-			Member member = getMember(id);
-			member.setRole(role);
-			return member;
-		}).collect(Collectors.toList());
-	}
-
-	protected abstract void addMember(Member member);
-
-	protected abstract Member removeMember(Id memberId);
-
-	protected abstract List<Member> removeMembers(List<Id> memberIds);
-
-	public boolean isOwner(Id id) {
-		return id.equals(owner);
-	}
-
-	public boolean isModerator(Id id) {
-		Member member = getMember(id);
-		return member != null && member.isModerator();
-	}
-
-	public boolean isBanned(Id id) {
-		Member member = getMember(id);
-		return member != null && member.isBanned();
-	}
-
-	public boolean isMember(Id id) {
-		Member member = getMember(id);
-		return member != null && !member.isBanned();
-	}
-
-	public boolean isQualifiedInviter(Id inviter) {
-		Member member = getMember(inviter);
-		if (member == null)
-			return false;
-
-		Role role = member.getRole();
-		switch (permission) {
-		case PUBLIC:
-		case MEMBER_INVITE:
-			return role.value <= Role.MEMBER.value;
-
-		case MODERATOR_INVITE:
-			return role.value <= Role.MODERATOR.value;
-
-		case OWNER_INVITE:
-			return inviter.equals(owner);
-
-		default:
-			return false;
-		}
+	@Override
+	public int hashCode() {
+		return Objects.hash(0x6030A, "Channel", getId());
 	}
 
 	@Override
 	public boolean equals(Object o) {
-		if (this == o)
+		if (o == this)
 			return true;
 
-		if (o instanceof Channel that) {
-			return super.equals(o) &&
-					Objects.equals(this.owner, that.owner) &&
-					Objects.equals(this.permission, that.permission) &&
-					Objects.equals(this.notice, that.notice);
-		}
+		if (o instanceof Channel that)
+			return this.getId().equals(that.getId());
 
 		return false;
+	}
+
+	@Override
+	public String toString() {
+		StringBuilder repr = new StringBuilder(256);
+
+		repr.append("Channel: ").append(getId().toBase58String())
+				.append("[owner=").append(ownerId.toBase58String())
+				.append(", permission=").append(permission.toString())
+				.append(", members=").append(size());
+
+		if (getName() != null)
+			repr.append(", name=").append(getName());
+
+		if (notice != null)
+			repr.append(", notice=").append(notice);
+
+		if (getRemark() != null)
+			repr.append(", remark=").append(getRemark());
+
+		if (getTags() != null)
+			repr.append(", tags=").append(getTags());
+
+		if (announce)
+			repr.append(", announce = true");
+
+		if (isMuted())
+			repr.append(", muted");
+
+		if (isBlocked())
+			repr.append(", blocked");
+
+		repr.append(", createdAt=").append(Instant.ofEpochMilli(getCreatedAt()))
+				.append(" updatedAt=").append(Instant.ofEpochMilli(getUpdatedAt()))
+				.append(']');
+
+		return repr.toString();
+	}
+
+	public void dump(PrintStream out) {
+		out.println("Channel: " + getId().toBase58String());
+		out.println("  owner = " + ownerId.toBase58String());
+		out.println("  permission = " + permission.toString());
+
+		if (getName() != null)
+			out.println("  name = " + getName());
+
+		if (notice != null)
+			out.println("  notice = " + notice);
+
+		if (getRemark() != null)
+			out.println("  remark = " + getRemark());
+
+		if (getTags() != null)
+			out.println("  tags = " + getTags());
+
+		if (announce)
+			out.println("  announce = true");
+
+		if (isMuted())
+			out.println("  muted");
+
+		if (isBlocked())
+			out.println("  blocked");
+
+		out.println("  created = " + Instant.ofEpochMilli(getCreatedAt()));
+		out.println("  updated = " + Instant.ofEpochMilli(getUpdatedAt()));
+		out.println("  members = " + size());
+
+		for (Member m : getMembers())
+			out.println("    " + m.toString());
 	}
 }
