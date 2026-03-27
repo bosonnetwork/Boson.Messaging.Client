@@ -25,7 +25,7 @@ import io.bosonnetwork.Id;
 import io.bosonnetwork.messaging.Channel;
 import io.bosonnetwork.messaging.Channel.Member;
 import io.bosonnetwork.messaging.Channel.Role;
-import io.bosonnetwork.messaging.Contact;
+import io.bosonnetwork.photonmessaging.impl.AbstractContact;
 import io.bosonnetwork.messaging.Conversation;
 import io.bosonnetwork.messaging.Message;
 import io.bosonnetwork.messaging.MessagingRepository;
@@ -41,7 +41,7 @@ public class Database implements MessagingRepository {
 
 	private final Jdbi jdbi;
 
-	private Cache<Id, Contact> contactCache;
+	private Cache<Id, AbstractContact> contactCache;
 
 	private static final Logger log = LoggerFactory.getLogger(Database.class);
 
@@ -246,7 +246,7 @@ public class Database implements MessagingRepository {
 		});
 
 		if (conversation != null) {
-			Contact contact = contactCache.get(conversation.getId(), id -> {
+			AbstractContact contact = contactCache.get(conversation.getId(), id -> {
 				return conversation.getInterlocutor();
 			});
 
@@ -266,7 +266,7 @@ public class Database implements MessagingRepository {
 		});
 
 		conversations.forEach((conversation) -> {
-			Contact contact = contactCache.get(conversation.getId(), id -> {
+			AbstractContact contact = contactCache.get(conversation.getId(), id -> {
 				return conversation.getInterlocutor();
 			});
 
@@ -307,11 +307,11 @@ public class Database implements MessagingRepository {
 	}
 
 	@Override
-	public void putContactsUpdate(String versionId, Collection<Contact> updated) throws RepositoryException {
+	public void putContactsUpdate(String versionId, Collection<AbstractContact> updated) throws RepositoryException {
 		useTransaction(handle -> {
 			Contacts dao = handle.attach(Contacts.class);
 
-			for (Contact contact : updated) {
+			for (AbstractContact contact : updated) {
 				if (contact instanceof ChannelImpl ch) {
 					dao.putChannel(ch);
 					ch.setMembers(this::getChannelMembers);
@@ -323,7 +323,7 @@ public class Database implements MessagingRepository {
 			dao.putVersion(versionId, System.currentTimeMillis());
 		});
 
-		for (Contact contact : updated) {
+		for (AbstractContact contact : updated) {
 			contactCache.asMap().compute(contact.getId(), (id, existing) -> {
 				return existing == contact ? existing : contact;
 			});
@@ -331,7 +331,7 @@ public class Database implements MessagingRepository {
 	}
 
 	@Override
-	public void putContact(Contact contact) throws RepositoryException {
+	public void putContact(AbstractContact contact) throws RepositoryException {
 		Objects.requireNonNull(contact, "contact");
 
 		useHandle(handle -> {
@@ -350,7 +350,7 @@ public class Database implements MessagingRepository {
 	}
 
 	@Override
-	public void putContacts(Collection<Contact> contacts) throws RepositoryException {
+	public void putContacts(Collection<AbstractContact> contacts) throws RepositoryException {
 		Objects.requireNonNull(contacts, "contacts");
 
 		if (contacts.isEmpty())
@@ -359,7 +359,7 @@ public class Database implements MessagingRepository {
 		useTransaction(handle -> {
 			Contacts dao = handle.attach(Contacts.class);
 
-			for (Contact contact : contacts) {
+			for (AbstractContact contact : contacts) {
 				if (contact instanceof ChannelImpl ch) {
 					dao.putChannel(ch);
 					ch.setMembers(this::getChannelMembers);
@@ -369,7 +369,7 @@ public class Database implements MessagingRepository {
 			}
 		});
 
-		for (Contact contact : contacts) {
+		for (AbstractContact contact : contacts) {
 			contactCache.asMap().compute(contact.getId(), (id, existing) -> {
 				return existing == contact ? existing : contact;
 			});
@@ -377,14 +377,14 @@ public class Database implements MessagingRepository {
 	}
 
 	@Override
-	public Contact getContact(Id contactId) throws RepositoryException {
-		Contact existing = contactCache.getIfPresent(contactId);
+	public AbstractContact getContact(Id contactId) throws RepositoryException {
+		AbstractContact existing = contactCache.getIfPresent(contactId);
 		if (existing != null)
 			return existing;
 
-		Contact contact = withHandle(handle -> {
+		AbstractContact contact = withHandle(handle -> {
 			Contacts dao = handle.attach(Contacts.class);
-			Contact c = dao.getContact(contactId);
+			AbstractContact c = dao.getContact(contactId);
 			if (c instanceof ChannelImpl ch)
 				ch.setMembers(this::getChannelMembers);
 
@@ -398,7 +398,7 @@ public class Database implements MessagingRepository {
 	}
 
 	@Override
-	public List<Contact> getContacts(List<Id> contactIds) throws RepositoryException {
+	public List<AbstractContact> getContacts(List<Id> contactIds) throws RepositoryException {
 		return withHandle(handle -> {
 			Contacts dao = handle.attach(Contacts.class);
 			return dao.getContacts(contactIds);
@@ -411,7 +411,7 @@ public class Database implements MessagingRepository {
 	}
 
 	@Override
-	public List<Contact> getAllContacts() throws RepositoryException {
+	public List<AbstractContact> getAllContacts() throws RepositoryException {
 		return withHandle(handle -> {
 			Contacts dao = handle.attach(Contacts.class);
 			return dao.getAllContacts();
@@ -424,7 +424,7 @@ public class Database implements MessagingRepository {
 	}
 
 	@Override
-	public List<Contact> getAllUserContacts() throws RepositoryException {
+	public List<AbstractContact> getAllUserContacts() throws RepositoryException {
 		return withHandle(handle -> {
 			Contacts dao = handle.attach(Contacts.class);
 			return dao.getAllUserContacts();
@@ -437,7 +437,7 @@ public class Database implements MessagingRepository {
 	}
 
 	@Override
-	public List<Contact> getAllContacts(int type) throws RepositoryException {
+	public List<AbstractContact> getAllContacts(int type) throws RepositoryException {
 		return withHandle(handle -> {
 			Contacts dao = handle.attach(Contacts.class);
 			return dao.getAllContacts(type);

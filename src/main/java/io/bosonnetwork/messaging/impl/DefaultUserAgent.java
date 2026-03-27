@@ -26,7 +26,7 @@ import io.bosonnetwork.messaging.Channel.Member;
 import io.bosonnetwork.messaging.Channel.Role;
 import io.bosonnetwork.messaging.ChannelListener;
 import io.bosonnetwork.messaging.ConnectionListener;
-import io.bosonnetwork.messaging.Contact;
+import io.bosonnetwork.photonmessaging.impl.AbstractContact;
 import io.bosonnetwork.messaging.ContactListener;
 import io.bosonnetwork.messaging.Conversation;
 import io.bosonnetwork.messaging.DeviceProfile;
@@ -581,7 +581,7 @@ public class DefaultUserAgent implements UserAgent {
 			ConversationImpl conv = null;
 
 			if (v == null) {
-				Contact contact = null;
+				AbstractContact contact = null;
 				try {
 					contact = getContact(convId);
 				} catch (RepositoryException e) {
@@ -819,15 +819,15 @@ public class DefaultUserAgent implements UserAgent {
 	////////////////////////////////////////////////////////////////////////////
 	// Contacts
 
-	private List<Contact> mergeContactsUpdate(Collection<Contact> contacts) throws RepositoryException {
-		List<Id> ids = contacts.stream().map(Contact::getId).collect(Collectors.toList());
-		Map<Id, Contact> locals = repository.getContacts(ids).stream().collect(Collectors.toMap(Contact::getId, c -> c));
+	private List<AbstractContact> mergeContactsUpdate(Collection<AbstractContact> contacts) throws RepositoryException {
+		List<Id> ids = contacts.stream().map(AbstractContact::getId).collect(Collectors.toList());
+		Map<Id, AbstractContact> locals = repository.getContacts(ids).stream().collect(Collectors.toMap(AbstractContact::getId, c -> c));
 
-		List<Contact> merged = new ArrayList<>();
-		for (Contact updated : contacts) {
+		List<AbstractContact> merged = new ArrayList<>();
+		for (AbstractContact updated : contacts) {
 			updated.setSynced();
 
-			Contact local = locals.get(updated.getId());
+			AbstractContact local = locals.get(updated.getId());
 			if (local == null) {
 				merged.add(updated);
 			} else if (updated.getRevision() >= local.getRevision()) {
@@ -842,7 +842,7 @@ public class DefaultUserAgent implements UserAgent {
 	}
 
 	@Override
-	public void onContactsUpdating(String versionId, List<Contact> contacts) {
+	public void onContactsUpdating(String versionId, List<AbstractContact> contacts) {
 		try {
 			// TODO: check the versionId id, should be same with the current local version
 			repository.putContacts(contacts);
@@ -854,10 +854,10 @@ public class DefaultUserAgent implements UserAgent {
 	}
 
 	@Override
-	public void onContactsUpdated(String baseVersionId, String newVersionId, List<Contact> contacts) {
+	public void onContactsUpdated(String baseVersionId, String newVersionId, List<AbstractContact> contacts) {
 		try {
 			// TODO: check the baseVersion id, should be same with the current local version
-			List<Contact> merged = mergeContactsUpdate(contacts);
+			List<AbstractContact> merged = mergeContactsUpdate(contacts);
 			repository.putContactsUpdate(newVersionId, merged);
 		} catch (RepositoryException e) {
 			log.error("Failed to save the contacts to the repository.");
@@ -879,7 +879,7 @@ public class DefaultUserAgent implements UserAgent {
 	@Override
 	public void onContactProfile(Id contactId, Profile profile) {
 		try {
-			Contact contact = getContact(contactId);
+			AbstractContact contact = getContact(contactId);
 			if (contact == null) {
 				log.warn("NOTICE: Profile update for a non-existent contact — this should not happen.");
 				return; // ignore
@@ -898,7 +898,7 @@ public class DefaultUserAgent implements UserAgent {
 	}
 
 	@Override
-	public void putContactsUpdate(String versionId, Collection<Contact> updated) throws RepositoryException {
+	public void putContactsUpdate(String versionId, Collection<AbstractContact> updated) throws RepositoryException {
 		Objects.requireNonNull(versionId, "versionId");
 		Objects.requireNonNull(updated, "updated");
 
@@ -906,26 +906,26 @@ public class DefaultUserAgent implements UserAgent {
 	}
 
 	@Override
-	public List<Contact> getContacts(List<Id> ids) throws RepositoryException {
+	public List<AbstractContact> getContacts(List<Id> ids) throws RepositoryException {
 		return repository.getContacts(ids);
 	}
 
 	@Override
-	public List<Contact> getUserContacts() throws RepositoryException {
+	public List<AbstractContact> getUserContacts() throws RepositoryException {
 		return repository.getAllUserContacts();
 	}
 
 	@Override
-	public Contact getContact(Id contactId) throws RepositoryException {
+	public AbstractContact getContact(Id contactId) throws RepositoryException {
 		return repository.getContact(contactId);
 	}
 
-	private void putContact(Contact contact) throws RepositoryException {
+	private void putContact(AbstractContact contact) throws RepositoryException {
 		Objects.requireNonNull(contact, "contact");
 		repository.putContact(contact);
 	}
 
-	private void putContacts(Collection<Contact> contacts) throws RepositoryException {
+	private void putContacts(Collection<AbstractContact> contacts) throws RepositoryException {
 		Objects.requireNonNull(contacts, "contacts");
 		if (contacts.isEmpty())
 			return;

@@ -1,9 +1,9 @@
 package io.bosonnetwork.messaging.persistence;
 
-import io.bosonnetwork.messaging.Contact;
+import io.bosonnetwork.photonmessaging.impl.AbstractContact;
 
-public class ContactRowMapper extends AbstractContactRowMapper<Contact> {
+public class ContactRowMapper extends AbstractContactRowMapper<AbstractContact> {
 	public ContactRowMapper() {
-		super(Contact.class);
+		super(AbstractContact.class);
 	}
 }

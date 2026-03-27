@@ -45,9 +45,9 @@ import io.bosonnetwork.crypto.Hash;
 import io.bosonnetwork.crypto.Signature;
 import io.bosonnetwork.messaging.Channel;
 import io.bosonnetwork.messaging.ClientDevice;
-import io.bosonnetwork.messaging.Contact;
+import io.bosonnetwork.photonmessaging.impl.AbstractContact;
 import io.bosonnetwork.messaging.ForbiddenException;
-import io.bosonnetwork.messaging.InviteTicket;
+import io.bosonnetwork.photonmessaging.InviteTicket;
 import io.bosonnetwork.messaging.Message;
 import io.bosonnetwork.messaging.Message.Builder;
 import io.bosonnetwork.messaging.MessagingClient;
@@ -466,7 +466,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 					// Message: sender -> me
 					// The body is encrypted using the sender's private key
 					// and the session public key associated with that sender.
-					Contact sender = userAgent.getContact(message.getFrom());
+					AbstractContact sender = userAgent.getContact(message.getFrom());
 					if (sender != null && sender.hasSessionKey())
 						message.decryptBody(sender.getRxCryptoContext());
 				} else if (type == Message.Types.CALL) {
@@ -539,7 +539,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			if (body != null && body.length > 0 && !message.getTo().equals(peer.getPeerId())) {
 				if (type == Message.Types.MESSAGE) {
 					// The body is encrypted using my private key and the recipient's session public key.
-					Contact contact = userAgent.getContact(message.getTo());
+					AbstractContact contact = userAgent.getContact(message.getTo());
 					if (contact != null && contact.hasSessionKey()) {
 						CryptoContext ctx = contact.getTxCryptoContext(() -> {
 							try {
@@ -594,7 +594,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 
 		// check if the contact need to be update
 		try {
-			Contact contact = userAgent.getContact(convId);
+			AbstractContact contact = userAgent.getContact(convId);
 			if (contact == null || contact.isStaled())
 				tryRefreshProfile(convId).onSuccess(profile -> {
 					userAgent.onContactProfile(convId, profile);
@@ -610,7 +610,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		// check if the contact need to be update
 		try {
 			Id convId = message.getTo();
-			Contact contact = userAgent.getContact(convId);
+			AbstractContact contact = userAgent.getContact(convId);
 			if (contact != null && contact.isStaled())
 				if (contact == null || contact.isStaled())
 					tryRefreshProfile(convId).onSuccess(profile -> {
@@ -1047,7 +1047,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			RPCResponse<String> response = preparsed.map(String.class);
 			String baseVersionId = call.getParameters().getVersionId();
 			String newVersionId = response.getResult();
-			List<Contact> contacts = call.getParameters().getContacts();
+			List<AbstractContact> contacts = call.getParameters().getContacts();
 
 			userAgent.onContactsUpdated(baseVersionId, newVersionId, contacts);
 			call.complete(response);
@@ -1865,7 +1865,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 
 				if (type == Message.Types.MESSAGE) {
 					// The body is encrypted using my private key and the recipient's session public key.
-					Contact recipient = userAgent.getContact(message.getTo());
+					AbstractContact recipient = userAgent.getContact(message.getTo());
 					if (recipient != null && recipient.hasSessionKey()) {
 						CryptoContext ctx = recipient.getTxCryptoContext(() -> {
 							try {
@@ -1928,7 +1928,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 		return VertxFuture.of(promise.future());
 	}
 
-	private Future<String> pushContactsUpdate(List<Contact> updatedContacts) {
+	private Future<String> pushContactsUpdate(List<AbstractContact> updatedContacts) {
 		try {
 			String currentVersion = userAgent.getContactsVersion();
 
@@ -1948,7 +1948,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 	}
 
 	@Override
-	public CompletableFuture<Contact> addContact(Id id, Id homePeerId, byte[] sessionKey, String remark) {
+	public CompletableFuture<AbstractContact> addContact(Id id, Id homePeerId, byte[] sessionKey, String remark) {
 		if (id == null)
 			return VertxFuture.failedFuture(new NullPointerException("id"));
 
@@ -1962,17 +1962,17 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			return VertxFuture.failedFuture(new IllegalArgumentException("invalid s private key"));
 		}
 
-		Contact contact = ContactImpl.create(id, homePeerId, sessionKey, remark);
+		AbstractContact contact = ContactImpl.create(id, homePeerId, sessionKey, remark);
 		return VertxFuture.of(pushContactsUpdate(Arrays.asList(contact)).map(v -> contact));
 	}
 
 	@Override
-	public CompletableFuture<Contact> getContact(Id id) {
+	public CompletableFuture<AbstractContact> getContact(Id id) {
 		if (id == null)
 			return VertxFuture.failedFuture(new NullPointerException("id"));
 
 		try {
-			Contact contact = userAgent.getContact(id);
+			AbstractContact contact = userAgent.getContact(id);
 			return VertxFuture.succeededFuture(contact);
 		} catch (RepositoryException e) {
 			return VertxFuture.failedFuture(e);
@@ -1993,9 +1993,9 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 	}
 
 	@Override
-	public CompletableFuture<List<Contact>> getContacts() {
+	public CompletableFuture<List<AbstractContact>> getContacts() {
 		try {
-			List<Contact> Contact = userAgent.getUserContacts();
+			List<AbstractContact> Contact = userAgent.getUserContacts();
 			return VertxFuture.succeededFuture(Contact);
 		} catch (RepositoryException e) {
 			return VertxFuture.failedFuture(e);
@@ -2003,7 +2003,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 	}
 
 	@Override
-	public CompletableFuture<Contact> updateContact(Contact contact) {
+	public CompletableFuture<AbstractContact> updateContact(AbstractContact contact) {
 		if (contact == null)
 			return VertxFuture.failedFuture(new NullPointerException("contact"));
 
@@ -2019,7 +2019,7 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			return VertxFuture.failedFuture(new NullPointerException("id"));
 
 		try {
-			Contact contact = userAgent.getContact(id);
+			AbstractContact contact = userAgent.getContact(id);
 			if (contact.isAuto()) {
 				userAgent.removeContact(id);
 				return VertxFuture.succeededFuture();
@@ -2044,11 +2044,11 @@ public class MessagingClientImpl implements Verticle, MessagingClient {
 			return VertxFuture.succeededFuture();
 
 		try {
-			List<Contact> contacts = userAgent.getContacts(ids);
+			List<AbstractContact> contacts = userAgent.getContacts(ids);
 			List<Id> removeLocally = new ArrayList<>();
-			Iterator<Contact> iter = contacts.iterator();
+			Iterator<AbstractContact> iter = contacts.iterator();
 			while (iter.hasNext()) {
-				Contact c = iter.next();
+				AbstractContact c = iter.next();
 				if (c.isAuto()) {
 					removeLocally.add(c.getId());
 					iter.remove();

@@ -5,6 +5,8 @@ import java.util.concurrent.CompletableFuture;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.messaging.impl.ClientBuilderImpl;
+import io.bosonnetwork.photonmessaging.InviteTicket;
+import io.bosonnetwork.photonmessaging.impl.AbstractContact;
 
 public interface MessagingClient {
 	public Id getUserId();
@@ -67,24 +69,24 @@ public interface MessagingClient {
 	public CompletableFuture<Boolean> removeChannelMembers(Id channelId, List<Id> members);
 
 	// Contact APIs
-	public CompletableFuture<Contact> addContact(Id id, Id homePeerId, byte[] sessionKey, String remark);
-	public default CompletableFuture<Contact> addContact(Id id, Id homePeerId, byte[] sessionKey) {
+	public CompletableFuture<AbstractContact> addContact(Id id, Id homePeerId, byte[] sessionKey, String remark);
+	public default CompletableFuture<AbstractContact> addContact(Id id, Id homePeerId, byte[] sessionKey) {
 		return addContact(id, homePeerId, sessionKey);
 	}
-	public default CompletableFuture<Contact> addContact(Id id, byte[] sessionKey, String remark) {
+	public default CompletableFuture<AbstractContact> addContact(Id id, byte[] sessionKey, String remark) {
 		return addContact(id, null, sessionKey, remark);
 	}
-	public default CompletableFuture<Contact> addContact(Id id, byte[] sessionKey) {
+	public default CompletableFuture<AbstractContact> addContact(Id id, byte[] sessionKey) {
 		return addContact(id, null, sessionKey, null);
 	}
 
-	public CompletableFuture<Contact> getContact(Id id);
+	public CompletableFuture<AbstractContact> getContact(Id id);
 
 	public CompletableFuture<Channel> getChannel(Id id); // channel alias for getContact
 
-	public CompletableFuture<List<Contact>> getContacts();
+	public CompletableFuture<List<AbstractContact>> getContacts();
 
-	public CompletableFuture<Contact> updateContact(Contact contact);
+	public CompletableFuture<AbstractContact> updateContact(AbstractContact contact);
 	public CompletableFuture<Void> removeContact(Id id);
 	public CompletableFuture<Void> removeContacts(List<Id> ids);
 }

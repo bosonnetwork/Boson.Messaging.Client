@@ -8,7 +8,7 @@ import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.messaging.Channel;
-import io.bosonnetwork.messaging.Contact;
+import io.bosonnetwork.photonmessaging.impl.AbstractContact;
 
 @JsonPOJOBuilder
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -36,7 +36,7 @@ public class ContactBuilder {
 	private Channel.Permission permission;
 
 	public ContactBuilder() {
-		this(Contact.Types.UNKNOWN);
+		this(AbstractContact.Types.UNKNOWN);
 	}
 
 	protected ContactBuilder(int defaultType) {
@@ -58,7 +58,7 @@ public class ContactBuilder {
 
 	@JsonProperty("t")
 	public ContactBuilder withType(int type) {
-		if (type != Contact.Types.CONTACT && type != Contact.Types.CHANNEL)
+		if (type != AbstractContact.Types.CONTACT && type != AbstractContact.Types.CHANNEL)
 			throw new IllegalArgumentException("type");
 		this.type = type;
 		return this;
@@ -152,14 +152,14 @@ public class ContactBuilder {
 		return this;
 	}
 
-	public Contact build() {
+	public AbstractContact build() {
 		if (id == null)
 			throw new IllegalStateException("Missing id");
 
-		if (type == Contact.Types.CONTACT)
+		if (type == AbstractContact.Types.CONTACT)
 			return new ContactImpl(id, homePeerId, false, sessionKey, name, avatar,
 					remark, tags, muted, blocked, created, lastModified, -1, deleted, revision, false);
-		else if (type == Contact.Types.CHANNEL)
+		else if (type == AbstractContact.Types.CHANNEL)
 			return new ChannelImpl(id, homePeerId, false, sessionKey, name, avatar, notice,
 					owner, permission, remark, tags, muted, created, lastModified, -1, deleted, revision, false);
 		else
