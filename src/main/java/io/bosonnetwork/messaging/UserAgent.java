@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import io.bosonnetwork.Id;
+import io.bosonnetwork.photonmessaging.impl.AbstractContact;
 
 public interface UserAgent
 		extends ConnectionListener, ProfileListener, MessageListener, ChannelListener, ContactListener {
@@ -68,14 +69,14 @@ public interface UserAgent
 
 	public String getContactsVersion() throws RepositoryException;
 
-	public void putContactsUpdate(String versionId, Collection<Contact> updated) throws RepositoryException;
+	public void putContactsUpdate(String versionId, Collection<AbstractContact> updated) throws RepositoryException;
 
-	public List<Contact> getContacts(List<Id> ids) throws RepositoryException;
+	public List<AbstractContact> getContacts(List<Id> ids) throws RepositoryException;
 
 	// !!! get all user contacts(!deleted && !auto)
-	public List<Contact> getUserContacts() throws RepositoryException;
+	public List<AbstractContact> getUserContacts() throws RepositoryException;
 
-	public Contact getContact(Id contactId) throws RepositoryException;
+	public AbstractContact getContact(Id contactId) throws RepositoryException;
 
 	public default void removeContact(Id contactId) throws RepositoryException {
 		removeContacts(Arrays.asList(contactId));

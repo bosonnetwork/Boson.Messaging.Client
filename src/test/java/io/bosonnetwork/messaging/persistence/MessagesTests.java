@@ -28,7 +28,7 @@ import org.junit.jupiter.api.TestMethodOrder;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.crypto.Random;
 import io.bosonnetwork.crypto.Signature.KeyPair;
-import io.bosonnetwork.messaging.Contact;
+import io.bosonnetwork.photonmessaging.impl.AbstractContact;
 import io.bosonnetwork.messaging.Conversation;
 import io.bosonnetwork.messaging.Message;
 import io.bosonnetwork.messaging.Message.ContentDispositions;
@@ -42,7 +42,7 @@ import net.datafaker.Faker;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class MessagesTests {
 	private static TestDatabase db;
-	private static Map<Id, Contact> contacts;
+	private static Map<Id, AbstractContact> contacts;
 	private static List<Conversation> conversations;
 	private static Map<Id, List<Message>> messages;
 
@@ -102,7 +102,7 @@ public class MessagesTests {
 		return tags.collect(Collectors.joining(","));
 	}
 
-	private static Contact createContact(Id userId, Id peerId) {
+	private static AbstractContact createContact(Id userId, Id peerId) {
 		KeyPair sessionKeyPair = KeyPair.random();
 
 		return new ContactImpl(userId, peerId, faker.bool().bool(),
@@ -136,7 +136,7 @@ public class MessagesTests {
 			var s = Random.random().nextInt(8, 32);
 			for (int i = 0; i < s; i++) {
 				var contactId = Id.random();
-				Contact contact = createContact(contactId, Id.random());
+				AbstractContact contact = createContact(contactId, Id.random());
 				var rc = contactsDao.putContact(contact);
 				assertEquals(1, rc);
 				contacts.put(contactId, contact);
@@ -193,7 +193,7 @@ public class MessagesTests {
 		for (int i = 0; i < s; i++) {
 			var contactId = Id.random();
 
-			Contact contact = createContact(contactId, Id.random());
+			AbstractContact contact = createContact(contactId, Id.random());
 			contacts.put(contactId, contact);
 
 			List<Message> lst = new ArrayList<>();

@@ -4,13 +4,13 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
 
 import io.bosonnetwork.messaging.Channel;
-import io.bosonnetwork.messaging.Contact;
+import io.bosonnetwork.photonmessaging.impl.AbstractContact;
 
 @JsonPOJOBuilder
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ChannelBuilder extends ContactBuilder {
 	public ChannelBuilder() {
-		super(Contact.Types.CHANNEL);
+		super(AbstractContact.Types.CHANNEL);
 	}
 
 	@Override

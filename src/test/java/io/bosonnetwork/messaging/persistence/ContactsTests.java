@@ -33,7 +33,7 @@ import io.bosonnetwork.crypto.Signature.KeyPair;
 import io.bosonnetwork.crypto.Signature.PrivateKey;
 import io.bosonnetwork.messaging.Channel;
 import io.bosonnetwork.messaging.Channel.Permission;
-import io.bosonnetwork.messaging.Contact;
+import io.bosonnetwork.photonmessaging.impl.AbstractContact;
 import io.bosonnetwork.messaging.Profile;
 import io.bosonnetwork.messaging.impl.ChannelImpl;
 import io.bosonnetwork.messaging.impl.ContactImpl;
@@ -42,7 +42,7 @@ import net.datafaker.Faker;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class ContactsTests {
 	private static TestDatabase db;
-	private static List<Contact> contacts;
+	private static List<AbstractContact> contacts;
 	private static List<Channel> channels;
 	private static Map<Id, PrivateKey> keys;
 	private static List<Id> peers;
@@ -73,7 +73,7 @@ public class ContactsTests {
 		return tags.collect(Collectors.joining(","));
 	}
 
-	private static Contact createContact() {
+	private static AbstractContact createContact() {
 		KeyPair user = KeyPair.random();
 		Id userId = Id.of(user.publicKey().bytes());
 		keys.put(userId, user.privateKey());
@@ -86,7 +86,7 @@ public class ContactsTests {
 		return createContact(userId, peerId);
 	}
 
-	private static Contact createContact(Id userId, Id peerId) {
+	private static AbstractContact createContact(Id userId, Id peerId) {
 		KeyPair sessionKeyPair = KeyPair.random();
 
 		return new ContactImpl(userId, peerId, faker.bool().bool(),
@@ -200,7 +200,7 @@ public class ContactsTests {
 
 		db.getJdbi().useHandle((handle) -> {
 			var dao = handle.attach(Contacts.class);
-			var result = dao.getAllContacts(Contact.Types.CONTACT);
+			var result = dao.getAllContacts(AbstractContact.Types.CONTACT);
 			result.sort((c1, c2) -> c1.getId().compareTo(c2.getId()));
 			assertEquals(contacts, result);
 		});
@@ -230,7 +230,7 @@ public class ContactsTests {
 
 		db.getJdbi().useHandle((handle) -> {
 			var dao = handle.attach(Contacts.class);
-			var result = dao.getAllContacts(Contact.Types.CONTACT);
+			var result = dao.getAllContacts(AbstractContact.Types.CONTACT);
 			result.sort((c1, c2) -> c1.getId().compareTo(c2.getId()));
 			assertEquals(contacts, result);
 		});
@@ -239,16 +239,16 @@ public class ContactsTests {
 	@Test
 	@Order(3)
 	void testUpdateContact() {
-		List<Contact> lst;
+		List<AbstractContact> lst;
 		do {
 			lst = contacts.stream().filter(c -> Random.random().nextInt(4) == 0).collect(Collectors.toList());
 		} while (lst.isEmpty());
 
-		List<Contact> toBeUpdated = lst;
+		List<AbstractContact> toBeUpdated = lst;
 		db.getJdbi().useHandle((handle) -> {
 			var dao = handle.attach(Contacts.class);
 
-			for (Contact contact : toBeUpdated) {
+			for (AbstractContact contact : toBeUpdated) {
 				Profile profile = createProfile(contact.getId(), contact.getHomePeerId(),
 						nullOr(() -> faker.name().firstName()), faker.bool().bool());
 				contact.update(profile);
@@ -270,7 +270,7 @@ public class ContactsTests {
 
 		db.getJdbi().useHandle((handle) -> {
 			var dao = handle.attach(Contacts.class);
-			var result = dao.getAllContacts(Contact.Types.CONTACT);
+			var result = dao.getAllContacts(AbstractContact.Types.CONTACT);
 			result.sort((c1, c2) -> c1.getId().compareTo(c2.getId()));
 			assertEquals(contacts, result);
 		});
@@ -279,12 +279,12 @@ public class ContactsTests {
 	@Test
 	@Order(4)
 	void testUpdateContacts() {
-		List<Contact> lst;
+		List<AbstractContact> lst;
 		do {
 			lst = contacts.stream().filter(c -> Random.random().nextInt(4) == 0).collect(Collectors.toList());
 		} while (lst.isEmpty());
 
-		for (Contact contact : lst) {
+		for (AbstractContact contact : lst) {
 			Profile profile = createProfile(contact.getId(), contact.getHomePeerId(),
 					nullOr(() -> faker.name().firstName()), faker.bool().bool());
 			contact.update(profile);
@@ -294,7 +294,7 @@ public class ContactsTests {
 			contact.setMuted(faker.bool().bool());
 		}
 
-		List<Contact> toBeUpdated = lst;
+		List<AbstractContact> toBeUpdated = lst;
 		db.getJdbi().useHandle((handle) -> {
 			var dao = handle.attach(Contacts.class);
 			int[] rcs = dao.putContacts(toBeUpdated);
@@ -310,7 +310,7 @@ public class ContactsTests {
 
 		db.getJdbi().useHandle((handle) -> {
 			var dao = handle.attach(Contacts.class);
-			var result = dao.getAllContacts(Contact.Types.CONTACT);
+			var result = dao.getAllContacts(AbstractContact.Types.CONTACT);
 			result.sort((c1, c2) -> c1.getId().compareTo(c2.getId()));
 			assertEquals(contacts, result);
 		});
@@ -338,7 +338,7 @@ public class ContactsTests {
 				channels.add(channel);
 				contacts.add(channel);
 
-				List<Contact> newContacts = members.stream().map(m -> m.getContact()).collect(Collectors.toList());
+				List<AbstractContact> newContacts = members.stream().map(m -> m.getContact()).collect(Collectors.toList());
 				rcs = dao.putContacts(newContacts);
 				assertEquals(newContacts.size(), IntStream.of(rcs).sum());
 				contacts.addAll(newContacts);
@@ -365,7 +365,7 @@ public class ContactsTests {
 
 		db.getJdbi().useHandle((handle) -> {
 			var dao = handle.attach(Contacts.class);
-			var result = dao.getAllContacts(Contact.Types.CHANNEL);
+			var result = dao.getAllContacts(AbstractContact.Types.CHANNEL);
 			result.sort((c1, c2) -> c1.getId().compareTo(c2.getId()));
 			assertEquals(channels, result);
 		});
@@ -403,7 +403,7 @@ public class ContactsTests {
 				members.sort((m1, m2) -> m1.getContact().getId().compareTo(m2.getContact().getId()));
 				channelMembers.put(channel.getId(), members);
 
-				List<Contact> newContacts = members.stream().map(m -> m.getContact()).collect(Collectors.toList());
+				List<AbstractContact> newContacts = members.stream().map(m -> m.getContact()).collect(Collectors.toList());
 				rcs = dao.putContacts(newContacts);
 				assertEquals(newContacts.size(), IntStream.of(rcs).sum());
 				contacts.addAll(newContacts);
@@ -422,7 +422,7 @@ public class ContactsTests {
 
 		db.getJdbi().useHandle((handle) -> {
 			var dao = handle.attach(Contacts.class);
-			var result = dao.getAllContacts(Contact.Types.CHANNEL);
+			var result = dao.getAllContacts(AbstractContact.Types.CHANNEL);
 			result.sort((c1, c2) -> c1.getId().compareTo(c2.getId()));
 			assertEquals(channels, result);
 		});
@@ -489,7 +489,7 @@ public class ContactsTests {
 				members.addAll(toBeAdded);
 				members.sort((m1, m2) -> m1.getId().compareTo(m2.getId()));
 
-				List<Contact> newContacts = toBeAdded.stream().map(m -> m.getContact()).collect(Collectors.toList());
+				List<AbstractContact> newContacts = toBeAdded.stream().map(m -> m.getContact()).collect(Collectors.toList());
 				int[] rcs = dao.putContacts(newContacts);
 				assertEquals(newContacts.size(), IntStream.of(rcs).sum());
 				contacts.addAll(newContacts);
@@ -507,7 +507,7 @@ public class ContactsTests {
 
 		db.getJdbi().useHandle((handle) -> {
 			var dao = handle.attach(Contacts.class);
-			var result = dao.getAllContacts(Contact.Types.CHANNEL);
+			var result = dao.getAllContacts(AbstractContact.Types.CHANNEL);
 			result.sort((c1, c2) -> c1.getId().compareTo(c2.getId()));
 			assertEquals(channels, result);
 		});
@@ -567,7 +567,7 @@ public class ContactsTests {
 				members.addAll(toBeAdded);
 				members.sort((m1, m2) -> m1.getId().compareTo(m2.getId()));
 
-				List<Contact> newContacts = toBeAdded.stream().map(m -> m.getContact()).collect(Collectors.toList());
+				List<AbstractContact> newContacts = toBeAdded.stream().map(m -> m.getContact()).collect(Collectors.toList());
 				rcs = dao.putContacts(newContacts);
 				assertEquals(newContacts.size(), IntStream.of(rcs).sum());
 				contacts.addAll(newContacts);
@@ -588,7 +588,7 @@ public class ContactsTests {
 
 		db.getJdbi().useHandle((handle) -> {
 			var dao = handle.attach(Contacts.class);
-			var result = dao.getAllContacts(Contact.Types.CHANNEL);
+			var result = dao.getAllContacts(AbstractContact.Types.CHANNEL);
 			result.sort((c1, c2) -> c1.getId().compareTo(c2.getId()));
 			assertEquals(channels, result);
 		});
@@ -610,7 +610,7 @@ public class ContactsTests {
 		db.getJdbi().useHandle((handle) -> {
 			var dao = handle.attach(Contacts.class);
 
-			for (Contact contact : contacts) {
+			for (AbstractContact contact : contacts) {
 				boolean result = dao.existsContact(contact.getId());
 				assertTrue(result);
 
@@ -626,8 +626,8 @@ public class ContactsTests {
 		db.getJdbi().useHandle((handle) -> {
 			var dao = handle.attach(Contacts.class);
 
-			for (Contact contact : contacts) {
-				Contact result = dao.getContact(contact.getId());
+			for (AbstractContact contact : contacts) {
+				AbstractContact result = dao.getContact(contact.getId());
 				assertEquals(contact, result);
 			}
 		});
@@ -637,18 +637,18 @@ public class ContactsTests {
 	@Test
 	@Order(103)
 	void testRemoveContact() {
-		List<Contact> lst;
+		List<AbstractContact> lst;
 		do {
 			lst = contacts.stream().filter(c -> Random.random().nextInt(4) == 0).collect(Collectors.toList());
 		} while (lst.isEmpty());
 
 		contacts.removeAll(lst);
 
-		List<Contact> toBeRemoved = lst;
+		List<AbstractContact> toBeRemoved = lst;
 		db.getJdbi().useHandle((handle) -> {
 			var dao = handle.attach(Contacts.class);
 
-			for (Contact contact : toBeRemoved) {
+			for (AbstractContact contact : toBeRemoved) {
 				int rc = dao.removeContact(contact.getId());
 				assertEquals(1, rc);
 			}
@@ -665,17 +665,17 @@ public class ContactsTests {
 	@Test
 	@Order(104)
 	void testRemoveContacts() {
-		List<Contact> lst;
+		List<AbstractContact> lst;
 		do {
 			lst = contacts.stream().filter(c -> Random.random().nextInt(4) == 0).collect(Collectors.toList());
 		} while (lst.isEmpty());
 
 		contacts.removeAll(lst);
 
-		List<Contact> toBeRemoved = lst;
+		List<AbstractContact> toBeRemoved = lst;
 		db.getJdbi().useHandle((handle) -> {
 			var dao = handle.attach(Contacts.class);
-			int rc = dao.removeContacts(toBeRemoved.stream().map(Contact::getId).collect(Collectors.toList()));
+			int rc = dao.removeContacts(toBeRemoved.stream().map(AbstractContact::getId).collect(Collectors.toList()));
 			assertEquals(toBeRemoved.size(), rc);
 		});
 

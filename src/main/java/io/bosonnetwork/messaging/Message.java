@@ -77,50 +77,6 @@ public abstract class Message {
 		private Types() {}
 	}
 
-	public static class ContentTypes {
-		public static final String TEXT = "text/plain";
-		public static final String JSON = "application/json";
-
-		public static final String IMAGE_JPEG = "image/jpeg";
-		public static final String IMAGE_PNG = "image/png";
-		public static final String IMAGE_WEBP = "image/webp";
-
-		public static final String AUDIO_AAC = "audio/aac";
-		public static final String AUDIO_MP3 = "audio/mpeg";
-		public static final String AUDIO_WEBM = "audio/webm";
-
-		public static final String VIDEO_MP4 = "video/mp4";
-		public static final String VIDEO_WEBM = "video/webm";
-
-		public static final String BINARY = "application/octet-stream";
-
-		public static final String DEFAULT = TEXT;
-
-		private ContentTypes() {}
-	}
-
-	public static class ContentDispositions {
-		public static final String INLINE = "inline";
-		public static final String ATTACHMENT = "attachment";
-
-		public static final String DEFAULT = INLINE;
-
-		private ContentDispositions() {
-		}
-
-		public static String inline() {
-			return INLINE;
-		}
-
-		public static String attachment() {
-			return ATTACHMENT;
-		}
-
-		public static String attachment(String filename) {
-			return ATTACHMENT + "; filename=\"" + filename + "\"";
-		}
-	}
-
 	protected Message() {
 		this.rid = -1;
 		this.conversationId = null;

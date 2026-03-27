@@ -25,10 +25,11 @@ import io.bosonnetwork.crypto.Signature.PrivateKey;
 import io.bosonnetwork.messaging.impl.ChannelImpl;
 import io.bosonnetwork.messaging.impl.ContactImpl;
 import io.bosonnetwork.json.Json;
+import io.bosonnetwork.photonmessaging.impl.AbstractContact;
 
 public class ContactTests {
 	private static Map<Id, PrivateKey> keys = new HashMap<>();
-	private static Map<Id, Contact> contacts = new HashMap<>();
+	private static Map<Id, AbstractContact> contacts = new HashMap<>();
 	private static Base64.Encoder b64Encoder = Base64.getUrlEncoder().withoutPadding();
 
 	private static Profile createProfile(Id id, Id homePeerId, String name, boolean avatar) {
@@ -77,7 +78,7 @@ public class ContactTests {
 		assertEquals(1, alice.getRevision());
 		assertEquals(contactId, alice.getId());
 		assertNull(alice.getHomePeerId());
-		assertEquals(Contact.Types.CONTACT, alice.getType());
+		assertEquals(AbstractContact.Types.CONTACT, alice.getType());
 		assertArrayEquals(sessionKey, alice.getSessionKey());
 		assertNull(alice.getName());
 		assertFalse(alice.hasAvatar());
@@ -87,19 +88,19 @@ public class ContactTests {
 		assertFalse(alice.isMuted());
 		assertTrue(alice.getCreated() == alice.getLastModified());
 		assertTrue(contactId.toBase58String().startsWith(alice.getDisplayName().substring(0, 4)));
-		assertEquals(mapper.writerFor(Contact.class).writeValueAsString(alice), mapper.writeValueAsString(alice));
+		assertEquals(mapper.writerFor(AbstractContact.class).writeValueAsString(alice), mapper.writeValueAsString(alice));
 
 		var json = mapper.writeValueAsString(alice);
 		var map = mapper.readValue(json, new TypeReference<Map<String, Object>>() {});
 		assertEquals(6, map.size());
 		assertEquals(1, (Integer)map.get("v"));
 		assertEquals(contactId.toBase58String(), map.get("id"));
-		assertEquals(Contact.Types.CONTACT, (Integer)map.get("t"));
+		assertEquals(AbstractContact.Types.CONTACT, (Integer)map.get("t"));
 		assertEquals(b64Encoder.encodeToString(sessionKey), map.get("sk"));
 		assertEquals(alice.getCreated(), (Long)map.get("c"));
 		assertEquals(alice.getLastModified(), (Long)map.get("m"));
 
-		var parsed = mapper.readValue(json, Contact.class);
+		var parsed = mapper.readValue(json, AbstractContact.class);
 		assertTrue(parsed instanceof ContactImpl);
 		assertEquals(alice, parsed);
 
@@ -110,7 +111,7 @@ public class ContactTests {
 		assertEquals(1, alice.getRevision());
 		assertEquals(contactId, alice.getId());
 		assertEquals(peerId, alice.getHomePeerId());
-		assertEquals(Contact.Types.CONTACT, alice.getType());
+		assertEquals(AbstractContact.Types.CONTACT, alice.getType());
 		assertArrayEquals(sessionKey, alice.getSessionKey());
 		assertEquals(profile.getName(), alice.getName());
 		assertEquals(profile.hasAvatar(), alice.hasAvatar());
@@ -121,19 +122,19 @@ public class ContactTests {
 		assertTrue(alice.getCreated() == alice.getLastModified());
 		assertTrue(alice.getLastModified() < alice.getLastUpdated());
 		assertEquals(profile.getName(), alice.getDisplayName());
-		assertEquals(mapper.writerFor(Contact.class).writeValueAsString(alice), mapper.writeValueAsString(alice));
+		assertEquals(mapper.writerFor(AbstractContact.class).writeValueAsString(alice), mapper.writeValueAsString(alice));
 
 		json = mapper.writeValueAsString(alice);
 		map = mapper.readValue(json, new TypeReference<Map<String, Object>>() {});
 		assertEquals(6, map.size());
 		assertEquals(1, (Integer)map.get("v"));
 		assertEquals(contactId.toBase58String(), map.get("id"));
-		assertEquals(Contact.Types.CONTACT, map.get("t"));
+		assertEquals(AbstractContact.Types.CONTACT, map.get("t"));
 		assertEquals(b64Encoder.encodeToString(sessionKey), map.get("sk"));
 		assertEquals(alice.getCreated(), map.get("c"));
 		assertEquals(alice.getLastModified(), map.get("m"));
 
-		parsed = mapper.readValue(json, Contact.class);
+		parsed = mapper.readValue(json, AbstractContact.class);
 		parsed.update(profile);
 		assertTrue(parsed instanceof ContactImpl);
 		assertEquals(alice, parsed);
@@ -147,7 +148,7 @@ public class ContactTests {
 		assertEquals(2, alice.getRevision());
 		assertEquals(contactId, alice.getId());
 		assertEquals(peerId, alice.getHomePeerId());
-		assertEquals(Contact.Types.CONTACT, alice.getType());
+		assertEquals(AbstractContact.Types.CONTACT, alice.getType());
 		assertEquals(profile.getName(), alice.getName());
 		assertEquals(profile.hasAvatar(), alice.hasAvatar());
 		assertEquals("Alice Brown", alice.getRemark());
@@ -157,14 +158,14 @@ public class ContactTests {
 		assertTrue(alice.getCreated() < alice.getLastModified());
 		assertTrue(alice.getCreated() < alice.getLastUpdated());
 		assertEquals("Alice Brown", alice.getDisplayName());
-		assertEquals(mapper.writerFor(Contact.class).writeValueAsString(alice), mapper.writeValueAsString(alice));
+		assertEquals(mapper.writerFor(AbstractContact.class).writeValueAsString(alice), mapper.writeValueAsString(alice));
 
 		json = mapper.writeValueAsString(alice);
 		map = mapper.readValue(json, new TypeReference<Map<String, Object>>() {});
 		assertEquals(10, map.size());
 		assertEquals(2, (Integer)map.get("v"));
 		assertEquals(contactId.toBase58String(), map.get("id"));
-		assertEquals(Contact.Types.CONTACT, map.get("t"));
+		assertEquals(AbstractContact.Types.CONTACT, map.get("t"));
 		assertEquals(b64Encoder.encodeToString(sessionKey), map.get("sk"));
 		assertEquals("Alice Brown", map.get("r"));
 		assertEquals("foo,bar", map.get("ts"));
@@ -173,7 +174,7 @@ public class ContactTests {
 		assertEquals(alice.getCreated(), map.get("c"));
 		assertEquals(alice.getLastModified(), map.get("m"));
 
-		parsed = mapper.readValue(json, Contact.class);
+		parsed = mapper.readValue(json, AbstractContact.class);
 		parsed.update(profile);
 		assertTrue(parsed instanceof ContactImpl);
 		assertEquals(alice, parsed);
@@ -206,7 +207,7 @@ public class ContactTests {
 
 		assertEquals(1, team.getRevision());
 		assertEquals(channelId, team.getId());
-		assertEquals(Contact.Types.CHANNEL, team.getType());
+		assertEquals(AbstractContact.Types.CHANNEL, team.getType());
 		assertArrayEquals(sessionKey, team.getSessionKey());
 		assertNull(team.getName());
 		assertFalse(team.hasAvatar());
@@ -219,7 +220,7 @@ public class ContactTests {
 		assertFalse(team.isMuted());
 		assertTrue(team.getCreated() < team.getLastModified());
 		assertTrue(channelId.toBase58String().startsWith(team.getDisplayName().substring(0, 4)));
-		assertNotEquals(mapper.writerFor(Contact.class).writeValueAsString(team), mapper.writeValueAsString(team));
+		assertNotEquals(mapper.writerFor(AbstractContact.class).writeValueAsString(team), mapper.writeValueAsString(team));
 
 		var json = mapper.writeValueAsString(team);
 		var map = mapper.readValue(json, new TypeReference<Map<String, Object>>() {});
@@ -227,14 +228,14 @@ public class ContactTests {
 		assertEquals(1, (Integer)map.get("v"));
 		assertEquals(channelId.toBase58String(), map.get("id"));
 		// assertEquals(peerId.toBase58String(), map.get("p"));
-		assertEquals(Contact.Types.CHANNEL, (Integer)map.get("t"));
+		assertEquals(AbstractContact.Types.CHANNEL, (Integer)map.get("t"));
 		assertEquals(b64Encoder.encodeToString(sessionKey), map.get("sk"));
 		assertEquals(owner.toBase58String(), map.get("o"));
 		assertEquals(permission.value(), map.get("pm"));
 		assertEquals(team.getCreated(), (Long)map.get("c"));
 		assertEquals(team.getLastModified(), (Long)map.get("m"));
 
-		var parsed = mapper.readValue(json, Contact.class);
+		var parsed = mapper.readValue(json, AbstractContact.class);
 		parsed.setHomePeerId(peerId);
 		assertTrue(parsed instanceof ChannelImpl);
 		assertEquals(team, parsed);
@@ -246,7 +247,7 @@ public class ContactTests {
 		assertEquals(1, team.getRevision());
 		assertEquals(channelId, team.getId());
 		assertEquals(peerId, team.getHomePeerId());
-		assertEquals(Contact.Types.CHANNEL, team.getType());
+		assertEquals(AbstractContact.Types.CHANNEL, team.getType());
 		assertArrayEquals(sessionKey, team.getSessionKey());
 		assertEquals(profile.getName(), team.getName());
 		assertEquals(profile.hasAvatar(), team.hasAvatar());
@@ -259,31 +260,31 @@ public class ContactTests {
 		assertFalse(team.isMuted());
 		assertTrue(team.getCreated() < team.getLastModified());
 		assertEquals(profile.getName(), team.getDisplayName());
-		assertNotEquals(mapper.writerFor(Contact.class).writeValueAsString(team), mapper.writeValueAsString(team));
+		assertNotEquals(mapper.writerFor(AbstractContact.class).writeValueAsString(team), mapper.writeValueAsString(team));
 
 		json = mapper.writeValueAsString(team);
 		map = mapper.readValue(json, new TypeReference<Map<String, Object>>() {});
 		assertEquals(8, map.size());
 		assertEquals(1, (Integer)map.get("v"));
 		assertEquals(channelId.toBase58String(), map.get("id"));
-		assertEquals(Contact.Types.CHANNEL, map.get("t"));
+		assertEquals(AbstractContact.Types.CHANNEL, map.get("t"));
 		assertEquals(b64Encoder.encodeToString(sessionKey), map.get("sk"));
 		assertEquals(owner.toBase58String(), map.get("o"));
 		assertEquals(permission.value(), map.get("pm"));
 		assertEquals(team.getCreated(), map.get("c"));
 		assertEquals(team.getLastModified(), map.get("m"));
 
-		parsed = mapper.readValue(json, Contact.class);
+		parsed = mapper.readValue(json, AbstractContact.class);
 		parsed.update(profile);
 		assertTrue(parsed instanceof ChannelImpl);
 		assertEquals(team, parsed);
 
-		json = mapper.writerFor(Contact.class).writeValueAsString(team);
+		json = mapper.writerFor(AbstractContact.class).writeValueAsString(team);
 		map = mapper.readValue(json, new TypeReference<Map<String, Object>>() {});
 		assertEquals(6, map.size());
 		assertEquals(1, (Integer)map.get("v"));
 		assertEquals(channelId.toBase58String(), map.get("id"));
-		assertEquals(Contact.Types.CHANNEL, map.get("t"));
+		assertEquals(AbstractContact.Types.CHANNEL, map.get("t"));
 		assertEquals(b64Encoder.encodeToString(sessionKey), map.get("sk"));
 		assertFalse(map.containsKey("n"));
 		assertFalse(map.containsKey("a"));
@@ -301,7 +302,7 @@ public class ContactTests {
 		assertEquals(2, team.getRevision());
 		assertEquals(channelId, team.getId());
 		assertEquals(peerId, team.getHomePeerId());
-		assertEquals(Contact.Types.CHANNEL, team.getType());
+		assertEquals(AbstractContact.Types.CHANNEL, team.getType());
 		assertArrayEquals(sessionKey, team.getSessionKey());
 		assertEquals(profile.getName(), team.getName());
 		assertEquals(profile.hasAvatar(), team.hasAvatar());
@@ -314,14 +315,14 @@ public class ContactTests {
 		assertTrue(team.isMuted());
 		assertTrue(team.getCreated() < team.getLastModified());
 		assertEquals("BosonNetwork", team.getDisplayName());
-		assertNotEquals(mapper.writerFor(Contact.class).writeValueAsString(team), mapper.writeValueAsString(team));
+		assertNotEquals(mapper.writerFor(AbstractContact.class).writeValueAsString(team), mapper.writeValueAsString(team));
 
 		json = mapper.writeValueAsString(team);
 		map = mapper.readValue(json, new TypeReference<Map<String, Object>>() {});
 		assertEquals(11, map.size());
 		assertEquals(2, (Integer)map.get("v"));
 		assertEquals(channelId.toBase58String(), map.get("id"));
-		assertEquals(Contact.Types.CHANNEL, map.get("t"));
+		assertEquals(AbstractContact.Types.CHANNEL, map.get("t"));
 		assertEquals(b64Encoder.encodeToString(sessionKey), map.get("sk"));
 		assertEquals(owner.toBase58String(), map.get("o"));
 		assertEquals(permission.value(), map.get("pm"));
@@ -331,17 +332,17 @@ public class ContactTests {
 		assertEquals(team.getCreated(), map.get("c"));
 		assertEquals(team.getLastModified(), map.get("m"));
 
-		parsed = mapper.readValue(json, Contact.class);
+		parsed = mapper.readValue(json, AbstractContact.class);
 		parsed.update(profile);
 		assertTrue(parsed instanceof ChannelImpl);
 		assertEquals(team, parsed);
 
-		json = mapper.writerFor(Contact.class).writeValueAsString(team);
+		json = mapper.writerFor(AbstractContact.class).writeValueAsString(team);
 		map = mapper.readValue(json, new TypeReference<Map<String, Object>>() {});
 		assertEquals(9, map.size());
 		assertEquals(2, (Integer)map.get("v"));
 		assertEquals(channelId.toBase58String(), map.get("id"));
-		assertEquals(Contact.Types.CHANNEL, map.get("t"));
+		assertEquals(AbstractContact.Types.CHANNEL, map.get("t"));
 		assertEquals(b64Encoder.encodeToString(sessionKey), map.get("sk"));
 		assertFalse(map.containsKey("n"));
 		assertFalse(map.containsKey("a"));

@@ -14,7 +14,7 @@ import org.jdbi.v3.sqlobject.statement.SqlUpdate;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.messaging.Channel;
-import io.bosonnetwork.messaging.Contact;
+import io.bosonnetwork.photonmessaging.impl.AbstractContact;
 
 public interface Contacts {
 	// Version
@@ -43,7 +43,7 @@ public interface Contacts {
 				lastModified=EXCLUDED.lastModified, lastUpdated=EXCLUDED.lastUpdated,
 				deleted=EXCLUDED.deleted, revision=EXCLUDED.revision, modified=EXCLUDED.modified
 			""")
-	int putContact(@BindBean Contact contact);
+	int putContact(@BindBean AbstractContact contact);
 
 	@SqlBatch("""
 			INSERT INTO contacts(id, type, auto, homePeerId, sessionKey, name, avatar, remark, tags, muted, blocked, created, lastModified, lastUpdated, deleted, revision, modified)
@@ -56,7 +56,7 @@ public interface Contacts {
 				lastModified=EXCLUDED.lastModified, lastUpdated=EXCLUDED.lastUpdated,
 				deleted=EXCLUDED.deleted, revision=EXCLUDED.revision, modified=EXCLUDED.modified
 			""")
-	int[] putContacts(@BindBean Collection<Contact> contacts);
+	int[] putContacts(@BindBean Collection<AbstractContact> contacts);
 
 	// Channels
 	@SqlUpdate("""
@@ -92,28 +92,28 @@ public interface Contacts {
 	// shared
 	@SqlQuery("SELECT * FROM contacts WHERE id = ?")
 	@RegisterRowMapper(ContactRowMapper.class)
-	Contact getContact(Id id);
+	AbstractContact getContact(Id id);
 
 	@SqlQuery("SELECT * FROM contacts WHERE id IN (<ids>)")
 	@RegisterRowMapper(ContactRowMapper.class)
-	List<Contact> getContacts(@BindList("ids") List<Id> ids);
+	List<AbstractContact> getContacts(@BindList("ids") List<Id> ids);
 
 
 	@SqlQuery("SELECT * FROM contacts")
 	@RegisterRowMapper(ContactRowMapper.class)
-	List<Contact> getAllContacts();
+	List<AbstractContact> getAllContacts();
 
 	@SqlQuery("SELECT * FROM contacts WHERE auto = false AND deleted = false")
 	@RegisterRowMapper(ContactRowMapper.class)
-	List<Contact> getAllUserContacts();
+	List<AbstractContact> getAllUserContacts();
 
 	@SqlQuery("SELECT * FROM contacts WHERE type = ?")
 	@RegisterRowMapper(ContactRowMapper.class)
-	List<Contact> getAllContacts(int type);
+	List<AbstractContact> getAllContacts(int type);
 
 	@SqlQuery("SELECT * FROM contacts WHERE auto = false AND modified = true")
 	@RegisterRowMapper(ContactRowMapper.class)
-	List<Contact> getModifiedContacts();
+	List<AbstractContact> getModifiedContacts();
 
 	@SqlQuery("UPDATE contacts SET modified = :modified WHERE id IN (<ids>)")
 	int updateContactsModifiedStatus(@BindList("ids") List<Id> ids, @Bind("modified") boolean modified);

@@ -8,11 +8,11 @@ import org.jdbi.v3.core.statement.StatementContext;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.messaging.Channel.Permission;
-import io.bosonnetwork.messaging.Contact;
+import io.bosonnetwork.photonmessaging.impl.AbstractContact;
 import io.bosonnetwork.messaging.impl.ChannelImpl;
 import io.bosonnetwork.messaging.impl.ContactImpl;
 
-public class AbstractContactRowMapper<T extends Contact> implements RowMapper<T> {
+public class AbstractContactRowMapper<T extends AbstractContact> implements RowMapper<T> {
 	private Class<T> clazz;
 
 	protected AbstractContactRowMapper(Class<T> clazz) {
@@ -23,7 +23,7 @@ public class AbstractContactRowMapper<T extends Contact> implements RowMapper<T>
 		return prefix == null ? column : prefix + column;
 	}
 
-	protected static Contact map(ResultSet rs, Id contactId, String prefix) throws SQLException {
+	protected static AbstractContact map(ResultSet rs, Id contactId, String prefix) throws SQLException {
 		Id id = contactId != null ? contactId : Id.of(rs.getBytes(n(prefix, "id")));
 		int type = rs.getInt(n(prefix, "type"));
 		boolean auto = rs.getBoolean(n(prefix, "auto"));
@@ -49,11 +49,11 @@ public class AbstractContactRowMapper<T extends Contact> implements RowMapper<T>
 		int revision = rs.getInt(n(prefix, "revision"));
 		boolean modified = rs.getBoolean(n(prefix, "modified"));
 
-		Contact contact;
-		if (type == Contact.Types.CONTACT) {
+		AbstractContact contact;
+		if (type == AbstractContact.Types.CONTACT) {
 			contact = new ContactImpl(id, homePeerId, auto, sessionKey, name, avatar, remark, tags,
 					muted, blocked, created, lastModified, lastUpdated, deleted, revision, modified);
-		} else if (type == Contact.Types.CHANNEL) {
+		} else if (type == AbstractContact.Types.CHANNEL) {
 			String notice = rs.getString(n(prefix, "notice"));
 
 			value = rs.getBytes(n(prefix, "owner"));
@@ -76,7 +76,7 @@ public class AbstractContactRowMapper<T extends Contact> implements RowMapper<T>
 	@SuppressWarnings("unchecked")
 	@Override
 	public T map(ResultSet rs, StatementContext ctx) throws SQLException {
-		Contact contact = map(rs, null, null);
+		AbstractContact contact = map(rs, null, null);
 		if (clazz.isInstance(contact))
 			return (T)contact;
 		else
