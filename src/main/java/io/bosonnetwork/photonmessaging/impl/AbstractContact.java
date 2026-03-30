@@ -45,7 +45,6 @@ import io.bosonnetwork.photonmessaging.Contact;
  * This class serves as a data model for storing contact information, including
  * identity, session keys, profile details, and synchronization state.
  */
-//@JsonDeserialize(builder = ContactBuilder.class)
 @JsonPropertyOrder({"id", "t", "sk", "n", "r", "ts", "m", "b", "c", "u", "v"})
 public abstract class AbstractContact implements Contact {
 	private static final long STALE_TIME = 6 * 60 * 60 * 1000; // 6 hours

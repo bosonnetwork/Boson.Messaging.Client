@@ -24,6 +24,10 @@ import io.bosonnetwork.Node;
 import io.bosonnetwork.crypto.CryptoIdentity;
 import io.bosonnetwork.crypto.Signature.KeyPair;
 import io.bosonnetwork.messaging.impl.APIClient.MessagingServiceId;
+import io.bosonnetwork.photonmessaging.ConnectionListener;
+import io.bosonnetwork.photonmessaging.ContactListener;
+import io.bosonnetwork.photonmessaging.MessageListener;
+import io.bosonnetwork.photonmessaging.MessagingClient;
 
 public abstract class ClientBuilder {
 	// Vertx options

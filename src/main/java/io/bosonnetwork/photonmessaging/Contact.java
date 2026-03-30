@@ -24,14 +24,17 @@ package io.bosonnetwork.photonmessaging;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
 import io.bosonnetwork.Id;
+import io.bosonnetwork.photonmessaging.impl.ContactBuilder;
 
 /**
  * Represents a contact entry within the photon messaging.
  * This class serves as a data model for storing contact information, including
  * identity, session keys, profile details, and synchronization state.
  */
+@JsonDeserialize(builder = ContactBuilder.class)
 public interface Contact extends Comparable<Contact> {
 	/**
 	 * Enum Type represents the classification of a contact.

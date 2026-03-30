@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
 
 import io.bosonnetwork.messaging.Channel;
 import io.bosonnetwork.photonmessaging.impl.AbstractContact;
+import io.bosonnetwork.photonmessaging.impl.ContactBuilder;
 
 @JsonPOJOBuilder
 @JsonIgnoreProperties(ignoreUnknown = true)

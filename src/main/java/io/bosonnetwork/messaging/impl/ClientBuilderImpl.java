@@ -10,7 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import io.bosonnetwork.messaging.ClientBuilder;
 import io.bosonnetwork.messaging.DeviceProfile;
-import io.bosonnetwork.messaging.MessagingClient;
+import io.bosonnetwork.photonmessaging.MessagingClient;
 import io.bosonnetwork.messaging.RepositoryException;
 import io.bosonnetwork.messaging.UserAgent;
 import io.bosonnetwork.messaging.UserProfile;
