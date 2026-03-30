@@ -23,6 +23,7 @@
 package io.bosonnetwork.photonmessaging;
 
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
@@ -58,48 +59,6 @@ public interface Message {
 				default -> throw new IllegalArgumentException("Invalid message type: " + value);
 			};
 		}
-	}
-
-	/**
-	 * Represents the content of a message, providing access to its metadata and body.
-	 */
-	interface Content {
-		/**
-		 * Retrieves the metadata headers associated with the content.
-		 *
-		 * @return a map where the keys are header names and the values are the corresponding header values.
-		 */
-		Map<String, Object> getHeaders();
-
-		/**
-		 * Retrieves the content type of the message.
-		 *
-		 * @return the content type as a string, representing the media type (e.g., "text/plain", "application/json").
-		 */
-		String getContentType();
-
-		/**
-		 * Retrieves the content disposition of the message.
-		 *
-		 * @return the content disposition as a string, indicating how the content is expected
-		 *         to be displayed (e.g., "inline" or "attachment").
-		 */
-		String getContentDisposition();
-
-		/**
-		 * Retrieves the length of the content in bytes.
-		 *
-		 * @return the size of the content as an integer, or -1 if the length is unknown.
-		 */
-		int getContentLength();
-
-		/**
-		 * Retrieves the body of the content.
-		 *
-		 * @param <T> the expected type of the body
-		 * @return the body of the content, cast to the specified type
-		 */
-		<T> T getBody();
 	}
 
 	/**
@@ -173,4 +132,133 @@ public interface Message {
 	 * @return the content representation of the payload
 	 */
 	Content getPayloadAsContent();
+
+	/**
+	 * Represents the content of a message, providing access to its metadata and body.
+	 */
+	interface Content {
+		/**
+		 * Retrieves the metadata headers associated with the content.
+		 *
+		 * @return a map where the keys are header names and the values are the corresponding header values.
+		 */
+		Map<String, Object> getHeaders();
+
+		/**
+		 * Retrieves the content type of the message.
+		 * The default content type is "plain/text" if not specified.
+		 *
+		 * @return the content type as a string, representing the media type (e.g., "text/plain", "application/json").
+		 */
+		String getContentType();
+
+		/**
+		 * Retrieves the content disposition of the message.
+		 *
+		 * @return the content disposition, indicating how the content is expected
+		 *         to be displayed (e.g., "inline" or "attachment").
+		 */
+		ContentDisposition getContentDisposition();
+
+		/**
+		 * Retrieves the length of the content in bytes.
+		 *
+		 * @return the size of the content as an integer, or -1 if the length is unknown.
+		 */
+		int getContentLength();
+
+		/**
+		 * Retrieves the body of the content.
+		 *
+		 * @param <T> the expected type of the body
+		 * @return the body of the content, cast to the specified type
+		 */
+		<T> T getBody();
+	}
+
+	/**
+	 * Message builder is an easy-to-use fluent helper interface to compose and send a message.
+	 */
+	interface Builder {
+		/**
+		 * Sets the recipient of the message.
+		 *
+		 * @param to the recipient's identifier
+		 * @return this builder instance
+		 */
+		Builder to(Id to);
+
+		/**
+		 * Adds or removes a metadata header.
+		 *
+		 * @param name  the name of the header
+		 * @param value the value of the header; a {@code null} value will remove the header
+		 * @return this builder instance
+		 */
+		Builder header(String name, Object value);
+
+		/**
+		 * Sets the content type of the message body.
+		 *
+		 * @param contentType the media type (e.g., "text/plain", "application/json")
+		 * @return this builder instance
+		 */
+		Builder contentType(String contentType);
+
+		/**
+		 * Sets the content disposition of the message body.
+		 *
+		 * @param contentDisposition the disposition (e.g., "inline" or "attachment")
+		 * @return this builder instance
+		 */
+		Builder contentDisposition(String contentDisposition);
+
+		/**
+		 * Sets the content disposition of the message body.
+		 *
+		 * @param contentDisposition the {@code ContentDisposition} instance specifying
+		 *                           the disposition type (e.g., inline or attachment) and optional filename
+		 * @return this builder instance
+		 */
+		Builder contentDisposition(ContentDisposition contentDisposition);
+
+		/**
+		 * Sets the message body as a byte array.
+		 * The content-type header will be set to "application/octet-stream" if not already set.
+		 *
+		 * @param body the raw bytes of the content
+		 * @return this builder instance
+		 */
+		Builder body(byte[] body);
+
+		/**
+		 * Sets the message body as a string.
+		 * The content is treated as {@code text/plain}. The corresponding
+		 * {@code Content-Type} header is assumed as the default and therefore
+		 * is not explicitly set.
+		 *
+		 * @param body the string content
+		 * @return this builder instance
+		 */
+		Builder body(String body);
+
+		/**
+		 * Sets the message body as an object.
+		 * The content-type header will be set to the following value if not already set:
+		 * - byte[]: "application/json"
+		 * - String: "text/plain" default content type, omitted if already set
+		 * - others: "application/cbor"
+		 *
+		 * @param body the object to be used as the message body
+		 * @return this builder instance
+		 */
+		Builder body(Object body);
+
+		/**
+		 * Composes and sends the message.
+		 *
+		 * @return a {@link CompletableFuture} that will be completed with the sent {@link Message}
+		 */
+		CompletableFuture<Message> send();
+	}
 }

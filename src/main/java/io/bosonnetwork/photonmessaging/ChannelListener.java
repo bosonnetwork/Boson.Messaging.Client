@@ -29,7 +29,7 @@ import java.util.List;
  * Implementations of this interface can be used to monitor channel lifecycle,
  * membership changes, and property updates.
  */
-interface ChannelListener {
+public interface ChannelListener {
 	/**
 	 * Called when the current user has joined a new channel.
 	 * The channel object already includes the member's private key.

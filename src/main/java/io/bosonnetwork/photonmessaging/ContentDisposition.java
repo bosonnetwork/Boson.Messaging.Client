@@ -20,13 +20,21 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging.impl;
+package io.bosonnetwork.photonmessaging;
 
 import java.net.URLDecoder;
 import java.nio.charset.Charset;
 import java.util.Objects;
 
+/**
+ * Represents the Content-Disposition header, which indicates if the content is
+ * expected to be displayed inline or as an attachment, potentially with a filename.
+ */
 public class ContentDisposition {
+	/**
+	 * The standard header name for content disposition.
+	 */
+	public static final String HEADER_NAME = "Content-Disposition";
 	private static final ContentDisposition INLINE = new ContentDisposition(Type.INLINE, null, null);
 
 	private final Type type;
@@ -34,8 +42,18 @@ public class ContentDisposition {
 	private final String asciiFilename;
 	private final String rfc5987Filename;
 
+	/**
+	 * Enumeration of content disposition types.
+	 */
 	public enum Type {
-		INLINE("inline"), ATTACHMENT("attachment");
+		/**
+		 * Indicates the content should be displayed automatically.
+		 */
+		INLINE("inline"),
+		/**
+		 * Indicates the content is separate and should be downloaded/saved.
+		 */
+		ATTACHMENT("attachment");
 
 		private final String value;
 
@@ -48,6 +66,13 @@ public class ContentDisposition {
 			return value;
 		}
 
+		/**
+		 * Parses a string value into a {@link Type}.
+		 *
+		 * @param value the string value to parse
+		 * @return the corresponding {@link Type}
+		 * @throws IllegalArgumentException if the value is not a valid disposition type
+		 */
 		public static Type fromString(String value) {
 			return switch (value) {
 				case "inline" -> INLINE;
@@ -57,15 +82,33 @@ public class ContentDisposition {
 		}
 	}
 
+	/**
+	 * Creates a new inline {@link ContentDisposition} without a filename.
+	 *
+	 * @return an inline disposition
+	 */
 	public static ContentDisposition inline() {
 		return INLINE;
 	}
 
+	/**
+	 * Creates a new inline {@link ContentDisposition} with the specified filename.
+	 *
+	 * @param filename the filename to include
+	 * @return an inline disposition with a filename
+	 */
 	public static ContentDisposition inline(String filename) {
 		return filename == null || filename.isEmpty() ? INLINE :
 				new ContentDisposition(Type.INLINE, toAsciiFallback(filename), encodeRFC5987("UTF-8", filename));
 	}
 
+	/**
+	 * Creates a new attachment {@link ContentDisposition} with the specified filename.
+	 *
+	 * @param filename the filename to include
+	 * @return an attachment disposition with a filename
+	 * @throws NullPointerException if filename is null
+	 */
 	public static ContentDisposition attachment(String filename) {
 		Objects.requireNonNull(filename, "filename");
 		return new ContentDisposition(Type.ATTACHMENT, toAsciiFallback(filename), encodeRFC5987("UTF-8", filename));
@@ -94,33 +137,68 @@ public class ContentDisposition {
 		this.filename = name;
 	}
 
+	/**
+	 * Gets the disposition type.
+	 *
+	 * @return the {@link Type}
+	 */
 	public Type getType() {
 		return type;
 	}
 
+	/**
+	 * Gets the ASCII-encoded version of the filename.
+	 *
+	 * @return the ASCII filename, or {@code null} if not set
+	 */
 	public String getAsciiFilename() {
 		return asciiFilename;
 	}
 
+	/**
+	 * Gets the RFC 5987 encoded version of the filename (supports non-ASCII characters).
+	 *
+	 * @return the RFC 5987 filename, or {@code null} if not set
+	 */
 	public String getRfc5987Filename() {
 		return rfc5987Filename;
 	}
 
 	/**
-	 * Returns the best filename (prefers filename* over filename)
+	 * Returns the best available filename.
+	 * It prefers the decoded RFC 5987 filename over the ASCII fallback.
+	 *
+	 * @return the filename, or {@code null} if none is available
 	 */
 	public String getFilename() {
 		return filename;
 	}
 
+	/**
+	 * Checks if the disposition is inline.
+	 *
+	 * @return {@code true} if inline, {@code false} otherwise
+	 */
 	public boolean isInline() {
 		return type == Type.INLINE;
 	}
 
+	/**
+	 * Checks if the disposition is an attachment.
+	 *
+	 * @return {@code true} if attachment, {@code false} otherwise
+	 */
 	public boolean isAttachment() {
 		return type == Type.ATTACHMENT;
 	}
 
+	/**
+	 * Parses a Content-Disposition header string into a {@link ContentDisposition} object.
+	 *
+	 * @param header the header string to parse
+	 * @return the parsed {@link ContentDisposition}
+	 * @throws NullPointerException if header is null
+	 */
 	public static ContentDisposition parse(String header) {
 		Objects.requireNonNull(header, "header");
 
@@ -194,6 +272,11 @@ public class ContentDisposition {
 		}
 	}
 
+	/**
+	 * Returns the string representation of the disposition value suitable for a header.
+	 *
+	 * @return the header value string
+	 */
 	public String getValue() {
 		return type + (asciiFilename != null && !asciiFilename.isEmpty() ? "; filename=\"" + asciiFilename + "\"" : "") +
 				(rfc5987Filename != null && !rfc5987Filename.isEmpty() ? "; filename*=" + rfc5987Filename : "");

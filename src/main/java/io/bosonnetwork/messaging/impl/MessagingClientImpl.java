@@ -50,7 +50,7 @@ import io.bosonnetwork.messaging.ForbiddenException;
 import io.bosonnetwork.photonmessaging.InviteTicket;
 import io.bosonnetwork.messaging.Message;
 import io.bosonnetwork.messaging.Message.Builder;
-import io.bosonnetwork.messaging.MessagingClient;
+import io.bosonnetwork.photonmessaging.MessagingClient;
 import io.bosonnetwork.messaging.MessagingException;
 import io.bosonnetwork.messaging.MessagingPeerInfo;
 import io.bosonnetwork.messaging.Profile;
