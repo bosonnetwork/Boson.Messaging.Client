@@ -111,16 +111,22 @@
       <groupId>io.vertx</groupId>
       <artifactId>vertx-mqtt</artifactId>
     </dependency>
-    
     <dependency>
-      <groupId>org.jdbi</groupId>
-      <artifactId>jdbi3-core</artifactId>
+      <groupId>io.vertx</groupId>
+      <artifactId>vertx-sql-client</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.jdbi</groupId>
-      <artifactId>jdbi3-sqlobject</artifactId>
+      <groupId>io.vertx</groupId>
+      <artifactId>vertx-sql-client-templates</artifactId>
     </dependency>
-
+    <dependency>
+      <groupId>io.vertx</groupId>
+      <artifactId>vertx-pg-client</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.vertx</groupId>
+      <artifactId>vertx-jdbc-client</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.xerial</groupId>
       <artifactId>sqlite-jdbc</artifactId>

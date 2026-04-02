@@ -137,6 +137,10 @@ interface MessagingRepository {
 	 */
 	Future<Boolean> removeConversations(Collection<Id> conversationIds);
 
+	Future<Boolean> putContactLocally(Contact contact);
+
+	Future<Boolean> removeContactLocally(Id contactId);
+
 	/**
 	 * Returns the current local revision of the contact list.
 	 *
@@ -151,7 +155,7 @@ interface MessagingRepository {
 	 * @param updated the collection of contacts to add or update
 	 * @return a Future that completes when the update is finished
 	 */
-	Future<Void> putContacts(int revision, Collection<Contact> updated);
+	Future<Boolean> putContacts(int revision, Collection<Contact> updated);
 
 	/**
 	 * Removes contacts and updates the local contacts revision atomically.
@@ -160,7 +164,7 @@ interface MessagingRepository {
 	 * @param contactIds the IDs of the contacts to remove
 	 * @return a Future that completes when the removal is finished
 	 */
-	Future<Void> removeContacts(int revision, Collection<Id> contactIds);
+	Future<Boolean> removeContacts(int revision, Collection<Id> contactIds);
 
 	/**
 	 * Clears all contacts and updates the local contacts revision atomically.
@@ -168,7 +172,7 @@ interface MessagingRepository {
 	 * @param revision the new revision number
 	 * @return a Future that completes when the operation is finished
 	 */
-	Future<Void> clearContacts(int revision);
+	Future<Boolean> clearContacts(int revision);
 
 	/**
 	 * Retrieves a contact by its ID.
@@ -203,6 +207,8 @@ interface MessagingRepository {
 		return getContact(contactId).map(Objects::nonNull);
 	}
 
+	Future<Boolean> updateChannelOwnership(Id channelId, Id oldOwnerId, Id newOwnerId);
+
 	/**
 	 * Adds or updates a single member in a channel.
 	 *
@@ -210,7 +216,7 @@ interface MessagingRepository {
 	 * @param member the member to add or update
 	 * @return a Future that completes when the operation is finished
 	 */
-	default Future<Void> putChannelMember(Id channelId, Channel.Member member) {
+	default Future<Boolean> putChannelMember(Id channelId, Channel.Member member) {
 		return putChannelMembers(channelId, List.of(member));
 	}
 
@@ -221,7 +227,7 @@ interface MessagingRepository {
 	 * @param members the collection of members to add or update
 	 * @return a Future that completes when the operation is finished
 	 */
-	Future<Void> putChannelMembers(Id channelId, Collection<Channel.Member> members);
+	Future<Boolean> putChannelMembers(Id channelId, Collection<Channel.Member> members);
 
 	/**
 	 * Replaces all members in a channel with the provided collection.
@@ -230,7 +236,13 @@ interface MessagingRepository {
 	 * @param members the new collection of members
 	 * @return a Future that completes when the operation is finished
 	 */
-	Future<Void> refillChannelMembers(Id channelId, Collection<Channel.Member> members);
+	Future<Boolean> refillChannelMembers(Id channelId, Collection<Channel.Member> members);
+
+	default Future<Channel.Member> getChannelMember(Id channelId, Id memberId) {
+		return getChannelMembers(channelId, List.of(memberId)).map(list -> list.isEmpty() ? null : list.get(0));
+	}
+
+	Future<List<Channel.Member>> getChannelMembers(Id channelId, List<Id> memberId);
 
 	/**
 	 * Sets the role of a single member in a channel.
@@ -240,8 +252,8 @@ interface MessagingRepository {
 	 * @param role the new role to assign
 	 * @return a Future that completes when the role is updated
 	 */
-	default Future<Void> setChannelMemberRole(Id channelId, Id memberId, Channel.Role role) {
-		return setChannelMembersRole(channelId, List.of(memberId), role);
+	default Future<Boolean> updateChannelMemberRole(Id channelId, Id memberId, Channel.Role role) {
+		return updateChannelMembersRole(channelId, List.of(memberId), role);
 	}
 
 	/**
@@ -252,7 +264,7 @@ interface MessagingRepository {
 	 * @param role the new role to assign to all specified members
 	 * @return a Future that completes when the roles are updated
 	 */
-	Future<Void> setChannelMembersRole(Id channelId, List<Id> memberIds, Channel.Role role);
+	Future<Boolean> updateChannelMembersRole(Id channelId, List<Id> memberIds, Channel.Role role);
 
 	/**
 	 * Removes a single member from a channel.
@@ -261,7 +273,7 @@ interface MessagingRepository {
 	 * @param memberId the ID of the member to remove
 	 * @return a Future that completes when the member is removed
 	 */
-	default Future<Void> removeChannelMember(Id channelId, Id memberId) {
+	default Future<Boolean> removeChannelMember(Id channelId, Id memberId) {
 		return removeChannelMembers(channelId, List.of(memberId));
 	}
 
@@ -272,5 +284,5 @@ interface MessagingRepository {
 	 * @param memberIds the collection of member IDs to remove
 	 * @return a Future that completes when the members are removed
 	 */
-	Future<Void> removeChannelMembers(Id channelId, Collection<Id> memberIds);
+	Future<Boolean> removeChannelMembers(Id channelId, Collection<Id> memberIds);
 }

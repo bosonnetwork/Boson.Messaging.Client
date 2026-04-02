@@ -41,6 +41,11 @@ public class Friend extends AbstractContact {
 	}
 
 	@Override
+	public Friend dup() {
+		return new Friend(getId(), getSessionKey(), getName(), getRemark(), getTags(), isMuted(), isBlocked(), getCreatedAt(), getUpdatedAt(), getRevision());
+	}
+
+	@Override
 	public int hashCode() {
 		return 0x6030AF91 + getId().hashCode();
 	}

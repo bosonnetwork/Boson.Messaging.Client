@@ -3,12 +3,12 @@ package io.bosonnetwork.photonmessaging.impl;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.ContentDisposition;
 import io.bosonnetwork.photonmessaging.ContentType;
 import io.bosonnetwork.photonmessaging.Message;
+import io.bosonnetwork.vertx.VertxFuture;
 
 public class MessageBuilder implements Message.Builder {
 	private final static Map<String, Object> EMPTY_HEADERS = Map.of();
@@ -19,7 +19,7 @@ public class MessageBuilder implements Message.Builder {
 	private Object body;
 
 	protected MessageBuilder(MessagingClientImpl client, Id recipient) {
-		this.message = new MessageImpl(Message.Type.CONTENT_MESSAGE, recipient);
+		this.message = new MessageImpl<>(Message.Type.CONTENT_MESSAGE, recipient, null);
 		this.client = client;
 		this.headers = EMPTY_HEADERS;
 	}
@@ -103,13 +103,13 @@ public class MessageBuilder implements Message.Builder {
 		if (body == null)
 			throw new IllegalStateException("Body not set");
 
-		DefaultMessagePayload<?> payload = new DefaultMessagePayload<>(headers, body);
+		DefaultContent<?> payload = new DefaultContent<>(headers, body);
 		message.setPayload(payload.serialize());
 		return message;
 	}
 
 	@Override
-	public CompletableFuture<Message> send() {
-		return client.send(build);
+	public VertxFuture<Message> send() {
+		return VertxFuture.of(client.sendMessage(build()));
 	}
 }

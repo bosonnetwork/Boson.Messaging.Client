@@ -22,12 +22,16 @@
 
 package io.bosonnetwork.photonmessaging.impl;
 
+import java.io.IOException;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.Objects;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Context;
 import io.vertx.core.Vertx;
 
@@ -376,6 +380,37 @@ public abstract class AbstractContact implements Contact {
 
 	public boolean isStaled() {
 		return System.currentTimeMillis() - lastRefresh > STALE_TIME;
+	}
+
+	protected abstract AbstractContact dup();
+
+	protected void patch(JsonNode changes) {
+		Iterator<Map.Entry<String, JsonNode>> fields = changes.fields();
+		while (fields.hasNext()) {
+			Map.Entry<String, JsonNode> field = fields.next();
+			patch(field.getKey(), field.getValue());
+		}
+	}
+
+	protected void patch(String fieldName, JsonNode value) {
+		switch (fieldName) {
+			case "t" -> {}
+			case "sk" -> {
+				try {
+					setSessionKey(value.binaryValue());
+				} catch (IOException e) {
+					throw new IllegalArgumentException("invalid sessionKey", e);
+				}
+			}
+			case "n" -> setName(value.textValue());
+			case "r" -> setRemark(value.textValue());
+			case "ts" -> setTags(value.textValue());
+			case "m" -> setMuted(value.booleanValue());
+			case "b" -> setBlocked(value.booleanValue());
+			case "u" -> setUpdatedAt(value.longValue());
+			case "v" -> setRevision(value.intValue());
+			default -> {} // ignore "id", "v" and the unknown fields
+		}
 	}
 
 	// TODO: update the context local data

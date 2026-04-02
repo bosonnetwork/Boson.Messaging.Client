@@ -24,6 +24,7 @@ package io.bosonnetwork.photonmessaging.impl;
 
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -96,6 +97,18 @@ public class RpcPrototypes {
 									  @JsonProperty("n") String name,
 									  @JsonProperty("nt") String notice,
 									  @JsonProperty("a") boolean announce) {
+	}
+
+	public record ChannelInfo(@JsonProperty(value = "id", required = true) Id channelId,
+	                          @JsonProperty(value = "o", required = true) Id ownerId,
+	                          @JsonProperty(value = "sid", required = true) Id sessionId,
+	                          @JsonProperty(value = "sk", required = true) byte[] sessionKey,
+	                          @JsonProperty(value = "p", required = true) Channel.Permission permission,
+	                          @JsonProperty(value = "n") @JsonInclude(JsonInclude.Include.NON_NULL) String name,
+	                          @JsonProperty(value = "nt") @JsonInclude(JsonInclude.Include.NON_EMPTY) String notice,
+	                          @JsonProperty(value = "a") @JsonInclude(JsonInclude.Include.NON_DEFAULT) boolean announce,
+	                          @JsonProperty(value = "c") long createdAt,
+	                          @JsonProperty(value = "u") long updateAt) {
 	}
 
 	public record ChannelSessionKeyRotationParams(@JsonProperty(value = "sid", required = true) Id sessionId,
