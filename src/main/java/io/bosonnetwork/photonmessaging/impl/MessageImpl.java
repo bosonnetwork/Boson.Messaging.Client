@@ -28,20 +28,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectReader;
-import com.fasterxml.jackson.databind.ObjectWriter;
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.json.Json;
-import io.bosonnetwork.photonmessaging.MalformedMessageException;
 import io.bosonnetwork.photonmessaging.Message;
+import io.bosonnetwork.photonmessaging.impl.rpc.RpcRequest;
 
-public class MessageImpl implements Message {
+@JsonPropertyOrder({"v", "r", "y", "f", "s", "c", "p"})
+public class MessageImpl<P> implements Message {
 	private static final int VERSION = 2;
-
-	private static final ObjectReader READER = Json.cborMapper().readerFor(MessageImpl.class);
-	private static final ObjectWriter WRITER = Json.cborMapper().writerFor(MessageImpl.class);
 
 	private static final AtomicInteger messageSerialNumber = new AtomicInteger(1);
 
@@ -61,27 +59,44 @@ public class MessageImpl implements Message {
 	private long createdAt;
 
 	@JsonProperty(value = "p", required = true)
-	private byte[] payload;
+	private P payload;
 
 	private long id;
 	private Id conversationId;
 	private long receivedAt;
 
+	private Promise<Void> sentPromise;
+
 	@JsonCreator
 	protected MessageImpl() {
-		this(Type.CONTENT_MESSAGE, null);
+		this(Type.CONTENT_MESSAGE, null, null);
 	}
 
 	protected MessageImpl(Type type) {
-		this(type, null);
+		this(type, null, null);
 	}
 
-	protected MessageImpl(Type type, Id recipient) {
+	protected MessageImpl(Type type, Id recipient, P payload) {
 		this.version = VERSION;
 		this.type = type;
 		this.recipient = recipient;
 		this.serialNumber = nextSerialNumber();
 		this.createdAt = System.currentTimeMillis();
+		this.payload = payload;
+	}
+
+	protected MessageImpl(MessageImpl<?> message, P newPayload) {
+		this.version = message.version;
+		this.recipient = message.recipient;
+		this.type = message.type;
+		this.from = message.from;
+		this.serialNumber = message.serialNumber;
+		this.createdAt = message.createdAt;
+		this.payload = newPayload;
+
+		this.id = message.id;
+		this.conversationId = message.conversationId;
+		this.receivedAt = message.receivedAt;
 	}
 
 	private static int nextSerialNumber() {
@@ -101,6 +116,11 @@ public class MessageImpl implements Message {
 	@Override
 	public Id getConversationId() {
 		return conversationId;
+	}
+
+	protected MessageImpl<P> setConversationId(Id conversationId) {
+		this.conversationId = conversationId;
+		return this;
 	}
 
 	@Override
@@ -137,18 +157,26 @@ public class MessageImpl implements Message {
 		return receivedAt;
 	}
 
-	public byte[] getPayload() {
-		return payload;
-	}
-
-	public void setPayload(byte[] payload) {
-		this.payload = payload;
+	protected void received() {
+		this.receivedAt = System.currentTimeMillis();
 	}
 
 	@Override
-	public <T> T getPayloadAs() {
+	public byte[] getPayloadAsBytes() {
+		if (payload == null)
+			return null;
+
+		if (payload instanceof byte[] bytes)
+			return bytes;
+
+		if (payload instanceof DefaultContent<?> p)
+			return p.serialize();
+
+		if (payload instanceof RpcRequest<?> q)
+			return q.serialize();
+
 		try {
-			return Json.cborMapper().readValue(payload, new TypeReference<>() {});
+			return Json.cborMapper().writeValueAsBytes(payload);
 		} catch (IOException e) {
 			throw new IllegalStateException("Message payload deserialization failed", e);
 		}
@@ -156,27 +184,45 @@ public class MessageImpl implements Message {
 
 	@Override
 	public Content getPayloadAsContent() {
-		return DefaultMessagePayload.parse(payload);
+		if (payload == null)
+			return null;
+
+		if (payload instanceof Content c)
+			return c;
+
+		if (payload instanceof byte[] bytes)
+			return DefaultContent.parse(bytes);
+
+		throw new IllegalStateException("Message payload is not a Content");
 	}
 
-	public static MessageImpl parse(byte[] data) throws MalformedMessageException {
-		try {
-			return READER.readValue(data);
-		} catch (IOException e) {
-			throw new MalformedMessageException("Malformed message", e);
-		}
+	protected void setPayload(P payload) {
+		this.payload = payload;
 	}
 
-	/**
-	 * Serializes this message to CBOR format.
-	 *
-	 * @return a buffer containing the serialized message
-	 */
-	public byte[] serialize() {
-		try {
-			return WRITER.writeValueAsBytes(this);
-		} catch (IOException e) {
-			throw new IllegalStateException("INTERNAL ERROR: Message serialization", e);
-		}
+	protected P getPayload() {
+		return payload;
+	}
+
+	protected void prepareForSending() {
+		this.sentPromise = Promise.promise();
+	}
+
+	protected void sent() {
+		if (sentPromise == null)
+			throw new IllegalStateException("Message has not been sent yet");
+		sentPromise.tryComplete();
+	}
+
+	protected void failed(Throwable e) {
+		if (sentPromise == null)
+			throw new IllegalStateException("Message has not been sent yet");
+		sentPromise.tryFail(e);
+	}
+
+	protected Future<Void> getFuture() {
+		if (sentPromise == null)
+			throw new IllegalStateException("Message has not been sent yet");
+		return sentPromise.future();
 	}
 }

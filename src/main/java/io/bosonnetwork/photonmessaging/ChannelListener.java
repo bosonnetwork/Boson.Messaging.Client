@@ -24,6 +24,8 @@ package io.bosonnetwork.photonmessaging;
 
 import java.util.List;
 
+import io.bosonnetwork.Id;
+
 /**
  * Listener for channel-related events in the messaging system.
  * Implementations of this interface can be used to monitor channel lifecycle,
@@ -51,6 +53,10 @@ public interface ChannelListener {
 	 * @param channel the channel that was deleted
 	 */
 	void onChannelDeleted(Channel channel);
+
+	void onChannelOwnershipTransferred(Channel channel, Id oldOwner, Id newOwner);
+
+	void onChannelSessionKeyRotated(Channel channel);
 
 	/**
 	 * Called when the channel information (such as name or description) was updated.
@@ -114,5 +120,5 @@ public interface ChannelListener {
 	 * @param changed the list of members whose roles were updated
 	 * @param role    the new role assigned to these members
 	 */
-	void onChannelMembersRoleChanged(Channel channel, List<Channel.Member> changed, io.bosonnetwork.photonmessaging.Channel.Role role);
+	void onChannelMembersRoleChanged(Channel channel, List<Channel.Member> changed, Channel.Role role);
 }

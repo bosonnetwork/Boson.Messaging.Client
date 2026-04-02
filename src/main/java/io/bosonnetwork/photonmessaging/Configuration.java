@@ -22,6 +22,7 @@
 
 package io.bosonnetwork.photonmessaging;
 
+import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -36,8 +37,7 @@ public class Configuration {
 	private static final String DEFAULT_SCHEME = "mqtts://";
 
 	private Id servicePeerId;
-	private String serviceHost; // optional
-	private int servicePort;	// optional
+	private URI serviceEndpoint; // optional
 
 	private Signature.KeyPair userKey;
 	private Signature.KeyPair deviceKey;
@@ -55,8 +55,16 @@ public class Configuration {
 
 		config.servicePeerId = service.getId("peerId");
 		// optional
-		config.serviceHost = service.getString("host", null);
-		config.servicePort = service.getPort("port", 0);
+		String endpoint = service.getString("endpoint", null);
+		if (endpoint != null) {
+			URI uri = URI.create(endpoint);
+			if (!uri.isAbsolute() || uri.getHost() == null || uri.getScheme() == null ||
+					uri.getPort() <= 0 || uri.getPort() > 65535 ||
+					(!uri.getScheme().equals("mqtt") && !uri.getScheme().equals("mqtts")))
+				throw new IllegalArgumentException("Invalid endpoint: " + endpoint);
+
+			config.serviceEndpoint = uri;
+		}
 
 		ConfigMap client = cm.getObject("client");
 		String sk = client.getString("userPrivateKey", null);
@@ -91,10 +99,8 @@ public class Configuration {
 
 		Map<String, Object> subMap = new LinkedHashMap<>();
 		subMap.put("peerId", servicePeerId.toString());
-		if (serviceHost != null)
-			subMap.put("host", serviceHost);
-		if (servicePort > 0)
-			subMap.put("port", servicePort);
+		if (serviceEndpoint != null)
+			subMap.put("endpoint", serviceEndpoint);
 		map.put("service", subMap);
 
 		subMap = new LinkedHashMap<>();
@@ -109,12 +115,8 @@ public class Configuration {
 		return servicePeerId;
 	}
 
-	public String getServiceHost() {
-		return serviceHost;
-	}
-
-	public int getServicePort() {
-		return servicePort;
+	public URI getServiceEndpoint() {
+		return serviceEndpoint;
 	}
 
 	public Signature.KeyPair getUserKey() {
@@ -140,30 +142,38 @@ public class Configuration {
 			return config == null ? config = new Configuration() : config;
 		}
 
-		public Builder service(Id peerId, String host, int port) {
+		public Builder service(Id peerId, String endpoint) {
 			servicePeerId(peerId);
-			serviceHost(host);
-			servicePort(port);
+			serviceEndpoint(endpoint);
 			return this;
 		}
 
-		public Builder servicePeerId(Id servicePeerId) {
-			Objects.requireNonNull(servicePeerId, "servicePeerId");
-			config().servicePeerId = servicePeerId;
+		public Builder service(Id peerId, URI endpoint) {
+			servicePeerId(peerId);
+			serviceEndpoint(endpoint);
 			return this;
 		}
 
-		public Builder serviceHost(String serviceHost) {
-			Objects.requireNonNull(serviceHost, "serviceHost");
-			config().serviceHost = serviceHost;
+		public Builder servicePeerId(Id peerId) {
+			Objects.requireNonNull(peerId, "peerId");
+			config().servicePeerId = peerId;
 			return this;
 		}
 
-		public Builder servicePort(int servicePort) {
-			if (servicePort <= 0 || servicePort > 65535)
-				throw new IllegalArgumentException("Invalid servicePort");
+		public Builder serviceEndpoint(String endpoint) {
+			Objects.requireNonNull(endpoint, "endpoint");
+			serviceEndpoint(URI.create(endpoint));
+			return this;
+		}
 
-			config().servicePort = servicePort;
+		public Builder serviceEndpoint(URI endpoint) {
+			Objects.requireNonNull(endpoint);
+			if (!endpoint.isAbsolute() || endpoint.getHost() == null || endpoint.getScheme() == null ||
+					endpoint.getPort() <= 0 || endpoint.getPort() > 65535 ||
+					(!endpoint.getScheme().equals("mqtt") && !endpoint.getScheme().equals("mqtts")))
+				throw new IllegalArgumentException("Invalid endpoint");
+
+			config().serviceEndpoint = endpoint;
 			return this;
 		}
 

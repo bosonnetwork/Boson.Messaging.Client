@@ -35,14 +35,14 @@ import io.bosonnetwork.photonmessaging.ContentDisposition;
 import io.bosonnetwork.photonmessaging.ContentType;
 import io.bosonnetwork.photonmessaging.Message;
 
-public class DefaultMessagePayload<B> implements Message.Content {
-	private static final ObjectReader READER = Json.cborMapper().readerFor(new TypeReference<DefaultMessagePayload<JsonNode>>() {});
-	private static final ObjectWriter WRITER = Json.cborMapper().writerFor(new TypeReference<DefaultMessagePayload<?>>() {});
+public class DefaultContent<B> implements Message.Content {
+	private static final ObjectReader READER = Json.cborMapper().readerFor(new TypeReference<DefaultContent<JsonNode>>() {});
+	private static final ObjectWriter WRITER = Json.cborMapper().writerFor(new TypeReference<DefaultContent<?>>() {});
 
 	private final Map<String, Object> headers;
 	private final B body;
 
-	protected DefaultMessagePayload(Map<String, Object> headers, B body) {
+	protected DefaultContent(Map<String, Object> headers, B body) {
 		this.headers = headers;
 		this.body = body;
 	}
@@ -65,19 +65,6 @@ public class DefaultMessagePayload<B> implements Message.Content {
 			return null;
 	}
 
-	private byte[] getSerializedBody() {
-		try {
-			return Json.toBytes(body);
-		} catch (Exception e) {
-			throw new IllegalStateException("INTERNAL ERROR: DefaultMessageBody serialization", e);
-		}
-	}
-
-	@Override
-	public int getContentLength() {
-		return body == null ? 0 : getSerializedBody().length;
-	}
-
 	@Override
 	@SuppressWarnings("unchecked")
 	public <T> T getBody() {
@@ -95,7 +82,7 @@ public class DefaultMessagePayload<B> implements Message.Content {
 		}
 	}
 
-	public static DefaultMessagePayload<JsonNode> parse(byte[] data) {
+	public static DefaultContent<JsonNode> parse(byte[] data) {
 		try {
 			return READER.readValue(data);
 		} catch (Exception e) {

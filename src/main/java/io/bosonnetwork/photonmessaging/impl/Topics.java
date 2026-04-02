@@ -20,30 +20,40 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging;
+package io.bosonnetwork.photonmessaging.impl;
 
-/**
- * Listener for message-related events.
- */
-public interface MessageListener {
-	/**
-	 * Called when a new message is received.
-	 *
-	 * @param message the received message
-	 */
-	void onMessage(Message message);
+import io.bosonnetwork.Id;
 
-	/**
-	 * Called when a message has been successfully sent.
-	 *
-	 * @param message the sent message
-	 */
-	void onSent(Message message);
+public class Topics {
+	public final String userInbox;
+	public final String userOutbox;
+	public final String deviceInbox;
+	public final String deviceOutbox;
 
-	/**
-	 * Called when a notification message is received.
-	 *
-	 * @param message the notification message
-	 */
-	void onNotification(Message message);
+	public enum Type {
+		UNKNOWN, USER_INBOX, USER_OUTBOX, DEVICE_INBOX, DEVICE_OUTBOX
+	}
+
+	public Topics(Id userId, Id deviceId) {
+		this.userInbox = userId.toBase58String() + "/inbox";
+		this.userOutbox = userId.toBase58String() + "/outbox";
+		this.deviceInbox = userId.toBase58String() + "/" + deviceId.toBase58String() + "/inbox";
+		this.deviceOutbox = userId.toBase58String() + "/" + deviceId.toBase58String() + "/outbox";
+	}
+
+	public Type typeOf(String topic) {
+		if (topic.equals(userInbox))
+			return Type.USER_INBOX;
+
+		if (topic.equals(userOutbox))
+			return Type.USER_OUTBOX;
+
+		 if (topic.equals(deviceInbox))
+			return Type.DEVICE_INBOX;
+
+		 if (topic.equals(deviceOutbox))
+			return Type.DEVICE_OUTBOX;
+
+		 return Type.UNKNOWN;
+	}
 }

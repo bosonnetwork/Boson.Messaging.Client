@@ -119,12 +119,13 @@ public interface Message {
 	long getReceivedAt();
 
 	/**
-	 * Retrieves the raw payload of the message.
+	 * Retrieves the binary payload of this message.
+	 * The payload contains the raw data associated with the message,
+	 * which may represent text, media, or other types of content depending on the context.
 	 *
-	 * @param <T> the expected type of the payload
-	 * @return the payload object cast to the specified type
+	 * @return the payload as a byte array
 	 */
-	<T> T getPayloadAs();
+	byte[] getPayloadAsBytes();
 
 	/**
 	 * Retrieves the payload wrapped in a {@link Content} object.
@@ -159,13 +160,6 @@ public interface Message {
 		 *         to be displayed (e.g., "inline" or "attachment").
 		 */
 		ContentDisposition getContentDisposition();
-
-		/**
-		 * Retrieves the length of the content in bytes.
-		 *
-		 * @return the size of the content as an integer, or -1 if the length is unknown.
-		 */
-		int getContentLength();
 
 		/**
 		 * Retrieves the body of the content.

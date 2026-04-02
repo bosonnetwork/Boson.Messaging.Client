@@ -42,6 +42,12 @@ public class AutoContact extends AbstractContact {
 	}
 
 	@Override
+	public AutoContact dup() {
+		return new AutoContact(getId(), getName(), getRemark(), getTags(), isMuted(), isBlocked(),
+				getCreatedAt(), getUpdatedAt());
+	}
+
+	@Override
 	public int hashCode() {
 		return 0x6030AA61 + getId().hashCode();
 	}

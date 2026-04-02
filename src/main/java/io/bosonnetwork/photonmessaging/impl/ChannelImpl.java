@@ -34,6 +34,7 @@ import java.util.Objects;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 
 import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
@@ -71,7 +72,7 @@ public class ChannelImpl extends AbstractContact implements Channel {
 	 * A thread-safe map of channel members, indexed by their unique IDs.
 	 * Uses Copy-On-Write logic: a new map is created on member additions or removals.
 	 */
-	private volatile Map<Id, Member> _members;
+	private volatile Map<Id, ChannelMember> _members;
 
 	/**
 	 * Cached receiver crypto contexts for each member.
@@ -79,7 +80,7 @@ public class ChannelImpl extends AbstractContact implements Channel {
 	private Map<Id, CryptoContext> memberRxCryptoContexts;
 
 	// Constructor for database OR mapping
-	protected ChannelImpl(Id id, byte[] sessionKey, Id ownerId, Permission permission,  String name, String notice,
+	protected ChannelImpl(Id id, byte[] sessionKey, Id ownerId, Permission permission, String name, String notice,
 	                  boolean announce, String remark, String tags, boolean muted, boolean blocked,
 	                  long createdAt, long updatedAt, int revision) {
 		super(id, sessionKey, name, remark, tags, muted, blocked, createdAt, updatedAt, revision);
@@ -94,9 +95,25 @@ public class ChannelImpl extends AbstractContact implements Channel {
 		super(id, sessionKey, name, remark, tags, muted, blocked, createdAt, updatedAt, revision);
 	}
 
+	protected ChannelImpl(Id id, byte[] sessionKey, Id ownerId, Permission permission, String name, String notice,
+	                      boolean announce, long createdAt, long updatedAt) {
+		this(id, sessionKey, ownerId, permission, name, notice, announce,
+				null, null, false, false, createdAt, updatedAt, 0);
+	}
+
+	private ChannelImpl(ChannelImpl channel) {
+		this(channel.getId(), channel.getSessionKey(), channel.getOwner(), channel.getPermission(), channel.getName(),
+				channel.getNotice(), channel.isAnnounce(), channel.getRemark(), channel.getTags(),
+				channel.isMuted(), channel.isBlocked(), channel.getCreatedAt(), channel.getUpdatedAt(), channel.getRevision());
+	}
+
 	@Override
 	public Id getOwner() {
 		return ownerId;
+	}
+
+	protected void setOwner(Id ownerId) {
+		this.ownerId = ownerId;
 	}
 
 	@Override
@@ -124,6 +141,19 @@ public class ChannelImpl extends AbstractContact implements Channel {
 
 	protected void setAnnounce(boolean announce) {
 		this.announce = announce;
+	}
+
+	protected ChannelImpl dup() {
+		return new ChannelImpl(this);
+	}
+
+	protected void patch(String fieldName, JsonNode value) {
+		switch (fieldName) {
+			case "p" -> setPermission(Permission.valueOf(value.intValue()));
+			case "nt" -> setNotice(value.textValue());
+			case "a" -> setAnnounce(value.booleanValue());
+			default -> super.patch(fieldName, value);
+		}
 	}
 
 	protected CryptoContext getRxCryptoContext(Id memberId) {
@@ -161,7 +191,7 @@ public class ChannelImpl extends AbstractContact implements Channel {
 	}
 
 	@Override
-	public Member getMember(Id memberId) {
+	public ChannelMember getMember(Id memberId) {
 		return getMembersMap().get(memberId);
 	}
 
@@ -170,10 +200,10 @@ public class ChannelImpl extends AbstractContact implements Channel {
 		return getMembersMap().containsKey(memberId);
 	}
 
-	void setMembers(Collection<Member> members) {
+	void setMembers(Collection<ChannelMember> members) {
 		Objects.requireNonNull(members, "members");
-		LinkedHashMap<Id, Member> newMembers = new LinkedHashMap<>();
-		for (Member m : members)
+		LinkedHashMap<Id, ChannelMember> newMembers = new LinkedHashMap<>();
+		for (ChannelMember m : members)
 			newMembers.put(m.getId(), m);
 
 		if (!newMembers.containsKey(ownerId))
@@ -182,16 +212,21 @@ public class ChannelImpl extends AbstractContact implements Channel {
 		setMembers(newMembers);
 	}
 
-	void setMembers(Map<Id, Member> members) {
+	void setMembers(Map<Id, ChannelMember> members) {
 		Objects.requireNonNull(members, "members");
 		this._members = Collections.unmodifiableMap(members);
 	}
 
-	Map<Id, Member> copyMembers() {
+	void invalidateMembers() {
+		_members = null;
+		memberRxCryptoContexts = null;
+	}
+
+	Map<Id, ChannelMember> copyMembers() {
 		return new LinkedHashMap<>(_members);
 	}
 
-	private Map<Id, Member> getMembersMap() {
+	private Map<Id, ChannelMember> getMembersMap() {
 		return _members;
 	}
 

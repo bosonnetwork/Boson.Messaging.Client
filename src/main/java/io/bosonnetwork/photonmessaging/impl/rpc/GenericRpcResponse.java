@@ -59,7 +59,7 @@ public class GenericRpcResponse extends RpcResponse<JsonNode> {
 
 		try {
 			return Json.cborMapper().convertValue(result, type);
-		} catch (IllegalArgumentException e) {
+		} catch (Exception e) {
 			throw new InvalidRpcResultException("Invalid RPC result", e);
 		}
 	}
