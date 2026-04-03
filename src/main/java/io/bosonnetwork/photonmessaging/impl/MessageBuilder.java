@@ -13,7 +13,7 @@ import io.bosonnetwork.vertx.VertxFuture;
 public class MessageBuilder implements Message.Builder {
 	private final static Map<String, Object> EMPTY_HEADERS = Map.of();
 
-	private final MessageImpl message;
+	private final MessageImpl<byte[]> message;
 	private final MessagingClientImpl client;
 	private Map<String, Object> headers;
 	private Object body;
@@ -24,19 +24,15 @@ public class MessageBuilder implements Message.Builder {
 		this.headers = EMPTY_HEADERS;
 	}
 
-	protected MessageBuilder(MessagingClientImpl client) {
-		this(client, null);
-	}
-
 	@Override
-	public Message.Builder to(Id to) {
+	public MessageBuilder to(Id to) {
 		Objects.requireNonNull(to, "to");
 		message.setRecipient(to);
 		return this;
 	}
 
 	@Override
-	public Message.Builder header(String name, Object value) {
+	public MessageBuilder header(String name, Object value) {
 		Objects.requireNonNull(name, "name");
 		if (value != null) {
 			if (headers == EMPTY_HEADERS)
@@ -52,28 +48,28 @@ public class MessageBuilder implements Message.Builder {
 	}
 
 	@Override
-	public Message.Builder contentType(String contentType) {
+	public MessageBuilder contentType(String contentType) {
 		Objects.requireNonNull(contentType, "contentType");
 		header(ContentType.HEADER_NAME, contentType);
 		return this;
 	}
 
 	@Override
-	public Message.Builder contentDisposition(String contentDisposition) {
+	public MessageBuilder contentDisposition(String contentDisposition) {
 		Objects.requireNonNull(contentDisposition, "contentDisposition");
 		header(ContentDisposition.HEADER_NAME, contentDisposition);
 		return this;
 	}
 
 	@Override
-	public Message.Builder contentDisposition(ContentDisposition contentDisposition) {
+	public MessageBuilder contentDisposition(ContentDisposition contentDisposition) {
 		Objects.requireNonNull(contentDisposition, "contentDisposition");
 		header(ContentDisposition.HEADER_NAME, contentDisposition.getValue());
 		return this;
 	}
 
 	@Override
-	public Message.Builder body(byte[] body) {
+	public MessageBuilder body(byte[] body) {
 		Objects.requireNonNull(body, "body");
 		this.body = body;
 		if (!headers.containsKey(ContentType.HEADER_NAME))
@@ -83,14 +79,14 @@ public class MessageBuilder implements Message.Builder {
 	}
 
 	@Override
-	public Message.Builder body(String body) {
+	public MessageBuilder body(String body) {
 		Objects.requireNonNull(body, "body");
 		this.body = body;
 		return this;
 	}
 
 	@Override
-	public Message.Builder body(Object body) {
+	public MessageBuilder body(Object body) {
 		Objects.requireNonNull(body, "body");
 		this.body = body;
 		return this;

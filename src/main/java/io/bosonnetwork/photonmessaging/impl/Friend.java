@@ -31,8 +31,14 @@ public class Friend extends AbstractContact {
 		super(id);
 	}
 
-	protected Friend(Id id, byte[] sessionKey, String name, String remark, String tags, boolean muted, boolean blocked, long createdAt, long updatedAt, int revision) {
+	protected Friend(Id id, byte[] sessionKey, String name, String remark, String tags, boolean muted,
+					 boolean blocked, long createdAt, long updatedAt, int revision) {
 		super(id, sessionKey, name, remark, tags, muted, blocked, createdAt, updatedAt, revision);
+	}
+
+	public Friend(Id id, byte[] sessionKey, String remark) {
+		this(id, sessionKey, null, remark, null, false, false,
+				System.currentTimeMillis(), 0, 0);
 	}
 
 	@Override
@@ -42,7 +48,8 @@ public class Friend extends AbstractContact {
 
 	@Override
 	public Friend dup() {
-		return new Friend(getId(), getSessionKey(), getName(), getRemark(), getTags(), isMuted(), isBlocked(), getCreatedAt(), getUpdatedAt(), getRevision());
+		return new Friend(getId(), getSessionKey(), getName(), getRemark(), getTags(), isMuted(),
+				isBlocked(), getCreatedAt(), getUpdatedAt(), getRevision());
 	}
 
 	@Override

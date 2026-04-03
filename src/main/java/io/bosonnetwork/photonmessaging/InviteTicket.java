@@ -28,7 +28,6 @@ import java.util.Objects;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import io.bosonnetwork.Id;
@@ -50,6 +49,8 @@ public class InviteTicket {
 
 	@JsonProperty(value = "c", required = true)
 	private final Id channelId;
+	@JsonProperty(value = "sid", required = true)
+	private final Id sessionId;
 	@JsonProperty(value = "i", required = true)
 	private final Id inviter;
 	@JsonProperty(value = "ie")
@@ -61,13 +62,14 @@ public class InviteTicket {
 	private final byte[] sig;
 
 	@JsonProperty(value = "sk")
-	@JsonInclude(Include.NON_EMPTY)
+	@JsonInclude(JsonInclude.Include.NON_EMPTY)
 	private final byte[] sessionKey;
 
 	/**
 	 * Creates an invite ticket for JSON deserialization.
 	 *
 	 * @param channelId the channel identifier
+	 * @param sessionId the session identifier
 	 * @param inviter the inviter identifier
 	 * @param invitee the invitee identifier, or {@code null} for a bearer ticket
 	 * @param expiration the expiration time in milliseconds since the epoch
@@ -76,12 +78,14 @@ public class InviteTicket {
 	 */
 	@JsonCreator
 	public InviteTicket(@JsonProperty(value = "c", required = true) Id channelId,
-			@JsonProperty(value = "i", required = true) Id inviter,
-			@JsonProperty(value = "ie") Id invitee,
-			@JsonProperty(value = "e") long expiration,
-			@JsonProperty(value = "s", required = true) byte[] sig,
-			@JsonProperty(value = "sk") byte[] sessionKey) {
+	                    @JsonProperty(value = "sid", required = true) Id sessionId,
+	                    @JsonProperty(value = "i", required = true) Id inviter,
+	                    @JsonProperty(value = "ie") Id invitee,
+	                    @JsonProperty(value = "e") long expiration,
+	                    @JsonProperty(value = "s", required = true) byte[] sig,
+	                    @JsonProperty(value = "sk") byte[] sessionKey) {
 		this.channelId = Objects.requireNonNull(channelId, "channelId");
+		this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
 		this.inviter = Objects.requireNonNull(inviter, "inviter");
 		this.invitee = invitee;
 		this.expiration = expiration;
@@ -96,6 +100,15 @@ public class InviteTicket {
 	 */
 	public Id getChannelId() {
 		return channelId;
+	}
+
+	/**
+	 * Returns the session identifier associated with this ticket.
+	 *
+	 * @return the session identifier
+	 */
+	public Id getSessionId() {
+		return sessionId;
 	}
 
 	/**
@@ -161,6 +174,7 @@ public class InviteTicket {
 		MessageDigest sha256 = Hash.sha256();
 		sha256.reset();
 		sha256.update(channelId.bytes());
+		sha256.update(sessionId.bytes());
 		sha256.update(inviter.bytes());
 		if (invitee != null)
 			sha256.update(invitee.bytes());
@@ -183,7 +197,11 @@ public class InviteTicket {
 		if (sessionKey == null)
 			return this;
 
-		return new InviteTicket(channelId, inviter, invitee, expiration, sig, null);
+		return new InviteTicket(channelId, sessionId, inviter, invitee, expiration, sig, null);
+	}
+
+	public InviteTicket revise(byte[] sessionKey) {
+		return new InviteTicket(channelId, sessionId, inviter, invitee, expiration, sig, sessionKey);
 	}
 
 	/**
@@ -195,6 +213,7 @@ public class InviteTicket {
 	public String toString() {
 		return "InviteTicket {" +
 				"channelId=" + channelId +
+				", sessionId=" + sessionId +
 				", inviter=" + inviter +
 				(invitee != null ? (", invitee=" + invitee) : "") +
 				", expiration=" + expiration +

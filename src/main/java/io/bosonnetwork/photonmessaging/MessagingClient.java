@@ -36,17 +36,17 @@ public interface MessagingClient {
 
 	Id getDeviceId();
 
-	boolean addConnectionListener(ConnectionListener connectionListener);
-	boolean removeConnectionListener(ConnectionListener connectionListener);
+	void addConnectionListener(ConnectionListener listener);
+	void removeConnectionListener(ConnectionListener listener);
 
-	boolean addMessageListener(MessageListener messageListener);
-	boolean removeMessageListener(MessageListener messageListener);
+	void addMessageListener(MessageListener listener);
+	void removeMessageListener(MessageListener listener);
 
-	boolean addChannelListener(ChannelListener channelListener);
-	boolean removeChannelListener(ChannelListener channelListener);
+	void addChannelListener(ChannelListener listener);
+	void removeChannelListener(ChannelListener listener);
 
-	boolean addContactListener(ContactListener contactListener);
-	boolean removeContactListener(ContactListener contactListener);
+	void addContactListener(ContactListener listener);
+	void removeContactListener(ContactListener listener);
 
 	CompletableFuture<Void> start();
 
@@ -99,6 +99,8 @@ public interface MessagingClient {
 	CompletableFuture<Boolean> revokeSession(Id deviceId);
 
 	// Friend APIs
+	CompletableFuture<Void> friendRequest(Id id, String hello);
+
 	default CompletableFuture<Contact> addFriend(Id id, byte[] sessionKey) {
 		return addFriend(id, sessionKey, null);
 	}
@@ -107,18 +109,19 @@ public interface MessagingClient {
 
 	// channel APIs
 	default CompletableFuture<Channel> createChannel(String name) {
-		return createChannel(Channel.Permission.OWNER_INVITE, name, null);
+		return createChannel(Channel.Permission.OWNER_INVITE, name, null, false);
 	}
 
 	default CompletableFuture<Channel> createChannel(String name, String notice) {
-		return createChannel(Channel.Permission.OWNER_INVITE, name, notice);
+		return createChannel(Channel.Permission.OWNER_INVITE, name, notice, false);
 	}
 
-	CompletableFuture<Channel> createChannel(Channel.Permission permission, String name, String notice);
-	CompletableFuture<Boolean> removeChannel(Id channeId);
+	CompletableFuture<Channel> createChannel(Channel.Permission permission, String name, String notice, boolean announce);
+
+	CompletableFuture<Boolean> removeChannel(Id channelId);
 
 	CompletableFuture<Channel> joinChannel(InviteTicket ticket);
-	CompletableFuture<Boolean> leaveChannel(Id channeId);
+	CompletableFuture<Boolean> leaveChannel(Id channelId);
 
 	CompletableFuture<InviteTicket> createInviteTicket(Id channelId);
 	CompletableFuture<InviteTicket> createInviteTicket(Id channelId, Id invitee);

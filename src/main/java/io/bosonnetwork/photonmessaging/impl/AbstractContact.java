@@ -130,7 +130,7 @@ public abstract class AbstractContact implements Contact {
 		this.muted = muted;
 		this.blocked = blocked;
 		this.createdAt = createdAt;
-		this.updatedAt = updatedAt;
+		this.updatedAt = updatedAt == 0 ? createdAt : updatedAt;
 		this.revision = revision;
 
 		if (sessionKey != null && sessionKey.length > 0)
@@ -439,7 +439,7 @@ public abstract class AbstractContact implements Contact {
 				key = getUserIdentity().encrypt(id, key);
 			} else if (key.length == Signature.PrivateKey.BYTES + CryptoBox.MAC_BYTES + CryptoBox.Nonce.BYTES) {
 				// encrypted session key
-					privateKey = getUserIdentity().decrypt(id, key);
+				privateKey = getUserIdentity().decrypt(id, key);
 			} else {
 				throw new IllegalArgumentException("invalid session key");
 			}
@@ -475,7 +475,7 @@ public abstract class AbstractContact implements Contact {
 		return sessionIdentity.createCryptoContext(id);
 	}
 
-	public CryptoContext getRxCryptoContext() throws CryptoException {
+	protected CryptoContext getRxCryptoContext() throws CryptoException {
 		CryptoContext ctx = this.rxCryptoContext;
 		if (ctx == null) {
 			ctx = createCryptoContext(id);
@@ -485,7 +485,7 @@ public abstract class AbstractContact implements Contact {
 		return ctx;
 	}
 
-	public CryptoContext getTxCryptoContext() throws CryptoException {
+	protected CryptoContext getTxCryptoContext() throws CryptoException {
 		CryptoContext ctx = this.txCryptoContext;
 		if (ctx == null) {
 			ctx = getUserIdentity().createCryptoContext(sessionIdentity.getId());

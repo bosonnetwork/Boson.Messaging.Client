@@ -22,18 +22,18 @@
 
 package io.bosonnetwork.photonmessaging.impl;
 
-import java.io.IOException;
+import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonValue;
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import io.bosonnetwork.json.Json;
 
-public class ContactMutation {
+public class ContactMutation<T> {
 	// current client revision, make sure the client makes the change based on the latest revision
 	@JsonProperty(value = "r", required = true)
 	private final int revision;
@@ -41,7 +41,7 @@ public class ContactMutation {
 	private final Op op;
 	@JsonProperty(value = "d")
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	private final JsonNode data;
+	private final T data;
 
 	public enum Op {
 		ADD(1),
@@ -73,22 +73,12 @@ public class ContactMutation {
 	}
 
 	@JsonCreator
-	public ContactMutation(@JsonProperty(value = "r", required = true) int revision,
+	protected ContactMutation(@JsonProperty(value = "r", required = true) int revision,
 	                       @JsonProperty(value = "op", required = true) Op op,
-	                       @JsonProperty(value = "d") JsonNode data) {
+	                       @JsonProperty(value = "d") T data) {
 		this.revision = revision;
 		this.op = op;
 		this.data = data;
-	}
-
-	public ContactMutation(int revision, Op op, byte[] data) {
-		this.revision = revision;
-		this.op = op;
-		try {
-			this.data = data == null || data.length == 0 ? null : Json.cborMapper().readValue(data, JsonNode.class);
-		} catch (IOException e) {
-			throw new IllegalArgumentException("Invalid mutation data", e);
-		}
 	}
 
 	public int getRevision() {
@@ -99,16 +89,8 @@ public class ContactMutation {
 		return op;
 	}
 
-	public JsonNode getData() {
+	public T getData() {
 		return data;
-	}
-
-	public <T> T getDataAs(Class<T> clazz) throws IllegalArgumentException {
-		return data == null ? null : Json.cborMapper().convertValue(data, clazz);
-	}
-
-	public <T> T getDataAs(TypeReference<T> type) throws IllegalArgumentException {
-		return data == null ? null : Json.cborMapper().convertValue(data, type);
 	}
 
 	public byte[] getDataAsBytes() {
@@ -119,6 +101,24 @@ public class ContactMutation {
 			return Json.cborMapper().writeValueAsBytes(data);
 		} catch (Exception e) {
 			throw new IllegalStateException("INTERNAL ERROR: ContactMutation data serialization", e);
+		}
+	}
+
+	public static class GenericContactMutation extends ContactMutation<JsonNode> {
+		@JsonCreator
+		protected GenericContactMutation(int revision, Op op, JsonNode data) {
+			super(revision, op, data);
+		}
+
+		public <DT> DT getDataAs(Class<DT> clazz) {
+			final JsonNode data = getData();
+			return data == null ? null : Json.cborMapper().convertValue(data, clazz);
+		}
+
+		public <E> List<E> getDataAsListOf(Class<E> elementType) {
+			JavaType type = Json.cborMapper().getTypeFactory().constructCollectionType(List.class, elementType);
+			final JsonNode data = getData();
+			return data == null ? null : Json.cborMapper().convertValue(data, type);
 		}
 	}
 }

@@ -67,10 +67,6 @@ public class ChannelMember implements Channel.Member {
 		return role;
 	}
 
-	protected ChannelMember setRole(Channel.Role role) {
-		return new ChannelMember(id, role, joined);
-	}
-
 	@Override
 	public long getJoined() {
 		return joined;

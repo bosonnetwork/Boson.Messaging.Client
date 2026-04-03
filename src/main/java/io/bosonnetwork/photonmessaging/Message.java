@@ -22,6 +22,7 @@
 
 package io.bosonnetwork.photonmessaging;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -167,7 +168,16 @@ public interface Message {
 		 * @param <T> the expected type of the body
 		 * @return the body of the content, cast to the specified type
 		 */
-		<T> T getBody();
+		<T> T getBodyAs(Class<T> type);
+
+		/**
+		 * Retrieves the body of the content as a list of elements of the specified type.
+		 *
+		 * @param <E> the type of elements in the resulting list
+		 * @param elementType the class of the elements to cast the body elements to
+		 * @return a list of elements of the specified type representing the content body
+		 */
+		<E> List<E> getBodyAsListOf(Class<E> elementType);
 	}
 
 	/**
