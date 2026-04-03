@@ -93,6 +93,7 @@ public class RpcPrototypes {
 			new RpcMethodPrototype<>(RpcMethod.CHANNEL_MEMBERS, Void.class, new TypeReference<>() {});
 
 	public record CreateChannelParams(@JsonProperty(value = "sid", required = true) Id sessionId,
+									  @JsonProperty(value = "sk", required = true) byte[] sessionKey,
 									  @JsonProperty(value = "p", required = true) Channel.Permission permission,
 									  @JsonProperty("n") String name,
 									  @JsonProperty("nt") String notice,

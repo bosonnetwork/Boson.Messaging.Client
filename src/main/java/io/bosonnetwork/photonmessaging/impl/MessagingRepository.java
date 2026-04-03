@@ -32,6 +32,7 @@ import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Channel;
 import io.bosonnetwork.photonmessaging.Contact;
 import io.bosonnetwork.photonmessaging.Conversation;
+import io.bosonnetwork.photonmessaging.FriendRequest;
 import io.bosonnetwork.photonmessaging.Message;
 
 /**
@@ -104,6 +105,16 @@ interface MessagingRepository {
 	 */
 	Future<Boolean> removeMessages(Id conversationId);
 
+	Future<Boolean> putFriendRequest(FriendRequest friendRequest);
+
+	Future<FriendRequest> getFriendRequest(Id userId);
+
+	Future<List<FriendRequest>> getFriendRequests();
+
+	Future<Boolean> removeFriendRequest(Id userId);
+
+	Future<Boolean> removeFriendRequests(Collection<Id> userIds);
+
 	/**
 	 * Retrieves a conversation by its ID.
 	 *
@@ -136,6 +147,7 @@ interface MessagingRepository {
 	 * @return a Future that completes when the conversations are removed
 	 */
 	Future<Boolean> removeConversations(Collection<Id> conversationIds);
+
 
 	Future<Boolean> putContactLocally(Contact contact);
 

@@ -29,6 +29,7 @@ import java.util.List;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonValue;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectReader;
@@ -36,15 +37,14 @@ import com.fasterxml.jackson.databind.ObjectReader;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.crypto.Hash;
 import io.bosonnetwork.json.Json;
-import io.bosonnetwork.photonmessaging.impl.rpc.RpcMethod;
 
 public class Notification<T> {
 	private static final ObjectReader READER = Json.cborMapper().readerFor(GenericNotification.class);
 
 	@JsonProperty(value = "i", required = true)
 	private final Id id;
-	@JsonProperty(value = "m", required = true)
-	private final RpcMethod method;
+	@JsonProperty(value = "e", required = true)
+	private final Event event;
 	@JsonProperty(value = "s", required = true)
 	private final Id source;
 	@JsonProperty(value = "t", required = true)
@@ -53,9 +53,62 @@ public class Notification<T> {
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	private final T content;
 
-	public Notification(Id id, RpcMethod method, Id source, long timestamp, T content) {
+	public enum Event {
+		SESSION_NEW(0x01),
+		CONTACT_MUTATE(0x02),
+		CHANNEL_CREATE(0x11),
+		CHANNEL_DELETE(0x12),
+		CHANNEL_JOIN(0x13),
+		CHANNEL_LEAVE(0x14),
+		CHANNEL_TRANSFER_OWNERSHIP(0x15),
+		CHANNEL_ROTATE_SESSION_KEY(0x16),
+		CHANNEL_UPDATE_INFO(0x17),
+		CHANNEL_UPDATE_MEMBERS_ROLE(0x18),
+		CHANNEL_BAN_MEMBERS(0x19),
+		CHANNEL_UNBAN_MEMBERS(0x1A),
+		CHANNEL_REMOVE_MEMBERS(0x1B),
+		CHANNEL_MEMBER_JOIN(0x1C),
+		CHANNEL_MEMBER_LEAVE(0x1D),
+		FRIEND_REQUEST(0x51);
+
+		private final int value;
+
+		Event(int value) {
+			this.value = value;
+		}
+
+		@JsonValue
+		public int value() {
+			return value;
+		}
+
+		@JsonCreator
+		public Event valueOf(int value) {
+			return switch (value) {
+				case 0x01 -> SESSION_NEW;
+				case 0x02 -> CONTACT_MUTATE;
+				case 0x11 -> CHANNEL_CREATE;
+				case 0x12 -> CHANNEL_DELETE;
+				case 0x13 -> CHANNEL_JOIN;
+				case 0x14 -> CHANNEL_LEAVE;
+				case 0x15 -> CHANNEL_TRANSFER_OWNERSHIP;
+				case 0x16 -> CHANNEL_ROTATE_SESSION_KEY;
+				case 0x17 -> CHANNEL_UPDATE_INFO;
+				case 0x18 -> CHANNEL_UPDATE_MEMBERS_ROLE;
+				case 0x19 -> CHANNEL_BAN_MEMBERS;
+				case 0x1A -> CHANNEL_UNBAN_MEMBERS;
+				case 0x1B -> CHANNEL_REMOVE_MEMBERS;
+				case 0x1C -> CHANNEL_MEMBER_JOIN;
+				case 0x1D -> CHANNEL_MEMBER_LEAVE;
+				case 0x51 -> FRIEND_REQUEST;
+				default -> throw new IllegalArgumentException("Invalid event value: " + value);
+			};
+		}
+	}
+
+	public Notification(Id id, Event event, Id source, long timestamp, T content) {
 		this.id = id;
-		this.method = method;
+		this.event = event;
 		this.source = source;
 		this.timestamp = timestamp;
 		this.content = content;
@@ -65,8 +118,8 @@ public class Notification<T> {
 		return id;
 	}
 
-	public RpcMethod getMethod() {
-		return method;
+	public Event getEvent() {
+		return event;
 	}
 
 	public Id getSource() {
@@ -111,22 +164,16 @@ public class Notification<T> {
 	public static class GenericNotification extends Notification<JsonNode> {
 		@JsonCreator
 		private GenericNotification(@JsonProperty(value = "i", required = true) Id id,
-									@JsonProperty(value = "m", required = true) RpcMethod method,
+									@JsonProperty(value = "e", required = true) Event event,
 		                            @JsonProperty(value = "s", required = true) Id source,
 		                            @JsonProperty(value = "t", required = true) long timestamp,
 		                            @JsonProperty(value = "c") JsonNode content) {
-			super(id, method, source, timestamp, content);
+			super(id, event, source, timestamp, content);
 		}
 
 		public <T> T getContentAs(Class<T> clazz) {
 			return Json.cborMapper().convertValue(getContent(), clazz);
 		}
-
-		/*
-		public <T> T getContentAs(TypeReference<T> type) {
-			return Json.cborMapper().convertValue(getContent(), type);
-		}
-		*/
 
 		public <T> List<T> getContentAsListOf(Class<T> clazz) {
 			JavaType type = Json.cborMapper().getTypeFactory().constructCollectionType(List.class, clazz);

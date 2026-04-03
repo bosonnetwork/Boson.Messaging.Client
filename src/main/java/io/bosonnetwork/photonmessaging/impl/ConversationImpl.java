@@ -56,7 +56,7 @@ public class ConversationImpl implements Conversation {
 			Message.Content content = lastMessage.getPayloadAsContent();
 			String contentType = content.getContentType();
 			if (contentType.startsWith("text/")) {
-				String body = content.<String>getBody().trim();
+				String body = content.getBodyAs(String.class).trim();
 				snippet = body.length() < MAX_SNIPPET_LENGTH ? body : body.substring(0, MAX_SNIPPET_LENGTH - 3) + "...";
 			} else if (contentType.startsWith("image/")) {
 				preview = "(Image)";

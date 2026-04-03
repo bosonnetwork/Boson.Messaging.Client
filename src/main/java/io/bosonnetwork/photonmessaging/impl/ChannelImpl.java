@@ -101,12 +101,6 @@ public class ChannelImpl extends AbstractContact implements Channel {
 				null, null, false, false, createdAt, updatedAt, 0);
 	}
 
-	private ChannelImpl(ChannelImpl channel) {
-		this(channel.getId(), channel.getSessionKey(), channel.getOwner(), channel.getPermission(), channel.getName(),
-				channel.getNotice(), channel.isAnnounce(), channel.getRemark(), channel.getTags(),
-				channel.isMuted(), channel.isBlocked(), channel.getCreatedAt(), channel.getUpdatedAt(), channel.getRevision());
-	}
-
 	@Override
 	public Id getOwner() {
 		return ownerId;
@@ -144,7 +138,9 @@ public class ChannelImpl extends AbstractContact implements Channel {
 	}
 
 	protected ChannelImpl dup() {
-		return new ChannelImpl(this);
+		return new ChannelImpl(getId(), getSessionKey(), getOwner(), getPermission(),
+				getName(), getNotice(), isAnnounce(), getRemark(), getTags(),
+				isMuted(), isBlocked(), getCreatedAt(), getUpdatedAt(), getRevision());
 	}
 
 	protected void patch(String fieldName, JsonNode value) {
@@ -154,25 +150,6 @@ public class ChannelImpl extends AbstractContact implements Channel {
 			case "a" -> setAnnounce(value.booleanValue());
 			default -> super.patch(fieldName, value);
 		}
-	}
-
-	protected CryptoContext getRxCryptoContext(Id memberId) {
-		Objects.requireNonNull(memberId, "memberId");
-
-		if (!hasSessionKey())
-			return null;
-
-		if (memberRxCryptoContexts == null)
-			memberRxCryptoContexts = new HashMap<>();
-
-		return memberRxCryptoContexts.computeIfAbsent(memberId, id -> {
-			try {
-				return createCryptoContext(id);
-			} catch (CryptoException e) {
-				// TODO: use sneaky throw?
-				throw new IllegalStateException("Failed to create crypto context", e);
-			}
-		});
 	}
 
 	@Override
@@ -228,6 +205,25 @@ public class ChannelImpl extends AbstractContact implements Channel {
 
 	private Map<Id, ChannelMember> getMembersMap() {
 		return _members;
+	}
+
+	protected CryptoContext getRxCryptoContext(Id memberId) {
+		Objects.requireNonNull(memberId, "memberId");
+
+		if (!hasSessionKey())
+			return null;
+
+		if (memberRxCryptoContexts == null)
+			memberRxCryptoContexts = new HashMap<>();
+
+		return memberRxCryptoContexts.computeIfAbsent(memberId, id -> {
+			try {
+				return createCryptoContext(id);
+			} catch (CryptoException e) {
+				// TODO: use sneaky throw?
+				throw new IllegalStateException("Failed to create crypto context", e);
+			}
+		});
 	}
 
 	@Override

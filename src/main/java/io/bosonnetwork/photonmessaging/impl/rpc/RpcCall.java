@@ -80,6 +80,7 @@ public class RpcCall<P, R> {
 
 	public void setResponse(GenericRpcResponse response) {
 		if (response.getError() != null) {
+			// noinspection unchecked
 			this.response = (RpcResponse<R>) response;
 			RpcError error = response.getError();
 			responsePromise.tryFail(rpcErrorToException(error));

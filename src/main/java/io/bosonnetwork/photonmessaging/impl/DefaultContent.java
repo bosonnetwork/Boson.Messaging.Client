@@ -22,10 +22,12 @@
 
 package io.bosonnetwork.photonmessaging.impl;
 
+import java.util.List;
 import java.util.Map;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.ObjectWriter;
@@ -67,11 +69,22 @@ public class DefaultContent<B> implements Message.Content {
 
 	@Override
 	@SuppressWarnings("unchecked")
-	public <T> T getBody() {
+	public <T> T getBodyAs(Class<T> type) {
 		if (body instanceof JsonNode n)
-			return Json.cborMapper().convertValue(n, new TypeReference<>() {});
+			return Json.cborMapper().convertValue(n, type);
 		else
 			return (T) body;
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public <E> List<E> getBodyAsListOf(Class<E> elementType) {
+		if (body instanceof JsonNode n) {
+			JavaType type = Json.cborMapper().getTypeFactory().constructCollectionType(List.class, elementType);
+			return Json.cborMapper().convertValue(n, type);
+		} else {
+			return (List<E>) body;
+		}
 	}
 
 	public byte[] serialize() {
