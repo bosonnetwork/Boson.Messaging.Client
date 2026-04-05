@@ -22,16 +22,12 @@
 
 package io.bosonnetwork.photonmessaging.impl;
 
-import java.io.IOException;
-import java.util.Iterator;
-import java.util.Map;
 import java.util.Objects;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
-import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Context;
 import io.vertx.core.Vertx;
 
@@ -58,15 +54,15 @@ public abstract class AbstractContact implements Contact {
 
 	@JsonProperty("sk")
 	@JsonInclude(Include.NON_EMPTY)
-	private byte[] sessionKey;
+	private final byte[] sessionKey;
 
 	@JsonProperty("n")
 	@JsonInclude(Include.NON_EMPTY)
-	private String name;
+	private final String name;
 
 	@JsonProperty("r")
 	@JsonInclude(Include.NON_EMPTY)
-	private String remark;
+	private final String remark;
 
 	@JsonProperty("ts")
 	@JsonInclude(Include.NON_EMPTY)
@@ -81,31 +77,22 @@ public abstract class AbstractContact implements Contact {
 	private boolean blocked;
 
 	@JsonProperty("c")
-	private long createdAt;
+	private final long createdAt;
 
 	@JsonProperty("u")
-	private long updatedAt;
+	private final long updatedAt;
 
 	@JsonProperty("v")
-	private int revision;
+	private final int revision;
 
-	private String avatar;
+	private final String avatar;
+
 	private transient String displayName;
 	private transient long lastRefresh;
 
 	private CryptoIdentity sessionIdentity;
 	private CryptoContext rxCryptoContext;
 	private CryptoContext txCryptoContext;
-
-
-	/**
-	 * Constructs a new Contact with the specified ID.
-	 *
-	 * @param id the unique identifier for this contact
-	 */
-	protected AbstractContact(Id id) {
-		this.id = id;
-	}
 
 	/**
 	 * Full constructor to initialize all fields of a Contact.
@@ -121,10 +108,11 @@ public abstract class AbstractContact implements Contact {
 	 * @param updatedAt the timestamp of the last update
 	 * @param revision the synchronization revision number
 	 */
-	protected AbstractContact(Id id, byte[] sessionKey, String name, String remark, String tags,
+	protected AbstractContact(Id id, byte[] sessionKey, String name, String avatar, String remark, String tags,
 	                          boolean muted, boolean blocked, long createdAt, long updatedAt, int revision) {
 		this.id = id;
 		this.name = name;
+		this.avatar = avatar;
 		this.remark = remark;
 		this.tags = tags;
 		this.muted = muted;
@@ -133,8 +121,7 @@ public abstract class AbstractContact implements Contact {
 		this.updatedAt = updatedAt == 0 ? createdAt : updatedAt;
 		this.revision = revision;
 
-		if (sessionKey != null && sessionKey.length > 0)
-			initSessionKey(sessionKey);
+		this.sessionKey = checkSessionKey(sessionKey);
 	}
 
 	/**
@@ -174,31 +161,12 @@ public abstract class AbstractContact implements Contact {
 	}
 
 	/**
-	 * Sets the session private key.
-	 *
-	 * @param sessionKey the new session key bytes
-	 */
-	protected void setSessionKey(byte[] sessionKey) {
-		initSessionKey(sessionKey);
-	}
-
-	/**
 	 * Returns the name of the contact.
 	 *
 	 * @return the contact name
 	 */
 	public String getName() {
 		return name;
-	}
-
-	/**
-	 * Sets the name of the contact.
-	 *
-	 * @param name the new contact name
-	 */
-	protected void setName(String name) {
-		this.name = name;
-		displayName = null;
 	}
 
 	/**
@@ -211,31 +179,12 @@ public abstract class AbstractContact implements Contact {
 	}
 
 	/**
-	 * Sets the local remark/alias for the contact.
-	 *
-	 * @param remark the new remark string
-	 */
-	protected void setRemark(String remark) {
-		this.remark = remark;
-		this.displayName = null;
-	}
-
-	/**
 	 * Returns the tags associated with the contact.
 	 *
-	 * @return the tags string
+	 * @return the tag string
 	 */
 	public String getTags() {
 		return tags;
-	}
-
-	/**
-	 * Sets the tags for the contact.
-	 *
-	 * @param tags the new tags string
-	 */
-	protected void setTags(String tags) {
-		this.tags = tags;
 	}
 
 	/**
@@ -248,30 +197,12 @@ public abstract class AbstractContact implements Contact {
 	}
 
 	/**
-	 * Sets the muted state of the contact.
-	 *
-	 * @param muted the new muted state
-	 */
-	protected void setMuted(boolean muted) {
-		this.muted = muted;
-	}
-
-	/**
 	 * Returns whether the contact is blocked.
 	 *
 	 * @return true if blocked, false otherwise
 	 */
 	public boolean isBlocked() {
 		return blocked;
-	}
-
-	/**
-	 * Sets the blocked state of the contact.
-	 *
-	 * @param blocked the new blocked state
-	 */
-	protected void setBlocked(boolean blocked) {
-		this.blocked = blocked;
 	}
 
 	/**
@@ -293,30 +224,12 @@ public abstract class AbstractContact implements Contact {
 	}
 
 	/**
-	 * Sets the last update timestamp.
-	 *
-	 * @param updatedAt the new update time in milliseconds
-	 */
-	protected void setUpdatedAt(long updatedAt) {
-		this.updatedAt = updatedAt;
-	}
-
-	/**
 	 * Returns the synchronization revision number.
 	 *
 	 * @return the current revision
 	 */
 	public int getRevision() {
 		return revision;
-	}
-
-	/**
-	 * Sets the synchronization revision number.
-	 *
-	 * @param revision the new revision number
-	 */
-	protected void setRevision(int revision) {
-		this.revision = revision;
 	}
 
 	/**
@@ -335,15 +248,6 @@ public abstract class AbstractContact implements Contact {
 	 */
 	public boolean hasAvatar() {
 		return avatar != null;
-	}
-
-	/**
-	 * Sets the avatar URL or identifier for the contact.
-	 *
-	 * @param avatar the new avatar URL or identifier for the contact
-	 */
-	protected void setAvatar(String avatar) {
-		this.avatar = avatar;
 	}
 
 	public String getDisplayName() {
@@ -382,37 +286,6 @@ public abstract class AbstractContact implements Contact {
 		return System.currentTimeMillis() - lastRefresh > STALE_TIME;
 	}
 
-	protected abstract AbstractContact dup();
-
-	protected void patch(JsonNode changes) {
-		Iterator<Map.Entry<String, JsonNode>> fields = changes.fields();
-		while (fields.hasNext()) {
-			Map.Entry<String, JsonNode> field = fields.next();
-			patch(field.getKey(), field.getValue());
-		}
-	}
-
-	protected void patch(String fieldName, JsonNode value) {
-		switch (fieldName) {
-			case "t" -> {}
-			case "sk" -> {
-				try {
-					setSessionKey(value.binaryValue());
-				} catch (IOException e) {
-					throw new IllegalArgumentException("invalid sessionKey", e);
-				}
-			}
-			case "n" -> setName(value.textValue());
-			case "r" -> setRemark(value.textValue());
-			case "ts" -> setTags(value.textValue());
-			case "m" -> setMuted(value.booleanValue());
-			case "b" -> setBlocked(value.booleanValue());
-			case "u" -> setUpdatedAt(value.longValue());
-			case "v" -> setRevision(value.intValue());
-			default -> {} // ignore "id", "v" and the unknown fields
-		}
-	}
-
 	// TODO: update the context local data
 	private static Identity getUserIdentity() {
 		final Context context = Vertx.currentContext();
@@ -422,35 +295,26 @@ public abstract class AbstractContact implements Contact {
 		return context.get("photon.messaging.user.identity");
 	}
 
-	private void initSessionKey(byte[] key) {
-		if (key == null || key.length == 0) {
-			this.sessionKey = null;
-			this.sessionIdentity = null;
-			this.rxCryptoContext = null;
-			this.txCryptoContext = null;
-			return;
-		}
+	private byte[] checkSessionKey(byte[] key) {
+		if (key == null || key.length == 0)
+			return null;
 
 		byte[] privateKey;
 		try {
 			if (key.length == Signature.PrivateKey.BYTES) {
 				// plain session private key
 				privateKey = key;
-				key = getUserIdentity().encrypt(id, key);
+				return key = getUserIdentity().encrypt(id, key);
 			} else if (key.length == Signature.PrivateKey.BYTES + CryptoBox.MAC_BYTES + CryptoBox.Nonce.BYTES) {
 				// encrypted session key
 				privateKey = getUserIdentity().decrypt(id, key);
+				return key;
 			} else {
 				throw new IllegalArgumentException("invalid session key");
 			}
 		} catch (CryptoException e) {
 			throw new IllegalArgumentException("invalid session key", e);
 		}
-
-		this.sessionKey = key;
-		this.sessionIdentity = new CryptoIdentity(privateKey);
-		this.rxCryptoContext = null;
-		this.txCryptoContext = null;
 	}
 
 	public byte[] sign(byte[] data) {
@@ -499,5 +363,10 @@ public abstract class AbstractContact implements Contact {
 	public int compareTo(Contact contact) {
 		int rc = getDisplayName().compareTo(contact.getDisplayName());
 		return rc != 0 ? rc : getId().compareTo(contact.getId());
+	}
+
+	@Override
+	public ContactEditorImpl edit() {
+		return new ContactEditorImpl(this);
 	}
 }

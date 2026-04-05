@@ -177,4 +177,14 @@ public interface Contact extends Comparable<Contact> {
 
 		return this.getId().equals(contact.getId());
 	}
+
+	/**
+	 * Creates a {@link ContactEditor} instance for editing the current {@link Contact}.
+	 * <p>
+	 * Since {@link Contact} is immutable, the builder will return a new instance
+	 * reflecting any modifications when {@link ContactEditor#build()} is called.
+	 *
+	 * @return a {@link ContactEditor} instance to modify and update the contact details
+	 */
+	ContactEditor edit();
 }

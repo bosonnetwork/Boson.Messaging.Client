@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import io.netty.handler.codec.mqtt.MqttQoS;
 import io.vertx.core.Future;
@@ -33,6 +34,7 @@ import io.bosonnetwork.crypto.CryptoBox;
 import io.bosonnetwork.crypto.CryptoException;
 import io.bosonnetwork.crypto.CryptoIdentity;
 import io.bosonnetwork.crypto.Signature;
+import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.Channel;
 import io.bosonnetwork.photonmessaging.ChannelListener;
 import io.bosonnetwork.photonmessaging.Configuration;
@@ -415,8 +417,8 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 			RpcCall<ContactMutation<Contact>, Integer> call = new RpcCall<>(RpcMethod.CONTACT_MUTATE, mutation);
 			call.resultType(new TypeReference<>() {});
 			sendRpcCall(homePeerId, call).compose(revision -> {
-				friend.setRevision(revision);
-				return repository.putContacts(revision, List.of(friend)).map(updated -> {
+				Contact contact = friend.edit().setRevision(revision).build();
+				return repository.putContacts(revision, List.of(contact)).map(updated -> {
 					contactsRevision = revision;
 					return friend;
 				});
@@ -449,8 +451,8 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 				addContactCall.resultType(new TypeReference<>() {
 				});
 				return sendRpcCall(homePeerId, addContactCall).compose(revision -> {
-					channel.setRevision(revision);
-					return repository.putContacts(revision, List.of(channel)).map(updated -> {
+					Contact contact = channel.edit().setRevision(revision).build();
+					return repository.putContacts(revision, List.of(contact)).map(updated -> {
 						contactsRevision = revision;
 						return channel;
 					});
@@ -474,7 +476,7 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 				if (!(contact instanceof ChannelImpl channel))
 					return Future.failedFuture("Channel not exists");
 
-				if (!channel.getOwner().equals(getUserId()))
+				if (!channel.getOwnerId().equals(getUserId()))
 					return Future.failedFuture("Only the owner can delete the channel");
 
 				RpcCall<Void, Boolean> deleteChannelCall = new RpcCall<>(RpcMethod.CHANNEL_DELETE);
@@ -522,11 +524,11 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 
 		Promise<Channel> promise = Promise.promise();
 		runOnContext(v -> {
-			RpcCall<InviteTicket, Channel> joinChannelCall = new RpcCall<>(RpcMethod.CHANNEL_JOIN, revisedTicket);
+			RpcCall<InviteTicket, RpcPrototypes.ChannelInfo> joinChannelCall = new RpcCall<>(RpcMethod.CHANNEL_JOIN, revisedTicket);
 			joinChannelCall.resultType(new TypeReference<>() {});
-			sendRpcCall(ticket.getChannelId(), joinChannelCall).compose(ch -> {
-				ChannelImpl channel = (ChannelImpl) ch;
-				channel.setSessionKey(ticket.getSessionKey());
+			sendRpcCall(ticket.getChannelId(), joinChannelCall).compose(ci -> {
+				ChannelImpl channel = new ChannelImpl(ci.channelId(), ci.sessionKey(), ci.ownerId(), ci.permission(),
+						ci.name(), ci.notice(), ci.announce(), ci.createdAt(), ci.updateAt());
 				return repository.putContactLocally(channel).map(updated -> channel);
 			}).compose(channel -> {
 				ContactMutation<Contact> mutation = new ContactMutation<>(contactsRevision, ContactMutation.Op.ADD, channel);
@@ -534,8 +536,8 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 				addContactCall.resultType(new TypeReference<>() {
 				});
 				return sendRpcCall(homePeerId, addContactCall).compose(revision -> {
-					channel.setRevision(revision);
-					return repository.putContacts(revision, List.of(channel)).map(updated -> {
+					Contact contact = channel.edit().setRevision(revision).build();
+					return repository.putContacts(revision, List.of(contact)).map(updated -> {
 						contactsRevision = revision;
 						return channel;
 					});
@@ -639,7 +641,7 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 				if (!(contact instanceof ChannelImpl channel))
 					return Future.failedFuture("Channel not exists");
 
-				if (!channel.getOwner().equals(getUserId()))
+				if (!channel.getOwnerId().equals(getUserId()))
 					return Future.failedFuture("Only the owner can transfer the channel ownership");
 
 				ChannelMember member = channel.getMember(newOwner);
@@ -651,8 +653,8 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 				RpcCall<Id, Boolean> call = new RpcCall<>(RpcMethod.CHANNEL_TRANSFER_OWNERSHIP, newOwner);
 				return sendRpcCall(channelId, call).compose(transferred -> {
 					if (transferred) {
-						channel.setOwner(newOwner);
-						return repository.putContactLocally(channel).map(updated -> true);
+						Contact updatedChannel = channel.editChannel().setOwnerId(newOwner).build();
+						return repository.putContactLocally(updatedChannel).map(updated -> true);
 					} else {
 						return Future.succeededFuture(false);
 					}
@@ -677,7 +679,7 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 				if (!(contact instanceof ChannelImpl channel))
 					return Future.failedFuture("Channel not exists");
 
-				if (!channel.getOwner().equals(getUserId()))
+				if (!channel.getOwnerId().equals(getUserId()))
 					return Future.failedFuture("Only the owner can transfer the channel ownership");
 
 				final byte[] sessionKey;
@@ -695,8 +697,8 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 						new RpcCall<>(RpcMethod.CHANNEL_ROTATE_SESSION_KEY, params);
 				return sendRpcCall(channelId, call).compose(rotated -> {
 					if (rotated) {
-						channel.setSessionKey(sessionKey);
-						return repository.putContactLocally(channel).map(updated -> true);
+						Contact updatedChannel = channel.edit().setSessionKey(sessionKey).build();
+						return repository.putContactLocally(updatedChannel).map(updated -> true);
 					} else {
 						return Future.succeededFuture(false);
 					}
@@ -709,8 +711,45 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 
 	@Override
 	public VertxFuture<Boolean> updateChannelInfo(Channel channel) {
-		// TODO: how to update channel info?
-		return null;
+		Objects.requireNonNull(channel, "channel");
+
+		Promise<Boolean> promise = Promise.promise();
+		runOnContext(v -> {
+			Future.fromCompletionStage(contactCache.get(channel.getId())).compose(contact -> {
+				if (!(contact instanceof ChannelImpl origin))
+					return Future.failedFuture("Channel not exists");
+
+				if (channel == origin)
+					return Future.failedFuture("Channel info not changed");
+
+				if (!origin.getOwnerId().equals(getUserId()))
+					return Future.failedFuture("Only the owner can update the channel info");
+
+				ObjectNode changes = Json.cborMapper().createObjectNode();
+				if (channel.getPermission() != origin.getPermission())
+					changes.put("p", channel.getPermission().value());
+				if (!Objects.equals(channel.getName(), origin.getName()))
+					changes.put("n", channel.getName());
+				if (!Objects.equals(channel.getNotice(), origin.getNotice()))
+					changes.put("nt", channel.getNotice());
+				if (channel.isAnnounce() != origin.isAnnounce())
+					changes.put("a", channel.isAnnounce());
+				if (channel.getUpdatedAt() != origin.getUpdatedAt())
+					changes.put("u", channel.getUpdatedAt());
+
+				RpcCall<JsonNode, Boolean> call =
+						new RpcCall<>(RpcMethod.CHANNEL_UPDATE_INFO, changes);
+				return sendRpcCall(channel.getId(), call).compose(changed -> {
+					if (changed) {
+						contactCache.synchronous().invalidate(channel.getId());
+						return repository.putContactLocally(channel).map(updated -> true);
+					} else {
+						return Future.succeededFuture(false);
+					}
+				});
+			});
+		});
+		return VertxFuture.of(promise.future());
 	}
 
 	@Override
@@ -905,8 +944,39 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 
 	@Override
 	public VertxFuture<Boolean> updateContact(Contact contact) {
-		// TODO: how to update contact info?
-		return null;
+		Objects.requireNonNull(contact, "contact");
+
+		Promise<Boolean> promise = Promise.promise();
+		runOnContext(v -> {
+			Future.fromCompletionStage(contactCache.get(contact.getId())).compose(origin -> {
+				if (origin == null)
+					return Future.failedFuture("Contact not exists");
+
+				if (contact == origin)
+					return Future.failedFuture("Channel info not changed");
+
+				ObjectNode changes = Json.cborMapper().createObjectNode();
+				if (!Objects.equals(contact.getRemark(), origin.getRemark()))
+					changes.put("r", contact.getRemark());
+				if (!Objects.equals(contact.getTags(), origin.getTags()))
+					changes.put("t", contact.getTags());
+				if (contact.isMuted() != origin.isMuted())
+					changes.put("m", contact.isMuted());
+				if (contact.isBlocked() != origin.isBlocked())
+					changes.put("b", contact.isBlocked());
+				if (contact.getUpdatedAt() != origin.getUpdatedAt())
+					changes.put("u", contact.getUpdatedAt());
+
+				ContactMutation<JsonNode> mutation = new ContactMutation(contact.getRevision(), ContactMutation.Op.UPDATE, changes);
+				RpcCall<ContactMutation<JsonNode>, Integer> call = new RpcCall<>(RpcMethod.CONTACT_MUTATE, mutation);
+				return sendRpcCall(contact.getId(), call).compose(revision -> {
+					contactCache.synchronous().invalidate(contact.getId());
+					Contact updatedContact = ((AbstractContact) contact).edit().setRevision(revision).build();
+					return repository.putContactLocally(updatedContact).map(updated -> true);
+				});
+			});
+		});
+		return VertxFuture.of(promise.future());
 	}
 
 	@Override
@@ -1561,16 +1631,18 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 
 			case CHANNEL_TRANSFER_OWNERSHIP -> {
 				Id newOwnerId = gn.getContentAs(Id.class);
-				Id oldOwnerId = channel.getOwner();
-				ChannelMember oldOwner = channel.getMember(channel.getOwner());
+				Id oldOwnerId = channel.getOwnerId();
+				ChannelMember oldOwner = channel.getMember(channel.getOwnerId());
 				ChannelMember newOwner = channel.getMember(newOwnerId);
 				if (oldOwner == null || newOwner == null || !oldOwner.isOwner()) {
 					// not up-to-date?
 					yield refeshChannel(channel.getId()).mapEmpty();
 				} else {
-					yield repository.updateChannelOwnership(channel.getId(), channel.getOwner(), newOwnerId).map(updated -> {
+					yield repository.updateChannelOwnership(channel.getId(), channel.getOwnerId(), newOwnerId).map(updated -> {
 						if (updated) {
-							channel.setOwner(newOwnerId);
+							ChannelImpl updatedChannel = channel.editChannel().setOwnerId(newOwnerId).build();
+							repository.putContactLocally(updatedChannel);
+							contactCache.synchronous().asMap().compute(updatedChannel.getId(), (k, v) -> updatedChannel);
 							channel.invalidateMembers();
 							if (channelListener != null)
 								channelListener.onChannelOwnershipTransferred(channel, oldOwnerId, newOwnerId);
@@ -1582,11 +1654,10 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 			}
 
 			case CHANNEL_ROTATE_SESSION_KEY -> {
-				ChannelImpl updatedChannel = channel.dup();
-				updatedChannel.setSessionKey(gn.getContentAs(byte[].class));
+				AbstractContact updatedChannel = channel.edit().setSessionKey(gn.getContentAs(byte[].class)).build();
 				yield repository.putContactLocally(updatedChannel).map(updated -> {
 					if (updated) {
-						channel.setSessionKey(updatedChannel.getSessionKey());
+						contactCache.synchronous().asMap().compute(updatedChannel.getId(), (k, v) -> updatedChannel);
 						if (channelListener != null)
 							channelListener.onChannelSessionKeyRotated(channel);
 					}
@@ -1595,11 +1666,10 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 			}
 
 			case CHANNEL_UPDATE_INFO -> {
-				ChannelImpl updatedChannel = channel.dup();
-				updatedChannel.patch(gn.getContent());
+				ChannelImpl updatedChannel = channel.editChannel().patch(gn.getContent()).build();
 				yield repository.putContactLocally(updatedChannel).map(updated -> {
 					if (updated) {
-						channel.patch(gn.getContent());
+						contactCache.synchronous().asMap().compute(updatedChannel.getId(), (k, v) -> updatedChannel);
 						if (channelListener != null)
 							channelListener.onChannelUpdated(channel);
 					}
@@ -1740,10 +1810,9 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 						return Future.failedFuture("Non-exists contact mutation");
 					}
 
-					AbstractContact updatedContact = contact.dup();
-					updatedContact.patch(changes);
+					AbstractContact updatedContact = contact.edit().patch(changes).build();
 					return repository.putContacts(revision, List.of(updatedContact)).map(updated -> {
-						contact.patch(changes);
+						contactCache.synchronous().asMap().compute(updatedContact.getId(), (k, v) -> updatedContact);
 						if(updated && contactListener != null)
 							contactListener.onContactsUpdated(List.of(contact));
 						return null;

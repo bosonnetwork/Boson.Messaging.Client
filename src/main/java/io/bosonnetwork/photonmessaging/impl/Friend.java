@@ -27,29 +27,19 @@ import java.time.Instant;
 import io.bosonnetwork.Id;
 
 public class Friend extends AbstractContact {
-	protected Friend(Id id) {
-		super(id);
-	}
-
-	protected Friend(Id id, byte[] sessionKey, String name, String remark, String tags, boolean muted,
+	protected Friend(Id id, byte[] sessionKey, String name, String avatar, String remark, String tags, boolean muted,
 					 boolean blocked, long createdAt, long updatedAt, int revision) {
-		super(id, sessionKey, name, remark, tags, muted, blocked, createdAt, updatedAt, revision);
+		super(id, sessionKey, name, avatar, remark, tags, muted, blocked, createdAt, updatedAt, revision);
 	}
 
 	public Friend(Id id, byte[] sessionKey, String remark) {
-		this(id, sessionKey, null, remark, null, false, false,
+		this(id, sessionKey, null, null, remark, null, false, false,
 				System.currentTimeMillis(), 0, 0);
 	}
 
 	@Override
 	public Type getType() {
 		return Type.FRIEND;
-	}
-
-	@Override
-	public Friend dup() {
-		return new Friend(getId(), getSessionKey(), getName(), getRemark(), getTags(), isMuted(),
-				isBlocked(), getCreatedAt(), getUpdatedAt(), getRevision());
 	}
 
 	@Override

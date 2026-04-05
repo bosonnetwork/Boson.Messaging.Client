@@ -74,11 +74,13 @@ public class ContactBuilder {
 
 	@JsonProperty("sk")
 	public ContactBuilder withSessionKey(byte[] sessionKey) {
-		this.sessionKey = Objects.requireNonNull(sessionKey, "sessionKey");
+		Objects.requireNonNull(sessionKey, "sessionKey");
 		// session key should be encrypted
 		if (sessionKey.length != CryptoBox.Nonce.BYTES + CryptoBox.MAC_BYTES + Signature.PrivateKey.BYTES)
 			throw new IllegalArgumentException("invalid session key (encrypted)");
-		return null;
+
+		this.sessionKey =sessionKey;
+		return this;
 	}
 
 	@JsonProperty("n")
@@ -164,8 +166,8 @@ public class ContactBuilder {
 			throw new IllegalArgumentException("Missing session key");
 
 		return switch (type) {
-			case AUTO -> new AutoContact(id, name, remark, tags, muted, blocked, createdAt, updatedAt);
-			case FRIEND -> new Friend(id, sessionKey, name, remark, tags, muted, blocked, createdAt, updatedAt, revision);
+			case AUTO -> new AutoContact(id, name, null, remark, tags, muted, blocked, createdAt, updatedAt);
+			case FRIEND -> new Friend(id, sessionKey, name, null, remark, tags, muted, blocked, createdAt, updatedAt, revision);
 			case CHANNEL -> new ChannelImpl(id, sessionKey, ownerId, permission, name, notice, announce, remark, tags,
 					muted, blocked, createdAt, updatedAt, revision);
 		};
