@@ -28,23 +28,17 @@ import io.bosonnetwork.Id;
 
 public class AutoContact extends AbstractContact {
 	protected AutoContact(Id id) {
-		super(id);
+		this(id, null, null, null, null, false, false, 0, 0);
 	}
 
-	protected AutoContact(Id id, String name, String remark, String tags,
+	protected AutoContact(Id id, String name, String avatar, String remark, String tags,
 						  boolean muted, boolean blocked, long createdAt, long updatedAt) {
-		super(id, null, name, remark, tags, muted, blocked, createdAt, updatedAt, -1);
+		super(id, null, name, avatar, remark, tags, muted, blocked, createdAt, updatedAt, -1);
 	}
 
 	@Override
 	public Type getType() {
 		return Type.AUTO;
-	}
-
-	@Override
-	public AutoContact dup() {
-		return new AutoContact(getId(), getName(), getRemark(), getTags(), isMuted(), isBlocked(),
-				getCreatedAt(), getUpdatedAt());
 	}
 
 	@Override

@@ -266,7 +266,7 @@ public interface Channel extends Contact {
 	 *
 	 * @return the unique identifier of the owner for the current channel.
 	 */
-	Id getOwner();
+	Id getOwnerId();
 
 	/**
 	 * Retrieves the permission level for the current channel.
@@ -331,4 +331,14 @@ public interface Channel extends Contact {
 	 * @return {@code true} if the member exists in the channel; {@code false} otherwise
 	 */
 	boolean hasMember(Id memberId);
+
+	/**
+	 * Prepares a {@link ChannelEditor} instance to modify the properties of the current channel.
+	 * <p>
+	 * Since {@link Channel} is immutable, the builder will return a new instance
+	 * reflecting any modifications when {@link ChannelEditor#build()} is called.
+	 *
+	 * @return a {@link ChannelEditor} instance to configure and apply changes to the channel
+	 */
+	ChannelEditor editChannel();
 }

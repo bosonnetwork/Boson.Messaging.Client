@@ -34,7 +34,6 @@ import java.util.Objects;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.JsonNode;
 
 import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
@@ -46,27 +45,27 @@ public class ChannelImpl extends AbstractContact implements Channel {
 	 * The unique identifier of the channel's owner (the creator or current administrator).
 	 */
 	@JsonProperty(value = "o", required = true)
-	private Id ownerId;
+	private final Id ownerId;
 
 	/**
 	 * The join permissions for the channel (e.g., PUBLIC, MEMBER_INVITE, OWNER_INVITE).
 	 */
 	@JsonProperty(value = "p", required = true)
-	private Permission permission;
+	private final Permission permission;
 
 	/**
 	 * A brief notice or descriptive information about the channel.
 	 */
 	@JsonProperty(value = "nt")
 	@JsonInclude(JsonInclude.Include.NON_EMPTY)
-	private String notice;
+	private final String notice;
 
 	/**
 	 * Indicates whether the channel is actively being announced to the network.
 	 */
 	@JsonProperty(value = "a")
 	@JsonInclude(JsonInclude.Include.NON_DEFAULT)
-	private boolean announce;
+	private final boolean announce;
 
 	/**
 	 * A thread-safe map of channel members, indexed by their unique IDs.
@@ -83,16 +82,11 @@ public class ChannelImpl extends AbstractContact implements Channel {
 	protected ChannelImpl(Id id, byte[] sessionKey, Id ownerId, Permission permission, String name, String notice,
 	                  boolean announce, String remark, String tags, boolean muted, boolean blocked,
 	                  long createdAt, long updatedAt, int revision) {
-		super(id, sessionKey, name, remark, tags, muted, blocked, createdAt, updatedAt, revision);
+		super(id, sessionKey, name, null, remark, tags, muted, blocked, createdAt, updatedAt, revision);
 		this.ownerId = ownerId;
 		this.permission = permission;
 		this.notice = notice;
 		this.announce = announce;
-	}
-
-	protected ChannelImpl(Id id, byte[] sessionKey, String name, String remark, String tags,
-	                  boolean muted, boolean blocked, long createdAt, long updatedAt, int revision) {
-		super(id, sessionKey, name, remark, tags, muted, blocked, createdAt, updatedAt, revision);
 	}
 
 	protected ChannelImpl(Id id, byte[] sessionKey, Id ownerId, Permission permission, String name, String notice,
@@ -102,12 +96,8 @@ public class ChannelImpl extends AbstractContact implements Channel {
 	}
 
 	@Override
-	public Id getOwner() {
+	public Id getOwnerId() {
 		return ownerId;
-	}
-
-	protected void setOwner(Id ownerId) {
-		this.ownerId = ownerId;
 	}
 
 	@Override
@@ -115,41 +105,14 @@ public class ChannelImpl extends AbstractContact implements Channel {
 		return permission;
 	}
 
-	protected void setPermission(Permission permission) {
-		this.permission = permission;
-	}
-
 	@Override
 	public String getNotice() {
 		return notice;
 	}
 
-	protected void setNotice(String notice) {
-		this.notice = notice;
-	}
-
 	@Override
 	public boolean isAnnounce() {
 		return announce;
-	}
-
-	protected void setAnnounce(boolean announce) {
-		this.announce = announce;
-	}
-
-	protected ChannelImpl dup() {
-		return new ChannelImpl(getId(), getSessionKey(), getOwner(), getPermission(),
-				getName(), getNotice(), isAnnounce(), getRemark(), getTags(),
-				isMuted(), isBlocked(), getCreatedAt(), getUpdatedAt(), getRevision());
-	}
-
-	protected void patch(String fieldName, JsonNode value) {
-		switch (fieldName) {
-			case "p" -> setPermission(Permission.valueOf(value.intValue()));
-			case "nt" -> setNotice(value.textValue());
-			case "a" -> setAnnounce(value.booleanValue());
-			default -> super.patch(fieldName, value);
-		}
 	}
 
 	@Override
@@ -175,6 +138,11 @@ public class ChannelImpl extends AbstractContact implements Channel {
 	@Override
 	public boolean hasMember(Id memberId) {
 		return getMembersMap().containsKey(memberId);
+	}
+
+	@Override
+	public ChannelEditorImpl editChannel() {
+		return new ChannelEditorImpl(this);
 	}
 
 	void setMembers(Collection<ChannelMember> members) {
