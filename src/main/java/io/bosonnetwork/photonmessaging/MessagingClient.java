@@ -123,7 +123,10 @@ public interface MessagingClient {
 	CompletableFuture<Channel> joinChannel(InviteTicket ticket);
 	CompletableFuture<Boolean> leaveChannel(Id channelId);
 
-	CompletableFuture<InviteTicket> createInviteTicket(Id channelId);
+	default CompletableFuture<InviteTicket> createInviteTicket(Id channelId) {
+		return createInviteTicket(channelId, null);
+	}
+
 	CompletableFuture<InviteTicket> createInviteTicket(Id channelId, Id invitee);
 
 	CompletableFuture<Boolean> transferChannelOwnership(Id channelId, Id newOwner);
@@ -132,7 +135,7 @@ public interface MessagingClient {
 		return rotateChannelSessionKey(channelId, Signature.KeyPair.random());
 	}
 
-	CompletableFuture<Boolean> rotateChannelSessionKey(Id channelId, Signature.KeyPair sessionKey);
+	CompletableFuture<Boolean> rotateChannelSessionKey(Id channelId, Signature.KeyPair sessionKeypair);
 
 	CompletableFuture<Boolean> updateChannelInfo(Channel channel);
 
@@ -142,17 +145,17 @@ public interface MessagingClient {
 	CompletableFuture<Boolean> removeChannelMembers(Id channelId, List<Id> members);
 
 	// Generic contact APIs
-	CompletableFuture<Contact> getContact(Id id);
+	CompletableFuture<Contact> getContact(Id contactId);
 
 	CompletableFuture<List<Contact>> getContacts();
 
 	CompletableFuture<Boolean> updateContact(Contact contact);
 
-	default CompletableFuture<Boolean> removeContact(Id id) {
-		return removeContacts(List.of(id));
+	default CompletableFuture<Boolean> removeContact(Id contactId) {
+		return removeContacts(List.of(contactId));
 	}
 
-	CompletableFuture<Boolean> removeContacts(List<Id> ids);
+	CompletableFuture<Boolean> removeContacts(List<Id> contactIds);
 
 	CompletableFuture<Boolean> clearContacts();
 }
