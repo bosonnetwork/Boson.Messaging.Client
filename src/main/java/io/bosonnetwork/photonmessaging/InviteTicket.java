@@ -31,6 +31,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import io.bosonnetwork.Id;
+import io.bosonnetwork.Identity;
 import io.bosonnetwork.crypto.Hash;
 import io.bosonnetwork.utils.Hex;
 
@@ -202,6 +203,32 @@ public class InviteTicket {
 
 	public InviteTicket revise(byte[] sessionKey) {
 		return new InviteTicket(channelId, sessionId, inviter, invitee, expiration, sig, sessionKey);
+	}
+
+	/**
+	 * Creates a new {@code InviteTicket} instance with the specified parameters.
+	 *
+	 * @param inviter the {@link Identity} of the inviter that creates this ticket
+	 * @param channelId the unique identifier of the channel associated with this ticket
+	 * @param sessionId the unique identifier of the session associated with this ticket
+	 * @param invitee the unique identifier of the invitee, or {@code null} for a bearer ticket
+	 * @param expiration the expiration time in milliseconds since the epoch
+	 * @param sessionKey the session key associated with this ticket, or {@code null} if none is provided
+	 * @return a new {@code InviteTicket} instance containing the provided details and a signature
+	 */
+	public static InviteTicket create(Identity inviter, Id channelId, Id sessionId, Id invitee,
+									   long expiration, byte[] sessionKey) {
+		MessageDigest sha256 = Hash.sha256();
+		sha256.reset();
+		sha256.update(channelId.bytes());
+		sha256.update(sessionId.bytes());
+		sha256.update(inviter.getId().bytes());
+		if (invitee != null)
+			sha256.update(invitee.bytes());
+		sha256.update(ByteBuffer.allocate(Long.BYTES).putLong(expiration).array());
+		byte[] sig = inviter.sign(sha256.digest());
+
+		return new InviteTicket(channelId, sessionId, inviter.getId(), invitee, expiration, sig, sessionKey);
 	}
 
 	/**
