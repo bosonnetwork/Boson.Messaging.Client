@@ -46,17 +46,9 @@ interface MessagingRepository {
 	 * @param message the message to save
 	 * @return a Future that completes when the message is saved
 	 */
-	default Future<Void> putMessage(Message message) {
-		return putMessages(List.of(message));
-	}
+	Future<Void> putMessage(Message message);
 
-	/**
-	 * Saves a collection of messages to the repository.
-	 *
-	 * @param messages the messages to save
-	 * @return a Future that completes when the messages are saved
-	 */
-	Future<Void> putMessages(Collection<Message> messages);
+	Future<Void> updateMessageSentTime(Message message);
 
 	/**
 	 * Retrieves messages for a specific conversation within a time range.
@@ -105,7 +97,7 @@ interface MessagingRepository {
 	 */
 	Future<Boolean> removeMessages(Id conversationId);
 
-	Future<Boolean> putFriendRequest(FriendRequest friendRequest);
+	Future<Void> putFriendRequest(FriendRequest friendRequest);
 
 	Future<FriendRequest> getFriendRequest(Id userId);
 
@@ -149,7 +141,7 @@ interface MessagingRepository {
 	Future<Boolean> removeConversations(Collection<Id> conversationIds);
 
 
-	Future<Boolean> putContactLocally(Contact contact);
+	Future<Void> putContactLocally(Contact contact);
 
 	Future<Boolean> removeContactLocally(Id contactId);
 
@@ -167,7 +159,7 @@ interface MessagingRepository {
 	 * @param updated the collection of contacts to add or update
 	 * @return a Future that completes when the update is finished
 	 */
-	Future<Boolean> putContacts(int revision, Collection<Contact> updated);
+	Future<Void> putContacts(int revision, Collection<Contact> updated);
 
 	/**
 	 * Removes contacts and updates the local contacts revision atomically.
@@ -184,7 +176,7 @@ interface MessagingRepository {
 	 * @param revision the new revision number
 	 * @return a Future that completes when the operation is finished
 	 */
-	Future<Boolean> clearContacts(int revision);
+	Future<Void> clearContacts(int revision);
 
 	/**
 	 * Retrieves a contact by its ID.
@@ -228,7 +220,7 @@ interface MessagingRepository {
 	 * @param member the member to add or update
 	 * @return a Future that completes when the operation is finished
 	 */
-	default Future<Boolean> putChannelMember(Id channelId, Channel.Member member) {
+	default Future<Void> putChannelMember(Id channelId, Channel.Member member) {
 		return putChannelMembers(channelId, List.of(member));
 	}
 
@@ -239,7 +231,7 @@ interface MessagingRepository {
 	 * @param members the collection of members to add or update
 	 * @return a Future that completes when the operation is finished
 	 */
-	Future<Boolean> putChannelMembers(Id channelId, Collection<Channel.Member> members);
+	Future<Void> putChannelMembers(Id channelId, Collection<Channel.Member> members);
 
 	/**
 	 * Replaces all members in a channel with the provided collection.
@@ -248,7 +240,7 @@ interface MessagingRepository {
 	 * @param members the new collection of members
 	 * @return a Future that completes when the operation is finished
 	 */
-	Future<Boolean> refillChannelMembers(Id channelId, Collection<Channel.Member> members);
+	Future<Void> refillChannelMembers(Id channelId, Collection<Channel.Member> members);
 
 	default Future<Channel.Member> getChannelMember(Id channelId, Id memberId) {
 		return getChannelMembers(channelId, List.of(memberId)).map(list -> list.isEmpty() ? null : list.get(0));

@@ -26,10 +26,11 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import io.bosonnetwork.Id;
+import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.Channel;
 import io.bosonnetwork.photonmessaging.InviteTicket;
 import io.bosonnetwork.photonmessaging.SessionInfo;
@@ -42,55 +43,63 @@ import io.bosonnetwork.photonmessaging.impl.rpc.RpcMethodPrototype;
  * and return types for RPC calls, ensuring type safety and consistency across the system.
  */
 public class RpcPrototypes {
-	public static TypeReference<List<Id>> IDS_TYPE = new TypeReference<>() {};
+	public static final JavaType TYPE_VOID = Json.cborMapper().getTypeFactory().constructType(Void.class);
+	public static final JavaType TYPE_INTEGER = Json.cborMapper().getTypeFactory().constructType(Integer.class);
+	public static final JavaType TYPE_ID = Json.cborMapper().getTypeFactory().constructType(Id.class);
+	public static final JavaType TYPE_IDS = Json.cborMapper().getTypeFactory().constructCollectionType(List.class, Id.class);
+	public static final JavaType TYPE_SESSIONS = Json.cborMapper().getTypeFactory().constructCollectionType(List.class, SessionInfo.class);
+	public static final JavaType TYPE_CONTACT_MUTATION = Json.cborMapper().getTypeFactory().constructParametricType(ContactMutation.class, Object.class);
+	public static final JavaType TYPE_CREATE_CHANNEL_PARAMS = Json.cborMapper().getTypeFactory().constructType(CreateChannelParams.class);
+	public static final JavaType TYPE_CHANNEL_INFO = Json.cborMapper().getTypeFactory().constructType(ChannelInfo.class);
+	public static final JavaType TYPE_CHANNEL_SESSION_KEY_ROTATION_PARAMS = Json.cborMapper().getTypeFactory().constructType(ChannelSessionKeyRotationParams.class);
+	public static final JavaType TYPE_CHANNEL_MEMBERS_ROLE_PARAMS = Json.cborMapper().getTypeFactory().constructType(ChannelMembersRoleParams.class);
+	public static final JavaType TYPE_INVITE_TICKET = Json.cborMapper().getTypeFactory().constructType(InviteTicket.class);
+	public static final JavaType TYPE_JSON_NODE = Json.cborMapper().getTypeFactory().constructType(JsonNode.class);
 
-	public static final RpcMethodPrototype<Class<Void>, TypeReference<List<SessionInfo>>> SESSION_LIST =
-			new RpcMethodPrototype<>(RpcMethod.SESSION_LIST, Void.class, new TypeReference<>() {});
+	public static final RpcMethodPrototype SESSION_LIST =
+			new RpcMethodPrototype(RpcMethod.SESSION_LIST, TYPE_VOID, TYPE_SESSIONS);
+	
+	public static final RpcMethodPrototype SESSION_REVOKE =
+			new RpcMethodPrototype(RpcMethod.SESSION_REVOKE, TYPE_ID, TYPE_VOID);
 
-	public static final RpcMethodPrototype<Class<Id>, Class<Boolean>> SESSION_REVOKE =
-			new RpcMethodPrototype<>(RpcMethod.SESSION_REVOKE, Id.class, Boolean.class);
+	public static final RpcMethodPrototype CONTACT_MUTATE =
+			new RpcMethodPrototype(RpcMethod.CONTACT_MUTATE, TYPE_CONTACT_MUTATION, TYPE_INTEGER);
 
-	public static final RpcMethodPrototype<Class<ContactMutation>, Class<Integer>> CONTACT_MUTATE =
-			new RpcMethodPrototype<>(RpcMethod.CONTACT_MUTATE, ContactMutation.class, Integer.class);
+	public static final RpcMethodPrototype CHANNEL_CREATE =
+			new RpcMethodPrototype(RpcMethod.CHANNEL_CREATE, TYPE_CREATE_CHANNEL_PARAMS, TYPE_CHANNEL_INFO);
 
-	public static final RpcMethodPrototype<Class<CreateChannelParams>, Class<Channel>> CHANNEL_CREATE =
-			new RpcMethodPrototype<>(RpcMethod.CHANNEL_CREATE, CreateChannelParams.class, Channel.class);
+	public static final RpcMethodPrototype CHANNEL_DELETE =
+			new RpcMethodPrototype(RpcMethod.CHANNEL_DELETE, TYPE_VOID, TYPE_VOID);
 
-	public static final RpcMethodPrototype<Class<Void>, Class<Boolean>> CHANNEL_DELETE =
-			new RpcMethodPrototype<>(RpcMethod.CHANNEL_DELETE, Void.class, Boolean.class);
+	public static final RpcMethodPrototype CHANNEL_TRANSFER_OWNERSHIP =
+			new RpcMethodPrototype(RpcMethod.CHANNEL_TRANSFER_OWNERSHIP, TYPE_ID, TYPE_VOID);
 
-	public static final RpcMethodPrototype<Class<Id>, Class<Boolean>> CHANNEL_TRANSFER_OWNERSHIP =
-			new RpcMethodPrototype<>(RpcMethod.CHANNEL_TRANSFER_OWNERSHIP, Id.class, Boolean.class);
+	public static final RpcMethodPrototype CHANNEL_ROTATE_SESSION_KEY =
+			new RpcMethodPrototype(RpcMethod.CHANNEL_ROTATE_SESSION_KEY, TYPE_CHANNEL_SESSION_KEY_ROTATION_PARAMS, TYPE_VOID);
 
-	public static final RpcMethodPrototype<Class<ChannelSessionKeyRotationParams>, Class<Boolean>> CHANNEL_ROTATE_SESSION_KEY =
-			new RpcMethodPrototype<>(RpcMethod.CHANNEL_ROTATE_SESSION_KEY, ChannelSessionKeyRotationParams.class, Boolean.class);
+	public static final RpcMethodPrototype CHANNEL_UPDATE_INFO =
+			new RpcMethodPrototype(RpcMethod.CHANNEL_UPDATE_INFO, TYPE_JSON_NODE, TYPE_VOID);
 
-	public static final RpcMethodPrototype<Class<JsonNode>, Class<Boolean>> CHANNEL_UPDATE_INFO =
-			new RpcMethodPrototype<>(RpcMethod.CHANNEL_UPDATE_INFO, JsonNode.class, Boolean.class);
+	public static final RpcMethodPrototype CHANNEL_UPDATE_MEMBERS_ROLE =
+			new RpcMethodPrototype(RpcMethod.CHANNEL_UPDATE_MEMBERS_ROLE, TYPE_CHANNEL_MEMBERS_ROLE_PARAMS, TYPE_IDS);
 
-	public static final RpcMethodPrototype<Class<ChannelMembersRoleParams>, TypeReference<List<Id>>> CHANNEL_UPDATE_MEMBERS_ROLE =
-			new RpcMethodPrototype<>(RpcMethod.CHANNEL_UPDATE_MEMBERS_ROLE, ChannelMembersRoleParams.class, IDS_TYPE);
+	public static final RpcMethodPrototype CHANNEL_BAN_MEMBERS =
+			new RpcMethodPrototype(RpcMethod.CHANNEL_BAN_MEMBERS, TYPE_IDS, TYPE_IDS);
 
-	public static final RpcMethodPrototype<TypeReference<List<Id>> , TypeReference<List<Id>>> CHANNEL_BAN_MEMBERS =
-			new RpcMethodPrototype<>(RpcMethod.CHANNEL_BAN_MEMBERS, IDS_TYPE, IDS_TYPE);
+	public static final RpcMethodPrototype CHANNEL_UNBAN_MEMBERS =
+			new RpcMethodPrototype(RpcMethod.CHANNEL_UNBAN_MEMBERS, TYPE_IDS, TYPE_IDS);
 
-	public static final RpcMethodPrototype<TypeReference<List<Id>> , TypeReference<List<Id>>> CHANNEL_UNBAN_MEMBERS =
-			new RpcMethodPrototype<>(RpcMethod.CHANNEL_UNBAN_MEMBERS, IDS_TYPE, IDS_TYPE);
+	public static final RpcMethodPrototype CHANNEL_REMOVE_MEMBERS =
+			new RpcMethodPrototype(RpcMethod.CHANNEL_REMOVE_MEMBERS, TYPE_IDS, TYPE_IDS);
 
-	public static final RpcMethodPrototype<TypeReference<List<Id>> , TypeReference<List<Id>>> CHANNEL_REMOVE_MEMBERS =
-			new RpcMethodPrototype<>(RpcMethod.CHANNEL_REMOVE_MEMBERS, IDS_TYPE, IDS_TYPE);
+	public static final RpcMethodPrototype CHANNEL_JOIN =
+			new RpcMethodPrototype(RpcMethod.CHANNEL_JOIN, TYPE_INVITE_TICKET, TYPE_CHANNEL_INFO);
 
-	public static final RpcMethodPrototype<Class<InviteTicket>, Class<Channel.Member>> CHANNEL_JOIN =
-			new RpcMethodPrototype<>(RpcMethod.CHANNEL_JOIN, InviteTicket.class, Channel.Member.class);
+	public static final RpcMethodPrototype CHANNEL_LEAVE =
+			new RpcMethodPrototype(RpcMethod.CHANNEL_LEAVE, TYPE_VOID, TYPE_VOID);
 
-	public static final RpcMethodPrototype<Class<Void>, Class<Boolean>> CHANNEL_LEAVE =
-			new RpcMethodPrototype<>(RpcMethod.CHANNEL_LEAVE, Void.class, Boolean.class);
-
-	public static final RpcMethodPrototype<Class<Void>, Class<Channel>> CHANNEL_INFO =
-			new RpcMethodPrototype<>(RpcMethod.CHANNEL_INFO, Void.class, Channel.class);
-
-	public static final RpcMethodPrototype<Class<Void>, TypeReference<List<Channel.Member>>> CHANNEL_MEMBERS =
-			new RpcMethodPrototype<>(RpcMethod.CHANNEL_MEMBERS, Void.class, new TypeReference<>() {});
+	public static final RpcMethodPrototype CHANNEL_INFO =
+			new RpcMethodPrototype(RpcMethod.CHANNEL_INFO, TYPE_VOID, TYPE_CHANNEL_INFO);
 
 	public record CreateChannelParams(@JsonProperty(value = "sid", required = true) Id sessionId,
 									  @JsonProperty(value = "sk", required = true) byte[] sessionKey,
@@ -103,13 +112,14 @@ public class RpcPrototypes {
 	public record ChannelInfo(@JsonProperty(value = "id", required = true) Id channelId,
 	                          @JsonProperty(value = "o", required = true) Id ownerId,
 	                          @JsonProperty(value = "sid", required = true) Id sessionId,
-	                          @JsonProperty(value = "sk", required = true) byte[] sessionKey,
+	                          @JsonProperty(value = "sk") @JsonInclude(JsonInclude.Include.NON_EMPTY) byte[] sessionKey,
 	                          @JsonProperty(value = "p", required = true) Channel.Permission permission,
 	                          @JsonProperty(value = "n") @JsonInclude(JsonInclude.Include.NON_NULL) String name,
 	                          @JsonProperty(value = "nt") @JsonInclude(JsonInclude.Include.NON_EMPTY) String notice,
 	                          @JsonProperty(value = "a") @JsonInclude(JsonInclude.Include.NON_DEFAULT) boolean announce,
 	                          @JsonProperty(value = "c") long createdAt,
-	                          @JsonProperty(value = "u") long updateAt) {
+	                          @JsonProperty(value = "u") long updateAt,
+							  @JsonProperty(value = "m") @JsonInclude(JsonInclude.Include.NON_EMPTY) List<Channel.Member> members) {
 	}
 
 	public record ChannelSessionKeyRotationParams(@JsonProperty(value = "sid", required = true) Id sessionId,

@@ -113,11 +113,20 @@ public interface Message {
 	long getCreatedAt();
 
 	/**
-	 * Retrieves the timestamp when the message was received by the service or local client.
+	 * Retrieves the timestamp indicating when the message was received.
+	 * The timestamp is represented in milliseconds since the epoch.
 	 *
-	 * @return the reception timestamp in milliseconds
+	 * @return the received timestamp in milliseconds
 	 */
 	long getReceivedAt();
+
+	/**
+	 * Retrieves the timestamp when the message was sent.
+	 * The timestamp is represented in milliseconds since the epoch.
+	 *
+	 * @return the sent timestamp in milliseconds
+	 */
+	long getSentAt();
 
 	/**
 	 * Retrieves the binary payload of this message.

@@ -31,7 +31,9 @@ import com.fasterxml.jackson.annotation.JsonValue;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
 
+import io.bosonnetwork.Id;
 import io.bosonnetwork.json.Json;
+import io.bosonnetwork.photonmessaging.Contact;
 
 public class ContactMutation<T> {
 	// current client revision, make sure the client makes the change based on the latest revision
@@ -102,6 +104,22 @@ public class ContactMutation<T> {
 		} catch (Exception e) {
 			throw new IllegalStateException("INTERNAL ERROR: ContactMutation data serialization", e);
 		}
+	}
+
+	public static ContactMutation<Contact> add(int revision, Contact contact) {
+		return new ContactMutation<>(revision, Op.ADD, contact);
+	}
+
+	public static ContactMutation<JsonNode> update(int revision, JsonNode data) {
+		return new GenericContactMutation(revision, Op.UPDATE, data);
+	}
+
+	public static ContactMutation<List<Id>> remove(int revision, List<Id> contactIds) {
+		return new ContactMutation<>(revision, Op.REMOVE, contactIds);
+	}
+
+	public static ContactMutation<Void> clear(int revision) {
+		return new ContactMutation<>(revision, Op.CLEAR, null);
 	}
 
 	public static class GenericContactMutation extends ContactMutation<JsonNode> {

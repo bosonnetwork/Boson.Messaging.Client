@@ -10,7 +10,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
@@ -35,21 +34,26 @@ import io.bosonnetwork.crypto.CryptoException;
 import io.bosonnetwork.crypto.CryptoIdentity;
 import io.bosonnetwork.crypto.Signature;
 import io.bosonnetwork.json.Json;
+import io.bosonnetwork.photonmessaging.AlreadyMemberException;
 import io.bosonnetwork.photonmessaging.Channel;
 import io.bosonnetwork.photonmessaging.ChannelListener;
+import io.bosonnetwork.photonmessaging.ChannelNotExistsException;
 import io.bosonnetwork.photonmessaging.Configuration;
 import io.bosonnetwork.photonmessaging.ConnectionListener;
 import io.bosonnetwork.photonmessaging.Contact;
 import io.bosonnetwork.photonmessaging.ContactListener;
+import io.bosonnetwork.photonmessaging.ContactNotExistsException;
 import io.bosonnetwork.photonmessaging.Conversation;
+import io.bosonnetwork.photonmessaging.InsufficientPermissionException;
 import io.bosonnetwork.photonmessaging.InviteTicket;
 import io.bosonnetwork.photonmessaging.Message;
 import io.bosonnetwork.photonmessaging.MessageListener;
 import io.bosonnetwork.photonmessaging.MessageTimeoutException;
 import io.bosonnetwork.photonmessaging.MessagingClient;
+import io.bosonnetwork.photonmessaging.NotChannelMemberException;
+import io.bosonnetwork.photonmessaging.RevisionNotMonotonicException;
 import io.bosonnetwork.photonmessaging.SessionInfo;
 import io.bosonnetwork.photonmessaging.impl.rpc.GenericRpcResponse;
-import io.bosonnetwork.photonmessaging.impl.rpc.RpcCall;
 import io.bosonnetwork.photonmessaging.impl.rpc.RpcMethod;
 import io.bosonnetwork.photonmessaging.impl.rpc.RpcRequest;
 import io.bosonnetwork.utils.Base58;
@@ -301,8 +305,8 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		Objects.requireNonNull(conversationIds, "conversationIds");
 		if (conversationIds.isEmpty())
 			return VertxFuture.succeededFuture(true);
-
 		runningCheck();
+
 		Promise<Boolean> promise = Promise.promise();
 		runOnContext(v -> {
 			repository.removeConversations(conversationIds).onSuccess(removed -> {
@@ -318,8 +322,8 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		Objects.requireNonNull(conversationId, "conversationId");
 		if (limit <= 0 || offset < 0)
 			throw new IllegalArgumentException("limit and offset must be positive");
-
 		runningCheck();
+
 		return VertxFuture.of(repository.getMessages(conversationId, since, limit, offset));
 	}
 
@@ -328,8 +332,8 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		Objects.requireNonNull(conversationId, "conversationId");
 		if (begin > end)
 			throw new IllegalArgumentException("begin must be less than or equal to end");
-
 		runningCheck();
+
 		return VertxFuture.of(repository.getMessages(conversationId, begin, end));
 	}
 
@@ -338,8 +342,8 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		Objects.requireNonNull(messageIds, "messageIds");
 		if (messageIds.isEmpty())
 			return VertxFuture.succeededFuture(true);
-
 		runningCheck();
+
 		return VertxFuture.of(repository.removeMessages(messageIds));
 	}
 
@@ -347,6 +351,7 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 	public VertxFuture<Boolean> removeMessages(Id conversionId) {
 		Objects.requireNonNull(conversionId, "conversionId");
 		runningCheck();
+
 		return VertxFuture.of(repository.removeMessages(conversionId));
 	}
 
@@ -354,9 +359,7 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 	public VertxFuture<List<SessionInfo>> getSessions() {
 		runningCheck();
 
-		RpcCall<Void, List<SessionInfo>> call = new RpcCall<>(RpcMethod.SESSION_LIST);
-		call.resultType(new TypeReference<>() {});
-
+		RpcCall<Void, List<SessionInfo>> call = RpcCall.sessionList();
 		Promise<List<SessionInfo>> promise = Promise.promise();
 		runOnContext(v -> {
 			sendRpcCall(homePeerId, call).onComplete(promise);
@@ -365,14 +368,12 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 	}
 
 	@Override
-	public VertxFuture<Boolean> revokeSession(Id deviceId) {
+	public VertxFuture<Void> revokeSession(Id deviceId) {
 		Objects.requireNonNull(deviceId, "deviceId");
 		runningCheck();
 
-		RpcCall<Id, Boolean> call = new RpcCall<>(RpcMethod.SESSION_REVOKE, deviceId);
-		call.resultType(new TypeReference<>() {});
-
-		Promise<Boolean> promise = Promise.promise();
+		RpcCall<Id, Void> call = RpcCall.revokeSession(deviceId);
+		Promise<Void> promise = Promise.promise();
 		runOnContext(v -> {
 			sendRpcCall(homePeerId, call).onComplete(promise);
 		});
@@ -385,14 +386,15 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		Objects.requireNonNull(hello, "hello");
 		runningCheck();
 
+		// friend request is a notification message to the target user
 		long now = System.currentTimeMillis();
 		Notification<String> fr = new Notification<>(Notification.generateId(deviceIdentity.getId(), now),
-				Notification.Event.FRIEND_REQUEST, userIdentity.getId(), now, hello);
+				Notification.Event.FRIEND_REQUEST, getUserId(), now, hello);
 		FriendRequestImpl request = new FriendRequestImpl(userId, userIdentity.getId(), hello);
 
 		Promise<Void> promise = Promise.promise();
 		runOnContext(v -> {
-			repository.putFriendRequest(request).compose(added -> {
+			repository.putFriendRequest(request).compose(vv -> {
 				MessageImpl<Notification<String>> message = new MessageImpl<>(Message.Type.STATE_MESSAGE, userId, fr);
 				return sendMessageInternal(message).compose(packetId -> Future.<Void>succeededFuture(),
 						error -> {
@@ -409,18 +411,18 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		Objects.requireNonNull(id, "id");
 		Objects.requireNonNull(sessionKey, "sessionKey");
 		Objects.requireNonNull(remark, "remark");
+		runningCheck();
 
 		Friend friend = new Friend(id, sessionKey, remark);
 		Promise<Contact> promise = Promise.promise();
 		runOnContext(v -> {
-			ContactMutation<Contact> mutation = new ContactMutation<>(contactsRevision, ContactMutation.Op.ADD, friend);
-			RpcCall<ContactMutation<Contact>, Integer> call = new RpcCall<>(RpcMethod.CONTACT_MUTATE, mutation);
-			call.resultType(new TypeReference<>() {});
+			ContactMutation<Contact> mutation = ContactMutation.add(contactsRevision, friend);
+			RpcCall<ContactMutation<Contact>, Integer> call = RpcCall.contactMutate(mutation);
 			sendRpcCall(homePeerId, call).compose(revision -> {
 				Contact contact = friend.edit().setRevision(revision).build();
-				return repository.putContacts(revision, List.of(contact)).map(updated -> {
+				return repository.putContacts(revision, List.of(contact)).map(vv -> {
 					contactsRevision = revision;
-					return friend;
+					return contact;
 				});
 			}).onComplete(promise);
 		});
@@ -431,70 +433,73 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 	public VertxFuture<Channel> createChannel(Channel.Permission permission, String name, String notice, boolean announce) {
 		Objects.requireNonNull(permission, "permission");
 		Objects.requireNonNull(name, "name");
+		runningCheck();
 
 		Signature.KeyPair sessionKeypair = Signature.KeyPair.random();
 		Id sessionId = Id.of(sessionKeypair.publicKey().bytes());
 		byte[] sessionKey = selfContext.encrypt(sessionKeypair.privateKey().bytes());
-
 		RpcPrototypes.CreateChannelParams params = new RpcPrototypes.CreateChannelParams(sessionId, sessionKey,
 				permission, name, notice, announce);
 
 		Promise<Channel> promise = Promise.promise();
 		runOnContext(v -> {
-			RpcCall<RpcPrototypes.CreateChannelParams, Channel> createChannelCall = new RpcCall<>(RpcMethod.CHANNEL_CREATE, params);
-			createChannelCall.resultType(new TypeReference<>() {});
-			sendRpcCall(homePeerId, createChannelCall).compose(channel ->
-					repository.putContactLocally(channel).map(updated -> (ChannelImpl) channel)
-			).compose(channel -> {
-				ContactMutation<Contact> mutation = new ContactMutation<>(contactsRevision, ContactMutation.Op.ADD, channel);
-				RpcCall<ContactMutation<Contact>, Integer> addContactCall = new RpcCall<>(RpcMethod.CONTACT_MUTATE, mutation);
-				addContactCall.resultType(new TypeReference<>() {
+			// 1. Request to create a channel
+			RpcCall<RpcPrototypes.CreateChannelParams, RpcPrototypes.ChannelInfo> createChannelCall = RpcCall.createChannel(params);
+			sendRpcCall(homePeerId, createChannelCall).compose(ci -> {
+				// 2. Save the channel locally
+				ChannelImpl channel = new ChannelImpl(ci.channelId(), ci.sessionKey(), ci.ownerId(), ci.permission(),
+							ci.name(), ci.notice(), ci.announce(), ci.createdAt(), ci.updateAt());
+				return repository.putContactLocally(channel).compose(vv -> {
+					if (ci.members() != null && !ci.members().isEmpty())
+						return repository.putChannelMembers(channel.getId(), ci.members()).map(channel);
+					else
+						return Future.succeededFuture(channel);
 				});
+			}).compose(ch -> {
+				// 3. Add the channel as a new contact (sync cross all devices)
+				ContactMutation<Contact> mutation = ContactMutation.add(contactsRevision, ch);
+				RpcCall<ContactMutation<Contact>, Integer> addContactCall = RpcCall.contactMutate(mutation);
 				return sendRpcCall(homePeerId, addContactCall).compose(revision -> {
-					Contact contact = channel.edit().setRevision(revision).build();
-					return repository.putContacts(revision, List.of(contact)).map(updated -> {
+					ChannelImpl channel = (ChannelImpl) ch.edit().setRevision(revision).build();
+					return repository.putContacts(revision, List.of(channel)).map(vv -> {
 						contactsRevision = revision;
 						return channel;
 					});
 				});
 			}).onComplete(promise);
 		});
-
 		return VertxFuture.of(promise.future());
 	}
 
 	@Override
 	public VertxFuture<Boolean> removeChannel(Id channelId) {
 		Objects.requireNonNull(channelId, "channelId");
+		runningCheck();
 
 		Promise<Boolean> promise = Promise.promise();
 		runOnContext(v -> {
-			Future.fromCompletionStage(contactCache.get(channelId)).compose(contact -> {
-				if (contact == null)
-					return Future.failedFuture("Channel not exists");
-
-				if (!(contact instanceof ChannelImpl channel))
-					return Future.failedFuture("Channel not exists");
+			channel(channelId).compose(channel -> {
+				if (channel == null)
+					return Future.failedFuture(new ChannelNotExistsException(channelId.toString()));
 
 				if (!channel.getOwnerId().equals(getUserId()))
-					return Future.failedFuture("Only the owner can delete the channel");
+					return Future.failedFuture(new InsufficientPermissionException("Only the owner can delete the channel"));
 
-				RpcCall<Void, Boolean> deleteChannelCall = new RpcCall<>(RpcMethod.CHANNEL_DELETE);
-				deleteChannelCall.resultType(new TypeReference<>() {});
-				return sendRpcCall(channelId, deleteChannelCall).compose(deleted -> {
-					ContactMutation<List<Id>> mutation = new ContactMutation<>(contactsRevision, ContactMutation.Op.REMOVE, List.of(channelId));
-					RpcCall<ContactMutation<List<Id>>, Integer> removeContactCall = new RpcCall<>(RpcMethod.CONTACT_MUTATE, mutation);
-					removeContactCall.resultType(new TypeReference<>() {});
-					return sendRpcCall(homePeerId, removeContactCall).compose(revision -> {
-						return repository.removeContacts(revision, List.of(channelId)).map(updated -> {
-							contactsRevision = revision;
-							return true;
-						});
-					});
+				// 1. Request to delete the channel
+				RpcCall<Void, Void> deleteChannelCall = RpcCall.deleteChannel();
+				return sendRpcCall(channelId, deleteChannelCall).compose(vv -> {
+					// 2. Remove the channel from the contact list (sync cross all devices)
+					ContactMutation<List<Id>> mutation = ContactMutation.remove(contactsRevision, List.of(channelId));
+					RpcCall<ContactMutation<List<Id>>, Integer> removeContactCall = RpcCall.contactMutate(mutation);
+					return sendRpcCall(homePeerId, removeContactCall).compose(revision ->
+							repository.removeContacts(revision, List.of(channelId)).map(ignored -> {
+								contactsRevision = revision;
+								return true;
+							})
+					);
 				});
 			}).onComplete(promise);
 		});
-
 		return VertxFuture.of(promise.future());
 	}
 
@@ -502,19 +507,22 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 	public VertxFuture<Channel> joinChannel(InviteTicket ticket) {
 		Objects.requireNonNull(ticket, "ticket");
 		if (ticket.isValid())
-			return VertxFuture.failedFuture("Invalid ticket");
+			throw new IllegalArgumentException("Invalid ticket");
 		if (ticket.isExpired())
-			return VertxFuture.failedFuture("Ticket expired");
+			throw new IllegalArgumentException("Ticket has expired");
 		if (ticket.isNamedTicket() && !ticket.getInvitee().equals(getUserId()))
-			return VertxFuture.failedFuture("Only the invitee can join the channel");
+			throw new IllegalArgumentException("Only the invitee can join the channel");
 
+		runningCheck();
+
+		// 1. check the session key is valid and re-encrypt with self-encryption context
 		final InviteTicket revisedTicket;
 		try {
 			byte[] sk = userIdentity.decrypt(ticket.getInviter(), ticket.getSessionKey());
 			Signature.KeyPair sessionKeypair = Signature.KeyPair.fromPrivateKey(sk);
 			Id sessionId = Id.of(sessionKeypair.publicKey().bytes());
 			if (!ticket.getSessionId().equals(sessionId))
-				return VertxFuture.failedFuture("Invalid session key");
+				return VertxFuture.failedFuture("Invalid ticket: session key not valid");
 
 			byte[] sessionKey = selfContext.encrypt(sessionKeypair.privateKey().bytes());
 			revisedTicket = ticket.revise(sessionKey);
@@ -524,206 +532,206 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 
 		Promise<Channel> promise = Promise.promise();
 		runOnContext(v -> {
-			RpcCall<InviteTicket, RpcPrototypes.ChannelInfo> joinChannelCall = new RpcCall<>(RpcMethod.CHANNEL_JOIN, revisedTicket);
-			joinChannelCall.resultType(new TypeReference<>() {});
-			sendRpcCall(ticket.getChannelId(), joinChannelCall).compose(ci -> {
-				ChannelImpl channel = new ChannelImpl(ci.channelId(), ci.sessionKey(), ci.ownerId(), ci.permission(),
-						ci.name(), ci.notice(), ci.announce(), ci.createdAt(), ci.updateAt());
-				return repository.putContactLocally(channel).map(updated -> channel);
-			}).compose(channel -> {
-				ContactMutation<Contact> mutation = new ContactMutation<>(contactsRevision, ContactMutation.Op.ADD, channel);
-				RpcCall<ContactMutation<Contact>, Integer> addContactCall = new RpcCall<>(RpcMethod.CONTACT_MUTATE, mutation);
-				addContactCall.resultType(new TypeReference<>() {
-				});
-				return sendRpcCall(homePeerId, addContactCall).compose(revision -> {
-					Contact contact = channel.edit().setRevision(revision).build();
-					return repository.putContacts(revision, List.of(contact)).map(updated -> {
-						contactsRevision = revision;
-						return channel;
+			// 2. check if joined the channel already
+			channel(ticket.getChannelId()).compose(existing -> {
+				if (existing != null)
+					return Future.succeededFuture(existing);
+
+				// 3. request to join the channel
+				RpcCall<InviteTicket, RpcPrototypes.ChannelInfo> joinChannelCall = RpcCall.joinChannel(revisedTicket);
+				return sendRpcCall(ticket.getChannelId(), joinChannelCall).compose(ci -> {
+					ChannelImpl channel = new ChannelImpl(ci.channelId(), ci.sessionKey(), ci.ownerId(), ci.permission(),
+							ci.name(), ci.notice(), ci.announce(), ci.createdAt(), ci.updateAt());
+					return repository.putContactLocally(channel).compose(vv -> {
+						if (ci.members() != null && !ci.members().isEmpty())
+							return repository.putChannelMembers(channel.getId(), ci.members()).map(channel);
+						else
+							return Future.succeededFuture(channel);
 					});
-				});
-			}).onComplete(promise);
-		});
-
-		return VertxFuture.of(promise.future());
-	}
-
-	@Override
-	public VertxFuture<Boolean> leaveChannel(Id channelId) {
-		Promise<Boolean> promise = Promise.promise();
-		runOnContext(v -> {
-			Future.fromCompletionStage(contactCache.get(channelId)).compose(contact -> {
-				if (contact == null)
-					return Future.failedFuture("Channel not exists");
-
-				if (!(contact instanceof ChannelImpl channel))
-					return Future.failedFuture("Channel not exists");
-
-				RpcCall<Void, Boolean> leaveChannelCall = new RpcCall<>(RpcMethod.CHANNEL_DELETE);
-				leaveChannelCall.resultType(new TypeReference<>() {});
-				return sendRpcCall(channelId, leaveChannelCall).compose(deleted -> {
-					ContactMutation<List<Id>> mutation = new ContactMutation<>(contactsRevision, ContactMutation.Op.REMOVE, List.of(channelId));
-					RpcCall<ContactMutation<List<Id>>, Integer> removeContactCall = new RpcCall<>(RpcMethod.CONTACT_MUTATE, mutation);
-					removeContactCall.resultType(new TypeReference<>() {});
-					return sendRpcCall(homePeerId, removeContactCall).compose(revision -> {
-						return repository.removeContacts(revision, List.of(channelId)).map(updated -> {
+				}).compose(ch -> {
+					// 4. add the channel as a new contact (sync cross all devices)
+					ContactMutation<Contact> mutation = ContactMutation.add(contactsRevision, ch);
+					RpcCall<ContactMutation<Contact>, Integer> addContactCall = RpcCall.contactMutate(mutation);
+					return sendRpcCall(homePeerId, addContactCall).compose(revision -> {
+						ChannelImpl channel = (ChannelImpl) ch.edit().setRevision(revision).build();
+						return repository.putContacts(revision, List.of(channel)).map(vv -> {
 							contactsRevision = revision;
-							return true;
+							return channel;
 						});
 					});
 				});
 			}).onComplete(promise);
 		});
+		return VertxFuture.of(promise.future());
+	}
 
+	@Override
+	public VertxFuture<Boolean> leaveChannel(Id channelId) {
+		Objects.requireNonNull(channelId, "channelId");
+		runningCheck();
+
+		Promise<Boolean> promise = Promise.promise();
+		runOnContext(v -> {
+			channel(channelId).compose(channel -> {
+				if (channel == null)
+					return Future.failedFuture(new ChannelNotExistsException(channelId.toString()));
+
+				if (channel.getOwnerId().equals(getUserId()))
+					return Future.failedFuture(new InsufficientPermissionException("owner can not leave the channel"));
+
+				RpcCall<Void, Void> leaveChannelCall = RpcCall.leaveChannel();
+				return sendRpcCall(channelId, leaveChannelCall).compose(vv -> {
+					ContactMutation<List<Id>> mutation = ContactMutation.remove(contactsRevision, List.of(channelId));
+					RpcCall<ContactMutation<List<Id>>, Integer> removeContactCall = RpcCall.contactMutate(mutation);
+					return sendRpcCall(homePeerId, removeContactCall).compose(revision ->
+							repository.removeContacts(revision, List.of(channelId)).map(ignored -> {
+								contactsRevision = revision;
+								return true;
+							})
+					);
+				});
+			}).onComplete(promise);
+		});
 		return VertxFuture.of(promise.future());
 	}
 
 	@Override
 	public VertxFuture<InviteTicket> createInviteTicket(Id channelId, Id invitee) {
 		Objects.requireNonNull(channelId, "channelId");
+		runningCheck();
 
 		Promise<InviteTicket> promise = Promise.promise();
 		runOnContext(v -> {
-			Future.fromCompletionStage(contactCache.get(channelId)).compose(contact -> {
-				if (contact == null)
-					return Future.failedFuture("Channel not exists");
+			channel(channelId).compose(channel -> {
+				if (channel == null)
+					return Future.failedFuture(new ChannelNotExistsException(channelId.toString()));
 
-				if (!(contact instanceof ChannelImpl channel))
-					return Future.failedFuture("Channel not exists");
+				return channel.loadMembers().compose(vv -> {
+					ChannelMember member = channel.getMember(getUserId());
+					Channel.Permission permission = channel.getPermission();
+					switch (permission) {
+						case PUBLIC, MEMBER_INVITE -> {
+							if (member.isBanned())
+								return Future.failedFuture(new InsufficientPermissionException("You are banned from the channel"));
+						}
 
-				ChannelMember member = channel.getMember(getUserId());
-				Channel.Permission permission = channel.getPermission();
-				switch (permission) {
-					case PUBLIC, MEMBER_INVITE -> {
-						if (member.isBanned())
-							return Future.failedFuture("You are banned from the channel");
+						case MODERATOR_INVITE -> {
+							if (!member.isModerator() && !member.isOwner())
+								return Future.failedFuture(new InsufficientPermissionException("You are not a moderator of the channel"));
+						}
+
+						case OWNER_INVITE -> {
+							if (!member.isOwner())
+								return Future.failedFuture(new InsufficientPermissionException("You are not the owner of the channel"));
+						}
 					}
 
-					case MODERATOR_INVITE -> {
-						if (!member.isModerator() && !member.isOwner())
-							return Future.failedFuture("You are not a moderator of the channel");
-					}
+					if (invitee != null && channel.hasMember(invitee))
+						return Future.failedFuture(new AlreadyMemberException("The invitee is already a member of the channel"));
 
-					case OWNER_INVITE -> {
-						if (!member.isOwner())
-							return Future.failedFuture("You are not the owner of the channel");
-					}
-				}
+					try {
+						byte[] sk = selfContext.decrypt(channel.getSessionKey());
+						if (invitee != null)
+							sk = userIdentity.encrypt(invitee, sk);
 
-				try {
-					byte[] sk = selfContext.decrypt(channel.getSessionKey());
-					if (invitee != null)
-						sk = userIdentity.encrypt(invitee, sk);
-					InviteTicket ticket = InviteTicket.create(userIdentity, channelId, channel.getSessionId(), invitee,
-							System.currentTimeMillis() + InviteTicket.DEFAULT_EXPIRATION, sk);
+						InviteTicket ticket = InviteTicket.create(userIdentity, channelId, channel.getSessionId(), invitee,
+								System.currentTimeMillis() + InviteTicket.DEFAULT_EXPIRATION, sk);
 
-					return Future.succeededFuture(ticket);
-				} catch (CryptoException e) {
-					return Future.failedFuture("Invalid session key");
-				}
-			}).onComplete(promise);
-		});
-
-		return VertxFuture.of(promise.future());
-	}
-
-	@Override
-	public VertxFuture<Boolean> transferChannelOwnership(Id channelId, Id newOwner) {
-		Objects.requireNonNull(channelId, "channelId");
-		Objects.requireNonNull(newOwner, "newOwner");
-
-		Promise<Boolean> promise = Promise.promise();
-		runOnContext(v -> {
-			Future.fromCompletionStage(contactCache.get(channelId)).compose(contact -> {
-				if (contact == null)
-					return Future.failedFuture("Channel not exists");
-
-				if (!(contact instanceof ChannelImpl channel))
-					return Future.failedFuture("Channel not exists");
-
-				if (!channel.getOwnerId().equals(getUserId()))
-					return Future.failedFuture("Only the owner can transfer the channel ownership");
-
-				ChannelMember member = channel.getMember(newOwner);
-				if (member == null)
-					return Future.failedFuture("New owner is not a member of the channel");
-				if (member.isBanned())
-					return Future.failedFuture("New owner is banned from the channel");
-
-				RpcCall<Id, Boolean> call = new RpcCall<>(RpcMethod.CHANNEL_TRANSFER_OWNERSHIP, newOwner);
-				return sendRpcCall(channelId, call).compose(transferred -> {
-					if (transferred) {
-						Contact updatedChannel = channel.editChannel().setOwnerId(newOwner).build();
-						return repository.putContactLocally(updatedChannel).map(updated -> true);
-					} else {
-						return Future.succeededFuture(false);
+						return Future.succeededFuture(ticket);
+					} catch (CryptoException e) {
+						return Future.failedFuture("Invalid session key");
 					}
 				});
 			}).onComplete(promise);
 		});
-
 		return VertxFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Boolean> rotateChannelSessionKey(Id channelId, Signature.KeyPair sessionKeypair) {
+	public VertxFuture<Void> transferChannelOwnership(Id channelId, Id newOwner) {
 		Objects.requireNonNull(channelId, "channelId");
-		final Signature.KeyPair keypair = sessionKeypair != null ? sessionKeypair : Signature.KeyPair.random();
+		Objects.requireNonNull(newOwner, "newOwner");
+		runningCheck();
 
-		Promise<Boolean> promise = Promise.promise();
+		Promise<Void> promise = Promise.promise();
 		runOnContext(v -> {
-			Future.fromCompletionStage(contactCache.get(channelId)).compose(contact -> {
-				if (contact == null)
-					return Future.failedFuture("Channel not exists");
-
-				if (!(contact instanceof ChannelImpl channel))
-					return Future.failedFuture("Channel not exists");
+			channel(channelId).compose(channel -> {
+				if (channel == null)
+					return Future.failedFuture(new ChannelNotExistsException(channelId.toString()));
 
 				if (!channel.getOwnerId().equals(getUserId()))
-					return Future.failedFuture("Only the owner can transfer the channel ownership");
+					return Future.failedFuture(new InsufficientPermissionException("not owner"));
+
+				return channel.loadMembers().compose(vv -> {
+					ChannelMember member = channel.getMember(newOwner);
+					if (member == null)
+						return Future.failedFuture(new NotChannelMemberException("newOwner is not the member of channel"));
+					if (member.isBanned())
+						return Future.failedFuture(new NotChannelMemberException("newOwner is banned from the channel"));
+
+					RpcCall<Id, Void> call = RpcCall.transferChannelOwnership(newOwner);
+					return sendRpcCall(channelId, call).compose(vvv -> {
+						Contact updatedChannel = channel.editChannel().setOwnerId(newOwner).build();
+						return repository.putContactLocally(updatedChannel);
+					});
+				});
+			}).onComplete(promise);
+		});
+		return VertxFuture.of(promise.future());
+	}
+
+	@Override
+	public VertxFuture<Void> rotateChannelSessionKey(Id channelId, Signature.KeyPair sessionKeypair) {
+		Objects.requireNonNull(channelId, "channelId");
+		runningCheck();
+
+		final Signature.KeyPair keypair = sessionKeypair != null ? sessionKeypair : Signature.KeyPair.random();
+
+		Promise<Void> promise = Promise.promise();
+		runOnContext(v -> {
+			channel(channelId).compose(channel -> {
+				if (channel == null)
+					return Future.failedFuture(new ChannelNotExistsException(channelId.toString()));
+
+				if (!channel.getOwnerId().equals(getUserId()))
+					return Future.failedFuture(new InsufficientPermissionException("not owner"));
 
 				final byte[] sessionKey;
 				try {
 					sessionKey = userIdentity.encrypt(channel.getSessionId(), keypair.privateKey().bytes());
 				} catch (CryptoException e) {
-					return Future.failedFuture("Failed to encrypt session key");
+					return Future.failedFuture(e);
 				}
 
 				Id sessionId = Id.of(keypair.publicKey().bytes());
 				RpcPrototypes.ChannelSessionKeyRotationParams params =
 						new RpcPrototypes.ChannelSessionKeyRotationParams(sessionId, sessionKey);
-
-				RpcCall<RpcPrototypes.ChannelSessionKeyRotationParams, Boolean> call =
-						new RpcCall<>(RpcMethod.CHANNEL_ROTATE_SESSION_KEY, params);
-				return sendRpcCall(channelId, call).compose(rotated -> {
-					if (rotated) {
-						Contact updatedChannel = channel.edit().setSessionKey(sessionKey).build();
-						return repository.putContactLocally(updatedChannel).map(updated -> true);
-					} else {
-						return Future.succeededFuture(false);
-					}
+				RpcCall<RpcPrototypes.ChannelSessionKeyRotationParams, Void> call = RpcCall.rotateChannelSessionKey(params);
+				return sendRpcCall(channelId, call).compose(vv -> {
+					Contact updatedChannel = channel.edit().setSessionKey(sessionKey).build();
+					return repository.putContactLocally(updatedChannel);
 				});
 			}).onComplete(promise);
 		});
-
 		return VertxFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Boolean> updateChannelInfo(Channel channel) {
+	public VertxFuture<Void> updateChannelInfo(Channel channel) {
 		Objects.requireNonNull(channel, "channel");
+		runningCheck();
 
-		Promise<Boolean> promise = Promise.promise();
+		Promise<Void> promise = Promise.promise();
 		runOnContext(v -> {
-			Future.fromCompletionStage(contactCache.get(channel.getId())).compose(contact -> {
-				if (!(contact instanceof ChannelImpl origin))
-					return Future.failedFuture("Channel not exists");
+			channel(channel.getId()).compose(origin -> {
+				if (origin == null)
+					return Future.failedFuture(new ChannelNotExistsException(channel.getId().toString()));
 
 				if (channel == origin)
-					return Future.failedFuture("Channel info not changed");
+					return Future.failedFuture(new IllegalStateException("Channel info not changed"));
 
 				if (!origin.getOwnerId().equals(getUserId()))
-					return Future.failedFuture("Only the owner can update the channel info");
+					return Future.failedFuture(new InsufficientPermissionException("not owner"));
 
 				ObjectNode changes = Json.cborMapper().createObjectNode();
 				if (channel.getPermission() != origin.getPermission())
@@ -737,15 +745,10 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 				if (channel.getUpdatedAt() != origin.getUpdatedAt())
 					changes.put("u", channel.getUpdatedAt());
 
-				RpcCall<JsonNode, Boolean> call =
-						new RpcCall<>(RpcMethod.CHANNEL_UPDATE_INFO, changes);
-				return sendRpcCall(channel.getId(), call).compose(changed -> {
-					if (changed) {
-						contactCache.synchronous().invalidate(channel.getId());
-						return repository.putContactLocally(channel).map(updated -> true);
-					} else {
-						return Future.succeededFuture(false);
-					}
+				RpcCall<JsonNode, Void> call = RpcCall.updateChannelInfo(changes);
+				return sendRpcCall(channel.getId(), call).compose(vv -> {
+					contactCache.synchronous().invalidate(channel.getId());
+					return repository.putContactLocally(channel);
 				});
 			});
 		});
@@ -753,7 +756,7 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 	}
 
 	@Override
-	public VertxFuture<Boolean> setChannelMembersRole(Id channelId, List<Id> members, Channel.Role role) {
+	public VertxFuture<Void> setChannelMembersRole(Id channelId, List<Id> members, Channel.Role role) {
 		Objects.requireNonNull(channelId, "channelId");
 		Objects.requireNonNull(members, "members");
 		Objects.requireNonNull(role, "role");
@@ -761,155 +764,145 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 			throw new IllegalArgumentException("No members specified");
 		if (role == Channel.Role.OWNER || role == Channel.Role.BANNED)
 			throw new IllegalArgumentException("Role " + role + " is not allowed");
+		runningCheck();
 
-		Promise<Boolean> promise = Promise.promise();
+		Promise<Void> promise = Promise.promise();
 		runOnContext(v -> {
-			Future.fromCompletionStage(contactCache.get(channelId)).compose(contact -> {
-				if (contact == null)
-					return Future.failedFuture("Channel not exists");
+			channel(channelId).compose(channel -> {
+				if (channel == null)
+					return Future.failedFuture(new ChannelNotExistsException(channelId.toString()));
 
-				if (!(contact instanceof ChannelImpl channel))
-					return Future.failedFuture("Channel not exists");
+				return channel.loadMembers().compose(na -> {
+					ChannelMember member = channel.getMember(getUserId());
+					if (member == null)
+						return Future.failedFuture(new InsufficientPermissionException("Not a member of the channel"));
+					if (!member.isOwner() && !member.isModerator())
+						return Future.failedFuture(new InsufficientPermissionException("Not an owner or a moderator of the channel"));
 
-				ChannelMember member = channel.getMember(getUserId());
-				if (member == null)
-					return Future.failedFuture("You are not a member of the channel");
-				if (!member.isOwner() && !member.isModerator())
-					return Future.failedFuture("You are not an owner or a moderator of the channel");
-
-				RpcPrototypes.ChannelMembersRoleParams params =
-						new RpcPrototypes.ChannelMembersRoleParams(members, role);
-
-				RpcCall<RpcPrototypes.ChannelMembersRoleParams, Boolean> call =
-						new RpcCall<>(RpcMethod.CHANNEL_UPDATE_MEMBERS_ROLE, params);
-				return sendRpcCall(channelId, call).compose(changed -> {
-					if (changed) {
+					RpcPrototypes.ChannelMembersRoleParams params = new RpcPrototypes.ChannelMembersRoleParams(members, role);
+					RpcCall<RpcPrototypes.ChannelMembersRoleParams, List<Id>> call = RpcCall.updateChannelMembersRole(params);
+					return sendRpcCall(channelId, call).compose(ids -> {
 						channel.invalidateMembers();
-						return repository.updateChannelMembersRole(channelId, members, role).map(updated -> true);
-					} else {
-						return Future.succeededFuture(false);
-					}
+						return repository.updateChannelMembersRole(channelId, ids, role).<Void>mapEmpty();
+					});
 				});
 			}).onComplete(promise);
 		});
-
 		return VertxFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Boolean> banChannelMembers(Id channelId, List<Id> members) {
+	public VertxFuture<Void> banChannelMembers(Id channelId, List<Id> members) {
 		Objects.requireNonNull(channelId, "channelId");
 		Objects.requireNonNull(members, "members");
 		if (members.isEmpty())
 			throw new IllegalArgumentException("No members specified");
+		runningCheck();
 
-		Promise<Boolean> promise = Promise.promise();
+		Promise<Void> promise = Promise.promise();
 		runOnContext(v -> {
-			Future.fromCompletionStage(contactCache.get(channelId)).compose(contact -> {
-				if (contact == null)
-					return Future.failedFuture("Channel not exists");
+			channel(channelId).compose(channel -> {
+				if (channel == null)
+					return Future.failedFuture(new ChannelNotExistsException(channelId.toString()));
 
-				if (!(contact instanceof ChannelImpl channel))
-					return Future.failedFuture("Channel not exists");
+				return channel.loadMembers().compose(na -> {
+					ChannelMember member = channel.getMember(getUserId());
+					if (member == null)
+						return Future.failedFuture(new InsufficientPermissionException("Not a member of the channel"));
+					if (!member.isOwner() && !member.isModerator())
+						return Future.failedFuture(new InsufficientPermissionException("Not an owner or a moderator of the channel"));
 
-				ChannelMember member = channel.getMember(getUserId());
-				if (member == null)
-					return Future.failedFuture("You are not a member of the channel");
-				if (!member.isOwner() && !member.isModerator())
-					return Future.failedFuture("You are not an owner or a moderator of the channel");
-
-				RpcCall<List<Id>, Boolean> call = new RpcCall<>(RpcMethod.CHANNEL_BAN_MEMBERS, members);
-				return sendRpcCall(channelId, call).compose(banned -> {
-					if (banned) {
-						channel.invalidateMembers();
-						return repository.updateChannelMembersRole(channelId, members, Channel.Role.BANNED).map(updated -> true);
-					} else {
-						return Future.succeededFuture(false);
-					}
+					RpcCall<List<Id>, List<Id>> call = RpcCall.banChannelMembers(members);
+					return sendRpcCall(channelId, call).compose(banned -> {
+						if (!banned.isEmpty()) {
+							channel.invalidateMembers();
+							return repository.updateChannelMembersRole(channelId, members, Channel.Role.BANNED).<Void>mapEmpty();
+						} else {
+							return Future.succeededFuture();
+						}
+					});
 				});
 			}).onComplete(promise);
 		});
-
 		return VertxFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Boolean> unbanChannelMembers(Id channelId, List<Id> members) {
+	public VertxFuture<Void> unbanChannelMembers(Id channelId, List<Id> members) {
 		Objects.requireNonNull(channelId, "channelId");
 		Objects.requireNonNull(members, "members");
 		if (members.isEmpty())
 			throw new IllegalArgumentException("No members specified");
+		runningCheck();
 
-		Promise<Boolean> promise = Promise.promise();
+		Promise<Void> promise = Promise.promise();
 		runOnContext(v -> {
-			Future.fromCompletionStage(contactCache.get(channelId)).compose(contact -> {
-				if (contact == null)
-					return Future.failedFuture("Channel not exists");
+			channel(channelId).compose(channel -> {
+				if (channel == null)
+					return Future.failedFuture(new ChannelNotExistsException(channelId.toString()));
 
-				if (!(contact instanceof ChannelImpl channel))
-					return Future.failedFuture("Channel not exists");
+				return channel.loadMembers().compose(na -> {
+					ChannelMember member = channel.getMember(getUserId());
+					if (member == null)
+						return Future.failedFuture(new InsufficientPermissionException("Not a member of the channel"));
+					if (!member.isOwner() && !member.isModerator())
+						return Future.failedFuture(new InsufficientPermissionException("Not an owner or a moderator of the channel"));
 
-				ChannelMember member = channel.getMember(getUserId());
-				if (member == null)
-					return Future.failedFuture("You are not a member of the channel");
-				if (!member.isOwner() && !member.isModerator())
-					return Future.failedFuture("You are not an owner or a moderator of the channel");
-
-				RpcCall<List<Id>, Boolean> call = new RpcCall<>(RpcMethod.CHANNEL_UNBAN_MEMBERS, members);
-				return sendRpcCall(channelId, call).compose(unbanned -> {
-					if (unbanned) {
-						channel.invalidateMembers();
-						return repository.updateChannelMembersRole(channelId, members, Channel.Role.MEMBER).map(updated -> true);
-					} else {
-						return Future.succeededFuture(false);
-					}
+					RpcCall<List<Id>, List<Id>> call = RpcCall.unbanChannelMembers(members);
+					return sendRpcCall(channelId, call).compose(unbanned -> {
+						if (!unbanned.isEmpty()) {
+							channel.invalidateMembers();
+							return repository.updateChannelMembersRole(channelId, members, Channel.Role.MEMBER).<Void>mapEmpty();
+						} else {
+							return Future.succeededFuture();
+						}
+					});
 				});
 			}).onComplete(promise);
 		});
-
 		return VertxFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Boolean> removeChannelMembers(Id channelId, List<Id> members) {
+	public VertxFuture<Void> removeChannelMembers(Id channelId, List<Id> members) {
 		Objects.requireNonNull(channelId, "channelId");
 		Objects.requireNonNull(members, "members");
 		if (members.isEmpty())
 			throw new IllegalArgumentException("No members specified");
+		runningCheck();
 
-		Promise<Boolean> promise = Promise.promise();
+		Promise<Void> promise = Promise.promise();
 		runOnContext(v -> {
-			Future.fromCompletionStage(contactCache.get(channelId)).compose(contact -> {
-				if (contact == null)
-					return Future.failedFuture("Channel not exists");
+			channel(channelId).compose(channel -> {
+				if (channel == null)
+					return Future.failedFuture(new ChannelNotExistsException(channelId.toString()));
 
-				if (!(contact instanceof ChannelImpl channel))
-					return Future.failedFuture("Channel not exists");
+				return channel.loadMembers().compose(na -> {
+					ChannelMember member = channel.getMember(getUserId());
+					if (member == null)
+						return Future.failedFuture(new InsufficientPermissionException("Not a member of the channel"));
+					if (!member.isOwner() && !member.isModerator())
+						return Future.failedFuture(new InsufficientPermissionException("Not an owner or a moderator of the channel"));
 
-				ChannelMember member = channel.getMember(getUserId());
-				if (member == null)
-					return Future.failedFuture("You are not a member of the channel");
-				if (!member.isOwner() && !member.isModerator())
-					return Future.failedFuture("You are not an owner or a moderator of the channel");
-
-				RpcCall<List<Id>, Boolean> call = new RpcCall<>(RpcMethod.CHANNEL_REMOVE_MEMBERS, members);
-				return sendRpcCall(channelId, call).compose(removed -> {
-					if (removed) {
-						channel.invalidateMembers();
-						return repository.removeChannelMembers(channelId, members).map(updated -> true);
-					} else {
-						return Future.succeededFuture(false);
-					}
+					RpcCall<List<Id>, List<Id>> call = RpcCall.removeChannelMembers(members);
+					return sendRpcCall(channelId, call).compose(removed -> {
+						if (!removed.isEmpty()) {
+							channel.invalidateMembers();
+							return repository.removeChannelMembers(channelId, members).<Void>mapEmpty();
+						} else {
+							return Future.succeededFuture();
+						}
+					});
 				});
 			}).onComplete(promise);
 		});
-
 		return VertxFuture.of(promise.future());
 	}
 
 	@Override
 	public VertxFuture<Contact> getContact(Id contactId) {
 		Objects.requireNonNull(contactId, "contactId");
+		runningCheck();
 
 		Promise<Contact> promise = Promise.promise();
 		runOnContext(v -> {
@@ -925,12 +918,14 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 
 	@Override
 	public VertxFuture<List<Contact>> getContacts() {
+		runningCheck();
+
 		Promise<List<Contact>> promise = Promise.promise();
 		runOnContext(v -> {
 			repository.getAllContacts().map(contacts -> {
 				Map<Id, Contact> result = new LinkedHashMap<>();
 				for (Contact c : contacts) {
-					Contact cached = contactCache.synchronous().asMap()
+					AbstractContact cached = contactCache.synchronous().asMap()
 							.compute(c.getId(), (k, cc) -> cc != null ? cc : (AbstractContact) c);
 					result.put(c.getId(), cached);
 				}
@@ -943,17 +938,21 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 	}
 
 	@Override
-	public VertxFuture<Boolean> updateContact(Contact contact) {
+	public VertxFuture<Void> updateContact(Contact contact) {
 		Objects.requireNonNull(contact, "contact");
+		runningCheck();
 
-		Promise<Boolean> promise = Promise.promise();
+		Promise<Void> promise = Promise.promise();
 		runOnContext(v -> {
-			Future.fromCompletionStage(contactCache.get(contact.getId())).compose(origin -> {
+			contact(contact.getId()).compose(origin -> {
 				if (origin == null)
-					return Future.failedFuture("Contact not exists");
+					return Future.failedFuture(new ContactNotExistsException(contact.getId().toString()));
 
 				if (contact == origin)
-					return Future.failedFuture("Channel info not changed");
+					return Future.failedFuture(new IllegalStateException("Contact not changed"));
+
+				if (contact.getRevision() < origin.getRevision())
+					return Future.failedFuture(new RevisionNotMonotonicException("Contact revision is outdate"));
 
 				ObjectNode changes = Json.cborMapper().createObjectNode();
 				if (!Objects.equals(contact.getRemark(), origin.getRemark()))
@@ -967,14 +966,15 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 				if (contact.getUpdatedAt() != origin.getUpdatedAt())
 					changes.put("u", contact.getUpdatedAt());
 
-				ContactMutation<JsonNode> mutation = new ContactMutation(contact.getRevision(), ContactMutation.Op.UPDATE, changes);
-				RpcCall<ContactMutation<JsonNode>, Integer> call = new RpcCall<>(RpcMethod.CONTACT_MUTATE, mutation);
+				ContactMutation<JsonNode> mutation = ContactMutation.update(contactsRevision, changes);
+				RpcCall<ContactMutation<JsonNode>, Integer> call = RpcCall.contactMutate(mutation);
 				return sendRpcCall(contact.getId(), call).compose(revision -> {
-					contactCache.synchronous().invalidate(contact.getId());
-					Contact updatedContact = ((AbstractContact) contact).edit().setRevision(revision).build();
-					return repository.putContactLocally(updatedContact).map(updated -> true);
+					Contact updatedContact = ((ContactEditorImpl) contact.edit()).setRevision(revision).build();
+					return repository.putContacts(revision, List.of(updatedContact)).onSuccess(vv ->
+						contactCache.synchronous().invalidate(contact.getId())
+					);
 				});
-			});
+			}).onComplete(promise);
 		});
 		return VertxFuture.of(promise.future());
 	}
@@ -984,35 +984,36 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		Objects.requireNonNull(contactIds, "contactIds");
 		if (contactIds.isEmpty())
 			throw new IllegalArgumentException("No contacts specified");
+		runningCheck();
 
 		Promise<Boolean> promise = Promise.promise();
 		runOnContext(v -> {
-			ContactMutation<List<Id>> mutation = new ContactMutation<>(contactsRevision, ContactMutation.Op.REMOVE, contactIds);
-			RpcCall<ContactMutation<List<Id>>, Integer> call = new RpcCall<>(RpcMethod.CONTACT_MUTATE, mutation);
-			call.resultType(new TypeReference<>() {});
-			sendRpcCall(homePeerId, call).compose(revision -> {
-				return repository.removeContacts(revision, contactIds).map(updated -> {
-					contactsRevision = revision;
-					return updated;
-				});
-			}).onComplete(promise);
+			ContactMutation<List<Id>> mutation = ContactMutation.remove(contactsRevision, contactIds);
+			RpcCall<ContactMutation<List<Id>>, Integer> call = RpcCall.contactMutate(mutation);
+			sendRpcCall(homePeerId, call).compose(revision ->
+					repository.removeContacts(revision, contactIds).map(ignored -> {
+						contactsRevision = revision;
+						return true;
+					})
+			).onComplete(promise);
 		});
 		return VertxFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Boolean> clearContacts() {
-		Promise<Boolean> promise = Promise.promise();
+	public VertxFuture<Void> clearContacts() {
+		runningCheck();
+
+		Promise<Void> promise = Promise.promise();
 		runOnContext(v -> {
-			ContactMutation<Void> mutation = new ContactMutation<>(contactsRevision, ContactMutation.Op.CLEAR, null);
-			RpcCall<ContactMutation<Void>, Integer> call = new RpcCall<>(RpcMethod.CONTACT_MUTATE, mutation);
-			call.resultType(new TypeReference<>() {});
-			sendRpcCall(homePeerId, call).compose(revision -> {
-				return repository.clearContacts(revision).map(updated -> {
-					contactsRevision = revision;
-					return updated;
-				});
-			}).onComplete(promise);
+			ContactMutation<Void> mutation = ContactMutation.clear(contactsRevision);
+			RpcCall<ContactMutation<Void>, Integer> call = RpcCall.contactMutate(mutation);
+			sendRpcCall(homePeerId, call).<Void>compose(revision ->
+					repository.clearContacts(revision).map(vv -> {
+						contactsRevision = revision;
+						return null;
+					})
+			).onComplete(promise);
 		});
 		return VertxFuture.of(promise.future());
 	}
@@ -1047,6 +1048,15 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		});
 	}
 
+	private Future<AbstractContact> contact(Id id) {
+		return Future.fromCompletionStage(contactCache.get(id));
+	}
+
+	private Future<ChannelImpl> channel(Id id) {
+		return Future.fromCompletionStage(contactCache.get(id)).map(contact ->
+				contact instanceof ChannelImpl channel ? channel : null);
+	}
+
 	private <P, R> Future<R> sendRpcCall(Id recipient, RpcCall<P, R> call) {
 		inflightRpcCalls.put(call.getId(), call);
 		MessageImpl<RpcRequest<P>> message = new MessageImpl<>(Message.Type.CONTROL_MESSAGE, recipient, call.getRequest());
@@ -1063,7 +1073,13 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 
 		Promise<Void> promise = Promise.promise();
 		vertxContext.runOnContext((v) -> {
-			sendMessageInternal(msg).compose(packetId -> msg.getFuture().onComplete(promise));
+			repository.putMessage(msg).compose(vv ->
+					sendMessageInternal(msg).compose(packetId ->
+									msg.getFuture().onSuccess(vvv ->
+											repository.updateMessageSentTime(msg)
+									)
+					)
+			);
 		});
 
 		return promise.future().map(message);
@@ -1216,11 +1232,6 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 				}
 			}
 		};
-	}
-
-	private Future<AbstractContact> contact(Id id) {
-		// TODO:
-		return Future.succeededFuture();
 	}
 
 	private Future<Void> resolvePeer() {
@@ -1490,6 +1501,7 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 
 		if (type == Message.Type.STATE_MESSAGE) {
 			if (message.getFrom().equals(getUserId())) {
+				// TODO: check this
 				// notification to the user: e.g.; friend request
 				DefaultContent<JsonNode> content = DefaultContent.parse(message.getPayload());
 				MessageImpl<Message.Content> contentMessage = message.dup(content);
@@ -1614,8 +1626,8 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 				// optimistic insert. The server will later broadcast a CONTACT_MUTATE notification
 				// triggered by the device that initiated the original CHANNEL_CREATE request,
 				// which will perform the formal, synchronized update of the contact list and revision state.
-				yield repository.putContactLocally(channel).map(added -> {
-					if (added && channelListener != null)
+				yield repository.putContactLocally(channel).map(v -> {
+					if (channelListener != null)
 						channelListener.onJoinedChannel(ch);
 					return null;
 				});
@@ -1655,24 +1667,20 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 
 			case CHANNEL_ROTATE_SESSION_KEY -> {
 				AbstractContact updatedChannel = channel.edit().setSessionKey(gn.getContentAs(byte[].class)).build();
-				yield repository.putContactLocally(updatedChannel).map(updated -> {
-					if (updated) {
-						contactCache.synchronous().asMap().compute(updatedChannel.getId(), (k, v) -> updatedChannel);
-						if (channelListener != null)
-							channelListener.onChannelSessionKeyRotated(channel);
-					}
+				yield repository.putContactLocally(updatedChannel).map(v -> {
+					contactCache.synchronous().asMap().compute(updatedChannel.getId(), (k, c) -> updatedChannel);
+					if (channelListener != null)
+						channelListener.onChannelSessionKeyRotated(channel);
 					return null;
 				});
 			}
 
 			case CHANNEL_UPDATE_INFO -> {
 				ChannelImpl updatedChannel = channel.editChannel().patch(gn.getContent()).build();
-				yield repository.putContactLocally(updatedChannel).map(updated -> {
-					if (updated) {
-						contactCache.synchronous().asMap().compute(updatedChannel.getId(), (k, v) -> updatedChannel);
-						if (channelListener != null)
-							channelListener.onChannelUpdated(channel);
-					}
+				yield repository.putContactLocally(updatedChannel).map(v -> {
+					contactCache.synchronous().asMap().compute(updatedChannel.getId(), (k, c) -> updatedChannel);
+					if (channelListener != null)
+						channelListener.onChannelUpdated(channel);
 					return null;
 				});
 			}
@@ -1744,13 +1752,10 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 
 			case CHANNEL_MEMBER_JOIN -> {
 				ChannelMember member = gn.getContentAs(ChannelMember.class);
-				yield repository.putChannelMember(channel.getId(), member).map(added -> {
-					if (added) {
-						channel.invalidateMembers();
-						if (channelListener != null)
-							channelListener.onChannelMemberJoined(channel, member);
-					}
-
+				yield repository.putChannelMember(channel.getId(), member).map(v -> {
+					channel.invalidateMembers();
+					if (channelListener != null)
+						channelListener.onChannelMemberJoined(channel, member);
 					return null;
 				});
 			}
@@ -1785,8 +1790,8 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		return switch (mutation.getOp()) {
 			case ADD -> {
 				Contact contact = mutation.getDataAs(AbstractContact.class);
-				yield repository.putContacts(revision, List.of(contact)).map(added -> {
-					if (added && contactListener != null)
+				yield repository.putContacts(revision, List.of(contact)).map(v -> {
+					if (contactListener != null)
 						contactListener.onContactAdded(contact);
 					return null;
 				});
@@ -1811,9 +1816,9 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 					}
 
 					AbstractContact updatedContact = contact.edit().patch(changes).build();
-					return repository.putContacts(revision, List.of(updatedContact)).map(updated -> {
-						contactCache.synchronous().asMap().compute(updatedContact.getId(), (k, v) -> updatedContact);
-						if(updated && contactListener != null)
+					return repository.putContacts(revision, List.of(updatedContact)).map(v -> {
+						contactCache.synchronous().asMap().compute(updatedContact.getId(), (k, c) -> updatedContact);
+						if(contactListener != null)
 							contactListener.onContactsUpdated(List.of(contact));
 						return null;
 					});
@@ -1829,8 +1834,8 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 				});
 			}
 
-			case CLEAR -> repository.clearContacts(revision).map(cleared -> {
-				if (cleared && contactListener != null)
+			case CLEAR -> repository.clearContacts(revision).map(v -> {
+				if (contactListener != null)
 						contactListener.onContactsCleared();
 				return null;
 			});

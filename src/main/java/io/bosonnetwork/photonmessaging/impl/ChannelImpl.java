@@ -31,9 +31,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.vertx.core.Future;
 
 import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
@@ -72,6 +74,7 @@ public class ChannelImpl extends AbstractContact implements Channel {
 	 * Uses Copy-On-Write logic: a new map is created on member additions or removals.
 	 */
 	private volatile Map<Id, ChannelMember> _members;
+	private Function<Id, Future<List<ChannelMember>>> membersLoader;
 
 	/**
 	 * Cached receiver crypto contexts for each member.
@@ -145,6 +148,23 @@ public class ChannelImpl extends AbstractContact implements Channel {
 		return new ChannelEditorImpl(this);
 	}
 
+	protected void setMembersLoader(Function<Id, Future<List<ChannelMember>>> membersLoader) {
+		this.membersLoader = membersLoader;
+	}
+
+	protected Future<Void> loadMembers() {
+		if (_members != null)
+			return Future.succeededFuture();
+
+		if (membersLoader == null)
+			return Future.failedFuture(new IllegalStateException("Members loader not set"));
+
+		return membersLoader.apply(getId()).map(ml -> {
+			setMembers(ml);
+			return null;
+		});
+	}
+
 	void setMembers(Collection<ChannelMember> members) {
 		Objects.requireNonNull(members, "members");
 		LinkedHashMap<Id, ChannelMember> newMembers = new LinkedHashMap<>();
@@ -167,11 +187,10 @@ public class ChannelImpl extends AbstractContact implements Channel {
 		memberRxCryptoContexts = null;
 	}
 
-	Map<Id, ChannelMember> copyMembers() {
-		return new LinkedHashMap<>(_members);
-	}
-
 	private Map<Id, ChannelMember> getMembersMap() {
+		if (_members == null)
+			throw new IllegalStateException("Members not loaded");
+
 		return _members;
 	}
 
