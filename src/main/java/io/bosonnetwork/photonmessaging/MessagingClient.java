@@ -96,7 +96,7 @@ public interface MessagingClient {
 	// Session APIs
 	CompletableFuture<List<SessionInfo>> getSessions();
 
-	CompletableFuture<Boolean> revokeSession(Id deviceId);
+	CompletableFuture<Void> revokeSession(Id deviceId);
 
 	// Friend APIs
 	CompletableFuture<Void> friendRequest(Id id, String hello);
@@ -129,27 +129,27 @@ public interface MessagingClient {
 
 	CompletableFuture<InviteTicket> createInviteTicket(Id channelId, Id invitee);
 
-	CompletableFuture<Boolean> transferChannelOwnership(Id channelId, Id newOwner);
+	CompletableFuture<Void> transferChannelOwnership(Id channelId, Id newOwner);
 
-	default CompletableFuture<Boolean> rotateChannelSessionKey(Id channelId) {
+	default CompletableFuture<Void> rotateChannelSessionKey(Id channelId) {
 		return rotateChannelSessionKey(channelId, Signature.KeyPair.random());
 	}
 
-	CompletableFuture<Boolean> rotateChannelSessionKey(Id channelId, Signature.KeyPair sessionKeypair);
+	CompletableFuture<Void> rotateChannelSessionKey(Id channelId, Signature.KeyPair sessionKeypair);
 
-	CompletableFuture<Boolean> updateChannelInfo(Channel channel);
+	CompletableFuture<Void> updateChannelInfo(Channel channel);
 
-	CompletableFuture<Boolean> setChannelMembersRole(Id channelId, List<Id> members, Channel.Role role);
-	CompletableFuture<Boolean> banChannelMembers(Id channelId, List<Id> members);
-	CompletableFuture<Boolean> unbanChannelMembers(Id channelId, List<Id> members);
-	CompletableFuture<Boolean> removeChannelMembers(Id channelId, List<Id> members);
+	CompletableFuture<Void> setChannelMembersRole(Id channelId, List<Id> members, Channel.Role role);
+	CompletableFuture<Void> banChannelMembers(Id channelId, List<Id> members);
+	CompletableFuture<Void> unbanChannelMembers(Id channelId, List<Id> members);
+	CompletableFuture<Void> removeChannelMembers(Id channelId, List<Id> members);
 
 	// Generic contact APIs
 	CompletableFuture<Contact> getContact(Id contactId);
 
 	CompletableFuture<List<Contact>> getContacts();
 
-	CompletableFuture<Boolean> updateContact(Contact contact);
+	CompletableFuture<Void> updateContact(Contact contact);
 
 	default CompletableFuture<Boolean> removeContact(Id contactId) {
 		return removeContacts(List.of(contactId));
@@ -157,5 +157,5 @@ public interface MessagingClient {
 
 	CompletableFuture<Boolean> removeContacts(List<Id> contactIds);
 
-	CompletableFuture<Boolean> clearContacts();
+	CompletableFuture<Void> clearContacts();
 }

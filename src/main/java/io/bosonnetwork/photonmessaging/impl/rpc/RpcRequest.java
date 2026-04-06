@@ -46,7 +46,7 @@ public class RpcRequest<P> {
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	protected final byte[] cookie;
 
-	protected RpcRequest(long id, RpcMethod method, P params, byte[] cookie) {
+	public RpcRequest(long id, RpcMethod method, P params, byte[] cookie) {
 		this.id = id;
 		this.method = method;
 		this.params = params;

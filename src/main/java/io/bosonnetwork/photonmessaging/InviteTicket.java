@@ -59,11 +59,10 @@ public class InviteTicket {
 	@JsonProperty(value = "e", required = true)
 	@JsonInclude(JsonInclude.Include.NON_DEFAULT)
 	private final long expiration;
-	@JsonProperty(value = "s", required = true)
+	@JsonProperty(value = "sig", required = true)
 	private final byte[] sig;
 
-	@JsonProperty(value = "sk")
-	@JsonInclude(JsonInclude.Include.NON_EMPTY)
+	@JsonProperty(value = "sk", required = true)
 	private final byte[] sessionKey;
 
 	/**
@@ -83,8 +82,8 @@ public class InviteTicket {
 	                    @JsonProperty(value = "i", required = true) Id inviter,
 	                    @JsonProperty(value = "ie") Id invitee,
 	                    @JsonProperty(value = "e") long expiration,
-	                    @JsonProperty(value = "s", required = true) byte[] sig,
-	                    @JsonProperty(value = "sk") byte[] sessionKey) {
+	                    @JsonProperty(value = "sig", required = true) byte[] sig,
+	                    @JsonProperty(value = "sk", required = true) byte[] sessionKey) {
 		this.channelId = Objects.requireNonNull(channelId, "channelId");
 		this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
 		this.inviter = Objects.requireNonNull(inviter, "inviter");
@@ -185,22 +184,11 @@ public class InviteTicket {
 	}
 
 	/**
-	 * Returns a stub version of this ticket without the session-key payload.
-	 * If the session key is not present, it returns the current instance.
-	 * Otherwise, creates a new InviteTicket instance with the same
-	 * channel ID, inviter, invitee, expiration, and signature, but with
-	 * a null session key.
+	 * Creates a revised {@code InviteTicket} by updating the re-encrypted session key.
 	 *
-	 * @return a stub version of the InviteTicket, or the current instance
-	 *         if the session key is null
+	 * @param sessionKey the re-encrypted session key
+	 * @return a new {@code InviteTicket} instance with the updated session key
 	 */
-	public InviteTicket stub() {
-		if (sessionKey == null)
-			return this;
-
-		return new InviteTicket(channelId, sessionId, inviter, invitee, expiration, sig, null);
-	}
-
 	public InviteTicket revise(byte[] sessionKey) {
 		return new InviteTicket(channelId, sessionId, inviter, invitee, expiration, sig, sessionKey);
 	}

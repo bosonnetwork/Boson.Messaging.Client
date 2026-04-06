@@ -27,6 +27,7 @@ import java.io.IOException;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectReader;
 
@@ -54,6 +55,17 @@ public class GenericRpcResponse extends RpcResponse<JsonNode> {
 	}
 
 	public <R> R getResultAs(TypeReference<R> type) throws InvalidRpcResultException {
+		if (result == null)
+			return null;
+
+		try {
+			return Json.cborMapper().convertValue(result, type);
+		} catch (Exception e) {
+			throw new InvalidRpcResultException("Invalid RPC result", e);
+		}
+	}
+
+	public <R> R getResultAs(JavaType type) throws InvalidRpcResultException {
 		if (result == null)
 			return null;
 

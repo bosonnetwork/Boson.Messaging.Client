@@ -58,7 +58,7 @@ public class RpcResponse<R> {
 	 *
 	 * @throws IllegalArgumentException if both {@code result} and {@code error} are non-null
 	 */
-	protected RpcResponse(long id, R result, RpcError error)  {
+	public RpcResponse(long id, R result, RpcError error)  {
 		if (result != null && error != null)
 			throw new IllegalArgumentException("Cannot have both result and error");
 

@@ -22,19 +22,18 @@
 
 package io.bosonnetwork.photonmessaging.impl.rpc;
 
+import com.fasterxml.jackson.databind.JavaType;
+
 /**
  * Represents a prototype for an RPC (Remote Procedure Call) method, binding a specific method
  * with its parameter type and return type.
- *
- * @param <PT> the type of the parameters associated with the RPC method
- * @param <RT> the type of the result returned from the RPC method
  */
-public class RpcMethodPrototype<PT, RT> {
+public class RpcMethodPrototype {
 	private final RpcMethod method;
-	private final PT paramsType;
-	private final RT returnType;
+	private final JavaType paramsType;
+	private final JavaType returnType;
 
-	public RpcMethodPrototype(RpcMethod method, PT paramsType, RT returnType) {
+	public RpcMethodPrototype(RpcMethod method, JavaType paramsType, JavaType returnType) {
 		this.method = method;
 		this.paramsType = paramsType;
 		this.returnType = returnType;
@@ -44,11 +43,11 @@ public class RpcMethodPrototype<PT, RT> {
 		return method;
 	}
 
-	public PT paramsType() {
+	public JavaType paramsType() {
 		return paramsType;
 	}
 
-	public RT resultType() {
+	public JavaType resultType() {
 		return returnType;
 	}
 }

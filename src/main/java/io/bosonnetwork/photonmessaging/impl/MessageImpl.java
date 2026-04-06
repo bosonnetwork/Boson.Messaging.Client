@@ -63,6 +63,7 @@ public class MessageImpl<P> implements Message {
 
 	private long id;
 	private Id conversationId;
+	private long sentAt;
 	private long receivedAt;
 
 	private Promise<Void> sentPromise;
@@ -157,6 +158,10 @@ public class MessageImpl<P> implements Message {
 		return receivedAt;
 	}
 
+	public long getSentAt() {
+		return sentAt;
+	}
+
 	protected void received() {
 		this.receivedAt = System.currentTimeMillis();
 	}
@@ -211,6 +216,7 @@ public class MessageImpl<P> implements Message {
 	protected void sent() {
 		if (sentPromise == null)
 			throw new IllegalStateException("Message has not been sent yet");
+		sentAt = System.currentTimeMillis();
 		sentPromise.tryComplete();
 	}
 
