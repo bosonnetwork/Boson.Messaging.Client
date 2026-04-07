@@ -286,7 +286,7 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		if (limit <= 0 || offset < 0)
 			throw new IllegalArgumentException("limit and offset must be positive");
 		runningCheck();
-		return VertxFuture.of(repository.getMessages(conversationId, since, limit, offset));
+		return VertxFuture.of(repository.getMessages(conversationId, since, limit, offset).map(List::copyOf));
 	}
 
 	@Override
@@ -295,7 +295,7 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		if (begin > end)
 			throw new IllegalArgumentException("begin must be less than or equal to end");
 		runningCheck();
-		return VertxFuture.of(repository.getMessages(conversationId, begin, end));
+		return VertxFuture.of(repository.getMessages(conversationId, begin, end).map(List::copyOf));
 	}
 
 	@Override
@@ -1119,7 +1119,8 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 	}
 
 	protected Future<Message> sendMessage(Message message) {
-		MessageImpl<?> msg = (MessageImpl<?>)message;
+		@SuppressWarnings("unchecked")
+		MessageImpl<DefaultContent<?>> msg = (MessageImpl<DefaultContent<?>>)message;
 
 		Promise<Void> promise = Promise.promise();
 		vertxContext.runOnContext((v) -> {
@@ -1595,11 +1596,11 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		message.setSentAt();
 		switch (message.getType()) {
 			case CONTENT_MESSAGE -> {
-				repository.putMessage(message).andThen(ar -> {
+				DefaultContent<JsonNode> content = DefaultContent.parse(message.getPayload());
+				MessageImpl<DefaultContent<?>> msg = message.dup(content);
+				repository.putMessage(msg).andThen(ar -> {
 					if (messageListener != null) {
-						DefaultContent<JsonNode> content = DefaultContent.parse(message.getPayload());
-						message.dup(content);
-						messageListener.onSent(message);
+						messageListener.onSent(msg);
 					}
 				});
 			}

@@ -25,6 +25,8 @@ package io.bosonnetwork.photonmessaging.impl;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JavaType;
@@ -44,7 +46,9 @@ public class DefaultContent<B> implements Message.Content {
 	private final Map<String, Object> headers;
 	private final B body;
 
-	protected DefaultContent(Map<String, Object> headers, B body) {
+	@JsonCreator
+	public DefaultContent(@JsonProperty("headers") Map<String, Object> headers,
+	                         @JsonProperty("body") B body) {
 		this.headers = headers;
 		this.body = body;
 	}

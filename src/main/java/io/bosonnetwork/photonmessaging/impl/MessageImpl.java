@@ -64,6 +64,7 @@ public class MessageImpl<P> implements Message {
 	@JsonProperty(value = "p", required = true)
 	private final P payload;
 
+	private long rid;
 	private Id conversationId;
 	private long sentAt;
 	private long receivedAt;
@@ -96,11 +97,6 @@ public class MessageImpl<P> implements Message {
 		this.conversationId = message.conversationId;
 		this.sentAt = message.sentAt;
 		this.receivedAt = message.receivedAt;
-	}
-
-	private static int nextSerialNumber() {
-		// if 0 or Integer.MAX_VALUE, it becomes 1 (first valid messageId)
-		return messageSerialNumber.getAndUpdate(i -> i == 0 || i == Integer.MAX_VALUE ? 1 : i + 1);
 	}
 
 	public int getVersion() {
@@ -151,12 +147,34 @@ public class MessageImpl<P> implements Message {
 		return sentAt;
 	}
 
+	public MessageImpl<P> setFrom(Id from) {
+		this.from = from;
+		return this;
+	}
+
 	protected void setSentAt() {
-		this.sentAt = System.currentTimeMillis();
+		setSentAt(System.currentTimeMillis());
+	}
+
+	public void setSentAt(long timestamp) {
+		this.sentAt = timestamp;
 	}
 
 	protected void received() {
-		this.receivedAt = System.currentTimeMillis();
+		received(System.currentTimeMillis());
+	}
+
+	public void received(long timestamp) {
+		this.receivedAt = timestamp;
+	}
+
+	public long getRid() {
+		return rid;
+	}
+
+	public MessageImpl<P> setRid(long rid) {
+		this.rid = rid;
+		return this;
 	}
 
 	protected boolean isAssociated(Id deviceId) {
