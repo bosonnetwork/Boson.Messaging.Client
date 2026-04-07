@@ -55,7 +55,8 @@ public class Notification<T> {
 
 	public enum Event {
 		SESSION_NEW(0x01),
-		CONTACT_MUTATE(0x02),
+		CONTACT_SYNC(0x02),
+		CONTACT_MUTATE(0x03),
 		CHANNEL_CREATE(0x11),
 		CHANNEL_DELETE(0x12),
 		CHANNEL_JOIN(0x13),
@@ -69,7 +70,8 @@ public class Notification<T> {
 		CHANNEL_REMOVE_MEMBERS(0x1B),
 		CHANNEL_MEMBER_JOIN(0x1C),
 		CHANNEL_MEMBER_LEAVE(0x1D),
-		FRIEND_REQUEST(0x51);
+		FRIEND_REQUEST(0x51),
+		FRIEND_REQUEST_ACCEPT(0x52);
 
 		private final int value;
 
@@ -86,7 +88,8 @@ public class Notification<T> {
 		public Event valueOf(int value) {
 			return switch (value) {
 				case 0x01 -> SESSION_NEW;
-				case 0x02 -> CONTACT_MUTATE;
+				case 0x02 -> CONTACT_SYNC;
+				case 0x03 -> CONTACT_MUTATE;
 				case 0x11 -> CHANNEL_CREATE;
 				case 0x12 -> CHANNEL_DELETE;
 				case 0x13 -> CHANNEL_JOIN;
@@ -101,6 +104,7 @@ public class Notification<T> {
 				case 0x1C -> CHANNEL_MEMBER_JOIN;
 				case 0x1D -> CHANNEL_MEMBER_LEAVE;
 				case 0x51 -> FRIEND_REQUEST;
+				case 0x52 -> FRIEND_REQUEST_ACCEPT;
 				default -> throw new IllegalArgumentException("Invalid event value: " + value);
 			};
 		}

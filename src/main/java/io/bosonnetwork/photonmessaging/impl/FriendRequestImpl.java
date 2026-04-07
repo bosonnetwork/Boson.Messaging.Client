@@ -30,19 +30,28 @@ public class FriendRequestImpl implements FriendRequest {
 
 	private final Id userId;
 	private final Id initiatorId;
-	private String hello;
-	private boolean accepted;
-	private final long initiatedAt;
-	private long acceptedAt;
+	private final String hello;
+	private final long createdAt;
 	private long updatedAt;
+	private boolean accepted;
+	private long acceptedAt;
 
 	public FriendRequestImpl(Id userId, Id initiatorId, String hello) {
 		this.userId = userId;
 		this.initiatorId = initiatorId;
 		this.hello = hello;
+		this.createdAt = System.currentTimeMillis();
+		this.updatedAt = this.createdAt;
 		this.accepted = false;
-		this.initiatedAt = System.currentTimeMillis();
-		this.updatedAt = this.initiatedAt;
+	}
+
+	public FriendRequestImpl(Id userId, Id initiatorId, String hello, long createdAt, long updatedAt) {
+		this.userId = userId;
+		this.initiatorId = initiatorId;
+		this.hello = hello;
+		this.createdAt = createdAt;
+		this.updatedAt = updatedAt;
+		this.accepted = false;
 	}
 
 	@Override
@@ -60,11 +69,6 @@ public class FriendRequestImpl implements FriendRequest {
 		return hello;
 	}
 
-	protected void setHello(String hello) {
-		this.hello = hello;
-		this.updatedAt = System.currentTimeMillis();
-	}
-
 	@Override
 	public boolean isAccepted() {
 		return accepted;
@@ -76,14 +80,20 @@ public class FriendRequestImpl implements FriendRequest {
 		updatedAt = acceptedAt;
 	}
 
+	protected void accept(long timestamp) {
+		accepted = true;
+		acceptedAt = timestamp;
+		updatedAt = timestamp;
+	}
+
 	@Override
 	public boolean isExpired() {
 		return !accepted && (System.currentTimeMillis() - updatedAt >= EXPIRATION);
 	}
 
 	@Override
-	public long getInitiatedAt() {
-		return initiatedAt;
+	public long getCreatedAt() {
+		return createdAt;
 	}
 
 	@Override

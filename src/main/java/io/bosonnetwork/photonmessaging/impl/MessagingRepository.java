@@ -107,6 +107,8 @@ interface MessagingRepository {
 
 	Future<Boolean> removeFriendRequests(Collection<Id> userIds);
 
+	Future<Void> clearFriendRequests();
+
 	/**
 	 * Retrieves a conversation by its ID.
 	 *
@@ -211,7 +213,7 @@ interface MessagingRepository {
 		return getContact(contactId).map(Objects::nonNull);
 	}
 
-	Future<Boolean> updateChannelOwnership(Id channelId, Id oldOwnerId, Id newOwnerId);
+	Future<Void> updateChannelOwnership(Id channelId, Id oldOwnerId, Id newOwnerId);
 
 	/**
 	 * Adds or updates a single member in a channel.

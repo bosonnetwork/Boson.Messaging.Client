@@ -13,13 +13,12 @@ import io.bosonnetwork.vertx.VertxFuture;
 public class MessageBuilder implements Message.Builder {
 	private final static Map<String, Object> EMPTY_HEADERS = Map.of();
 
-	private final MessageImpl<byte[]> message;
 	private final MessagingClientImpl client;
+	private Id recipient;
 	private Map<String, Object> headers;
 	private Object body;
 
 	protected MessageBuilder(MessagingClientImpl client, Id recipient) {
-		this.message = new MessageImpl<>(Message.Type.CONTENT_MESSAGE, recipient, null);
 		this.client = client;
 		this.headers = EMPTY_HEADERS;
 	}
@@ -27,7 +26,7 @@ public class MessageBuilder implements Message.Builder {
 	@Override
 	public MessageBuilder to(Id to) {
 		Objects.requireNonNull(to, "to");
-		message.setRecipient(to);
+		this.recipient = to;
 		return this;
 	}
 
@@ -93,15 +92,17 @@ public class MessageBuilder implements Message.Builder {
 	}
 
 	protected Message build() {
-		if (message.getRecipient() == null)
+		if (recipient == null)
 			throw new IllegalStateException("Recipient not set");
 
 		if (body == null)
 			throw new IllegalStateException("Body not set");
 
+		long now = System.currentTimeMillis();
+		Id messageId = MessageImpl.generateId(client.getDeviceId(), now);
 		DefaultContent<?> payload = new DefaultContent<>(headers, body);
-		message.setPayload(payload.serialize());
-		return message;
+
+		return new MessageImpl<>(messageId, recipient, Message.Type.CONTENT_MESSAGE, now, payload);
 	}
 
 	@Override

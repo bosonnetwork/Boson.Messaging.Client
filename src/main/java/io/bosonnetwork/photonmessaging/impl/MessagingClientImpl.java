@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -34,27 +35,8 @@ import io.bosonnetwork.crypto.CryptoException;
 import io.bosonnetwork.crypto.CryptoIdentity;
 import io.bosonnetwork.crypto.Signature;
 import io.bosonnetwork.json.Json;
-import io.bosonnetwork.photonmessaging.AlreadyMemberException;
-import io.bosonnetwork.photonmessaging.Channel;
-import io.bosonnetwork.photonmessaging.ChannelListener;
-import io.bosonnetwork.photonmessaging.ChannelNotExistsException;
-import io.bosonnetwork.photonmessaging.Configuration;
-import io.bosonnetwork.photonmessaging.ConnectionListener;
-import io.bosonnetwork.photonmessaging.Contact;
-import io.bosonnetwork.photonmessaging.ContactListener;
-import io.bosonnetwork.photonmessaging.ContactNotExistsException;
-import io.bosonnetwork.photonmessaging.Conversation;
-import io.bosonnetwork.photonmessaging.InsufficientPermissionException;
-import io.bosonnetwork.photonmessaging.InviteTicket;
-import io.bosonnetwork.photonmessaging.Message;
-import io.bosonnetwork.photonmessaging.MessageListener;
-import io.bosonnetwork.photonmessaging.MessageTimeoutException;
-import io.bosonnetwork.photonmessaging.MessagingClient;
-import io.bosonnetwork.photonmessaging.NotChannelMemberException;
-import io.bosonnetwork.photonmessaging.RevisionNotMonotonicException;
-import io.bosonnetwork.photonmessaging.SessionInfo;
+import io.bosonnetwork.photonmessaging.*;
 import io.bosonnetwork.photonmessaging.impl.rpc.GenericRpcResponse;
-import io.bosonnetwork.photonmessaging.impl.rpc.RpcMethod;
 import io.bosonnetwork.photonmessaging.impl.rpc.RpcRequest;
 import io.bosonnetwork.utils.Base58;
 import io.bosonnetwork.vertx.BosonVerticle;
@@ -262,42 +244,27 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 	public VertxFuture<Conversation> getConversation(Id conversationId) {
 		Objects.requireNonNull(conversationId, "conversationId");
 		runningCheck();
-
-		Promise<Conversation> promise = Promise.promise();
-		runOnContext(v -> {
-			conversationCache.get(conversationId).whenComplete((c, e) -> {
-				if (e != null)
-					promise.tryFail(e);
-				else
-					promise.tryComplete(c);
-			});
-		});
-
-		return VertxFuture.of(promise.future());
+		return VertxFuture.of(conversationCache.get(conversationId).thenApply(c -> c));
 	}
 
 	@Override
 	public VertxFuture<List<Conversation>> getConversations() {
 		runningCheck();
 
-		Promise<List<Conversation>> promise = Promise.promise();
+		Future<List<Conversation>> future = repository.getAllConversations().map(convs -> {
+			// keep the order, overlay the cached conversations
+			Map<Id, Conversation> conversations = new LinkedHashMap<>();
+			for (Conversation c : convs) {
+				ConversationImpl cached = conversationCache.synchronous().asMap()
+						.compute(c.getId(), (k, cc) -> cc != null ? cc : (ConversationImpl) c);
+				conversations.put(c.getId(), cached);
+			}
 
-		runOnContext(v -> {
-			repository.getAllConversations().map(convs -> {
-				// keep the order, overlay the cached conversations
-				Map<Id, Conversation> conversations = new LinkedHashMap<>();
-				for (Conversation c : convs) {
-					ConversationImpl cached = conversationCache.synchronous().asMap()
-							.compute(c.getId(), (k, cc) -> cc != null ? cc : (ConversationImpl) c);
-					conversations.put(c.getId(), cached);
-				}
-
-				// Return a **mutable** list
-				return new ArrayList<>(conversations.values());
-			}).onComplete(promise);
+			// Return a **mutable** list
+			return new ArrayList<>(conversations.values());
 		});
 
-		return VertxFuture.of(promise.future());
+		return VertxFuture.of(future);
 	}
 
 	@Override
@@ -307,14 +274,10 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 			return VertxFuture.succeededFuture(true);
 		runningCheck();
 
-		Promise<Boolean> promise = Promise.promise();
-		runOnContext(v -> {
-			repository.removeConversations(conversationIds).onSuccess(removed -> {
-				conversationIds.forEach(id -> conversationCache.synchronous().invalidate(id));
-			}).onComplete(promise);
-		});
-
-		return VertxFuture.of(promise.future());
+		Future<Boolean> future = repository.removeConversations(conversationIds).onSuccess(removed ->
+				conversationIds.forEach(id -> conversationCache.synchronous().invalidate(id))
+		);
+		return VertxFuture.of(future);
 	}
 
 	@Override
@@ -323,7 +286,6 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		if (limit <= 0 || offset < 0)
 			throw new IllegalArgumentException("limit and offset must be positive");
 		runningCheck();
-
 		return VertxFuture.of(repository.getMessages(conversationId, since, limit, offset));
 	}
 
@@ -333,7 +295,6 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		if (begin > end)
 			throw new IllegalArgumentException("begin must be less than or equal to end");
 		runningCheck();
-
 		return VertxFuture.of(repository.getMessages(conversationId, begin, end));
 	}
 
@@ -343,7 +304,6 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		if (messageIds.isEmpty())
 			return VertxFuture.succeededFuture(true);
 		runningCheck();
-
 		return VertxFuture.of(repository.removeMessages(messageIds));
 	}
 
@@ -351,7 +311,6 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 	public VertxFuture<Boolean> removeMessages(Id conversionId) {
 		Objects.requireNonNull(conversionId, "conversionId");
 		runningCheck();
-
 		return VertxFuture.of(repository.removeMessages(conversionId));
 	}
 
@@ -395,7 +354,9 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		Promise<Void> promise = Promise.promise();
 		runOnContext(v -> {
 			repository.putFriendRequest(request).compose(vv -> {
-				MessageImpl<Notification<String>> message = new MessageImpl<>(Message.Type.STATE_MESSAGE, userId, fr);
+				Id messageId = MessageImpl.generateId(getDeviceId(), now);
+				MessageImpl<Notification<String>> message = new MessageImpl<>(messageId,
+						userId, Message.Type.STATE_MESSAGE, now, fr);
 				return sendMessageInternal(message).compose(packetId -> Future.<Void>succeededFuture(),
 						error -> {
 							repository.removeFriendRequest(userId);
@@ -407,25 +368,109 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 	}
 
 	@Override
+	public CompletableFuture<Void> acceptFriendRequest(Id userId) {
+		Objects.requireNonNull(userId, "userId");
+		runningCheck();
+
+		Future<Void> future = repository.getFriendRequest(userId).compose(fr -> {
+			if (fr == null)
+				return Future.failedFuture(new IllegalArgumentException("No friend request found"));
+
+			if (fr.getInitiatorId().equals(getUserId()))
+				return Future.failedFuture(new IllegalStateException("Cannot accept your own friend request"));
+
+			if (fr.isAccepted())
+				return Future.failedFuture(new IllegalStateException("Friend request has already been accepted"));
+
+			if (fr.isExpired())
+				return Future.failedFuture(new IllegalStateException("Friend request has expired"));
+
+			FriendRequestImpl request = (FriendRequestImpl) fr;
+			Signature.KeyPair sessionKeypair = Signature.KeyPair.random();
+			byte[] sessionKey = sessionKeypair.privateKey().bytes();
+			long now = System.currentTimeMillis();
+			Notification<byte[]> accept = new Notification<>(Notification.generateId(deviceIdentity.getId(), now),
+					Notification.Event.FRIEND_REQUEST_ACCEPT, getUserId(), now, sessionKey);
+
+			Promise<Void> promise = Promise.promise();
+			runOnContext(v -> {
+				Id messageId = MessageImpl.generateId(getDeviceId(), now);
+				MessageImpl<Notification<byte[]>> message = new MessageImpl<>(messageId,
+							userId, Message.Type.STATE_MESSAGE, now, accept);
+				sendMessageInternal(message).compose(packetId -> {
+					request.accept();
+					return repository.putFriendRequest(request).compose(vv ->
+							addFriendInternal(userId, sessionKey, null).<Void>mapEmpty()
+					);
+				}).onComplete(promise);
+			});
+
+			return promise.future();
+		});
+
+		return VertxFuture.of(future);
+	}
+
+	@Override
+	public VertxFuture<FriendRequest> getFriendRequest(Id userId) {
+		Objects.requireNonNull(userId, "userId");
+		runningCheck();
+		return VertxFuture.of(repository.getFriendRequest(userId));
+	}
+
+	@Override
+	public VertxFuture<List<FriendRequest>> getFriendRequests() {
+		runningCheck();
+		return VertxFuture.of(repository.getFriendRequests());
+	}
+
+	@Override
+	public VertxFuture<Boolean> removeFriendRequest(Id userId) {
+		Objects.requireNonNull(userId, "userId");
+		runningCheck();
+		return VertxFuture.of(repository.removeFriendRequest(userId));
+	}
+
+	@Override
+	public VertxFuture<Boolean> removeFriendRequests(Collection<Id> userIds) {
+		Objects.requireNonNull(userIds, "ids");
+		runningCheck();
+
+		if (userIds.isEmpty())
+			return VertxFuture.succeededFuture(true);
+
+		return VertxFuture.of(repository.removeFriendRequests(userIds));
+	}
+
+	@Override
+	public VertxFuture<Void> clearFriendRequests() {
+		runningCheck();
+		return VertxFuture.of(repository.clearFriendRequests());
+	}
+
+	private Future<Contact> addFriendInternal(Id id, byte[] sessionKey, String remark) {
+		Friend friend = new Friend(id, sessionKey, remark);
+		ContactMutation<Contact> mutation = ContactMutation.add(contactsRevision, friend);
+		RpcCall<ContactMutation<Contact>, Integer> call = RpcCall.contactMutate(mutation);
+		return sendRpcCall(homePeerId, call).compose(revision -> {
+			Contact contact = friend.edit().setRevision(revision).build();
+			return repository.putContacts(revision, List.of(contact)).map(vv -> {
+				contactsRevision = revision;
+				return contact;
+			});
+		});
+	}
+
+	@Override
 	public VertxFuture<Contact> addFriend(Id id, byte[] sessionKey, String remark) {
 		Objects.requireNonNull(id, "id");
 		Objects.requireNonNull(sessionKey, "sessionKey");
 		Objects.requireNonNull(remark, "remark");
 		runningCheck();
 
-		Friend friend = new Friend(id, sessionKey, remark);
+
 		Promise<Contact> promise = Promise.promise();
-		runOnContext(v -> {
-			ContactMutation<Contact> mutation = ContactMutation.add(contactsRevision, friend);
-			RpcCall<ContactMutation<Contact>, Integer> call = RpcCall.contactMutate(mutation);
-			sendRpcCall(homePeerId, call).compose(revision -> {
-				Contact contact = friend.edit().setRevision(revision).build();
-				return repository.putContacts(revision, List.of(contact)).map(vv -> {
-					contactsRevision = revision;
-					return contact;
-				});
-			}).onComplete(promise);
-		});
+		runOnContext(v -> addFriendInternal(id, sessionKey, remark).onComplete(promise));
 		return VertxFuture.of(promise.future());
 	}
 
@@ -903,38 +948,25 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 	public VertxFuture<Contact> getContact(Id contactId) {
 		Objects.requireNonNull(contactId, "contactId");
 		runningCheck();
-
-		Promise<Contact> promise = Promise.promise();
-		runOnContext(v -> {
-			contactCache.get(contactId).whenComplete((contact, error) -> {
-				if (error != null)
-					promise.fail(error);
-				else
-					promise.complete(contact);
-			});
-		});
-		return VertxFuture.of(promise.future());
+		return VertxFuture.of(contactCache.get(contactId).thenApply(c -> c));
 	}
 
 	@Override
 	public VertxFuture<List<Contact>> getContacts() {
 		runningCheck();
 
-		Promise<List<Contact>> promise = Promise.promise();
-		runOnContext(v -> {
-			repository.getAllContacts().map(contacts -> {
-				Map<Id, Contact> result = new LinkedHashMap<>();
-				for (Contact c : contacts) {
-					AbstractContact cached = contactCache.synchronous().asMap()
-							.compute(c.getId(), (k, cc) -> cc != null ? cc : (AbstractContact) c);
-					result.put(c.getId(), cached);
-				}
+		Future<List<Contact>> future = repository.getAllContacts().map(contacts -> {
+			Map<Id, Contact> result = new LinkedHashMap<>();
+			for (Contact c : contacts) {
+				AbstractContact cached = contactCache.synchronous().asMap()
+						.compute(c.getId(), (k, cc) -> cc != null ? cc : (AbstractContact) c);
+				result.put(c.getId(), cached);
+			}
 
-				// Return a **mutable** list
-				return new ArrayList<>(result.values());
-			}).onComplete(promise);
+			// Return a **mutable** list
+			return new ArrayList<>(result.values());
 		});
-		return VertxFuture.of(promise.future());
+		return VertxFuture.of(future);
 	}
 
 	@Override
@@ -1057,9 +1089,27 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 				contact instanceof ChannelImpl channel ? channel : null);
 	}
 
+	private Future<Void> refreshChannel(ChannelImpl channel) {
+		final Id channelId = channel.getId();
+
+		RpcCall<Void, RpcPrototypes.ChannelInfo> call = RpcCall.getChannelInfo();
+		return sendRpcCall(channelId, call).compose(ci -> {
+			ChannelImpl updatedChannel = new ChannelImpl(channelId, ci.sessionKey(), ci.ownerId(), ci.permission(),
+					ci.name(), ci.notice(), ci.announce(), channel.getRemark(), channel.getTags(), channel.isMuted(),
+					channel.isBlocked(), ci.createdAt(), ci.updateAt(), channel.getRevision());
+			return repository.putContactLocally(updatedChannel).compose(vv ->
+					repository.refillChannelMembers(channelId, ci.members()).andThen(ar ->
+							contactCache.synchronous().invalidate(channelId)
+					)
+			);
+		});
+	}
+
 	private <P, R> Future<R> sendRpcCall(Id recipient, RpcCall<P, R> call) {
 		inflightRpcCalls.put(call.getId(), call);
-		MessageImpl<RpcRequest<P>> message = new MessageImpl<>(Message.Type.CONTROL_MESSAGE, recipient, call.getRequest());
+		long now = System.currentTimeMillis();
+		Id messageId = MessageImpl.generateId(getDeviceId(), now);
+		MessageImpl<RpcRequest<P>> message = new MessageImpl<>(messageId, recipient, Message.Type.CONTROL_MESSAGE, now, call.getRequest());
 		log.debug("Sending RPC call {}:{} to {} ...", call.getId(), call.getMethod(), recipient);
 		return sendMessageInternal(message).compose(packageId -> call.getFuture(), error -> {
 			inflightRpcCalls.remove(call.getId());
@@ -1425,7 +1475,7 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		}
 
 		// Sent message failed, remove it from the sending messages
-		inflightMessages.remove(message.getSerialNumber());
+		inflightMessages.remove(packetId);
 		message.failed(new MessageTimeoutException("Get message ACK timeout"));
 	}
 
@@ -1479,10 +1529,8 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 				processIncomingMessage(message);
 			else if (tt == Topics.Type.USER_OUTBOX)
 				processingOutgoingMessage(message);
-			else if (tt == Topics.Type.DEVICE_INBOX)
+			else // if (tt == Topics.Type.DEVICE_INBOX)
 				processControlMessage(message);
-			else
-				log.error("Received a {} message from unknown topic: {}, ignored", mt, topic);
 		}).onFailure(e -> {
 			log.error("Failed to process message from topic: {}, sender: {}", topic, received.getFrom(), e);
 		});
@@ -1500,19 +1548,8 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		}
 
 		if (type == Message.Type.STATE_MESSAGE) {
-			if (message.getFrom().equals(getUserId())) {
-				// TODO: check this
-				// notification to the user: e.g.; friend request
-				DefaultContent<JsonNode> content = DefaultContent.parse(message.getPayload());
-				MessageImpl<Message.Content> contentMessage = message.dup(content);
-				if (messageListener != null)
-					messageListener.onNotification(contentMessage);
-
-				return;
-			}
-
 			Notification.GenericNotification gn = Notification.parse(message.getPayload());
-			if (gn.getSource().equals(userIdentity.getId()) && gn.isAssociated(deviceIdentity.getId())) {
+			if (gn.getSource().equals(userIdentity.getId()) && gn.isAssociated(getDeviceId())) {
 				// This notification was triggered by an RPC request from this device.
 				// Since the local state was already updated via the RPC response,
 				// this redundant notification can be safely ignored.
@@ -1520,24 +1557,30 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 			}
 
 			if (message.getFrom().equals(homePeerId)) {
-				// notification from home peer
+				// Notification from home peer
 				processHomePeerNotification(gn);
 				return;
 			}
 
-			// channel notification
-			contact(message.getRecipient()).compose(contact -> {
-				if (contact == null) {
+			if (message.getRecipient().equals(getUserId())) {
+				// Notification from the other users.
+				// Ensure the notification source reflects the actual message sender.
+				if (!gn.getSource().equals(message.getFrom())) {
+					log.warn("Received a invalid notification from {} - source not matched the sender, ignored",
+							message.getFrom());
+					return;
+				}
+				processUserNotification(gn);
+				return;
+			}
+
+			// Notification from channel?
+			channel(message.getRecipient()).compose(channel -> {
+				if (channel == null) {
 					log.warn("Received a {} from unknown channel {}, ignored", type, message.getRecipient());
 					return Future.succeededFuture();
 				}
-
-				if (contact instanceof ChannelImpl channel) {
-					return processChannelNotification(channel, gn);
-				} else {
-					log.warn("Received an invalid {} from {}, ignored", type, message.getRecipient());
-					return Future.succeededFuture();
-				}
+				return processChannelNotification(channel, gn);
 			});
 		}
 
@@ -1545,7 +1588,52 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 	}
 
 	private void processingOutgoingMessage(BytesMessage message) {
+		// message is sent by this device?
+		if (message.isAssociated(getDeviceId()))
+			return;
 
+		message.setSentAt();
+		switch (message.getType()) {
+			case CONTENT_MESSAGE -> {
+				repository.putMessage(message).andThen(ar -> {
+					if (messageListener != null) {
+						DefaultContent<JsonNode> content = DefaultContent.parse(message.getPayload());
+						message.dup(content);
+						messageListener.onSent(message);
+					}
+				});
+			}
+
+			case STATE_MESSAGE -> {
+				Notification.GenericNotification gn = Notification.parse(message.getPayload());
+				switch (gn.getEvent()) {
+					case FRIEND_REQUEST -> {
+						String hello = gn.getContentAs(String.class);
+						FriendRequestImpl fr = new FriendRequestImpl(message.getRecipient(), gn.getSource(), hello,
+								gn.getTimestamp(), System.currentTimeMillis());
+						repository.putFriendRequest(fr);
+					}
+
+					case FRIEND_REQUEST_ACCEPT -> repository.getFriendRequest(message.getRecipient()).compose(fr -> {
+						// Trying to update the existing friend request status.
+						// **DO NOT** add the contact here; the accepting device is responsible for adding
+						// the new contact and broadcasting the change via a CONTACT_MUTATE notification.
+						if (fr == null) {
+							log.warn("No friend request to {}, ignored", message.getRecipient());
+							return Future.succeededFuture();
+						}
+
+						FriendRequestImpl request = (FriendRequestImpl) fr;
+						request.accept(gn.getTimestamp());
+						return repository.putFriendRequest(request);
+					});
+
+					default -> log.warn("Received an unknown notification from user {}, ignored", gn.getSource());
+				};
+			}
+
+			case CONTROL_MESSAGE -> log.warn("Received a {} message from user outbox, ignored", message.getType());
+		}
 	}
 
 	private void processControlMessage(BytesMessage message) {
@@ -1578,9 +1666,65 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		call.setResponse(response);
 	}
 
+	private Future<Void> processUserNotification(Notification.GenericNotification gn) {
+		return switch (gn.getEvent()) {
+			case FRIEND_REQUEST -> {
+				String hello = gn.getContentAs(String.class);
+				FriendRequestImpl fr = new FriendRequestImpl(gn.getSource(), gn.getSource(), hello,
+						gn.getTimestamp(), System.currentTimeMillis());
+				yield repository.putFriendRequest(fr).andThen(ar -> {
+					if (messageListener != null)
+						messageListener.onFriendRequest(fr.getUserId(), fr.getHello());
+				});
+			}
+
+			case FRIEND_REQUEST_ACCEPT -> repository.getFriendRequest(gn.getSource()).compose(fr -> {
+				if (fr == null || !fr.getInitiatorId().equals(gn.getSource())) {
+					log.warn("Received a friend request accept notification without matched request from: {}, ignored", gn.getSource());
+					return Future.succeededFuture();
+				}
+
+				byte[] sessionKey = gn.getContentAs(byte[].class);
+				if (sessionKey == null || sessionKey.length != Signature.PrivateKey.BYTES) {
+					log.warn("Received a friend request accept notification with invalid session key: {}, ignored", gn.getSource());
+					return Future.succeededFuture();
+				}
+
+				FriendRequestImpl request = (FriendRequestImpl) fr;
+				request.accept();
+
+				// All user devices receive the 'accept' notification.
+				// Since we are lacking a leader-election mechanism between devices, all devices attempt
+				// to add the new contact upon receiving the 'accept' notification.
+				// The contact synchronization service handles concurrency by ensuring only
+				// the first received update is applied and synchronized to all devices.
+				return repository.putFriendRequest(request).compose(v -> {
+					Friend friend = new Friend(gn.getSource(), sessionKey, null);
+					return repository.putContactLocally(friend).compose(vv ->
+							addFriendInternal(gn.getSource(), sessionKey, null).map(contact -> {
+								if (messageListener != null)
+									messageListener.onFriendRequestAccepted(contact.getId());
+								return null;
+							})
+					);
+				});
+			});
+
+			default -> {
+				log.warn("Received an unknown notification from user {}, ignored", gn.getSource());
+				yield Future.succeededFuture();
+			}
+		};
+	}
+
 	private Future<Void> processHomePeerNotification(Notification.GenericNotification gn) {
 		// notification from home peer
 		return switch (gn.getEvent()) {
+			case CONTACT_SYNC -> {
+				ContactSync contactSync = gn.getContentAs(ContactSync.class);
+				yield applyContactSync(contactSync);
+			}
+
 			case CONTACT_MUTATE -> {
 				ContactMutation.GenericContactMutation mutation = gn.getContentAs(ContactMutation.GenericContactMutation.class);
 				yield applyContactMutation(mutation);
@@ -1597,7 +1741,12 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 				// optimistic insert. The server will later broadcast a CONTACT_MUTATE notification
 				// triggered by the device that initiated the original CHANNEL_CREATE request,
 				// which will perform the formal, synchronized update of the contact list and revision state.
-				yield repository.putContactLocally(channel).mapEmpty();
+				yield repository.putContactLocally(channel).compose(v -> {
+					if (!ci.members().isEmpty())
+						return repository.putChannelMembers(channel.getId(), ci.members());
+					else
+						return Future.succeededFuture();
+				});
 			}
 
 			default -> {
@@ -1609,11 +1758,15 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 
 	private Future<Void> processChannelNotification(ChannelImpl channel, Notification.GenericNotification gn) {
 		return switch (gn.getEvent()) {
-			case CHANNEL_DELETE -> repository.removeContactLocally(channel.getId()).map(deleted -> {
-					if (deleted && channelListener != null)
+			case CHANNEL_DELETE -> repository.removeContactLocally(channel.getId()).andThen(ar -> {
+					contactCache.synchronous().invalidate(channel.getId());
+
+					if (ar.succeeded() && !ar.result()) // no local channel removed
+						return;
+
+					if (channelListener != null)
 						channelListener.onChannelDeleted(channel);
-					return null;
-				});
+				}).mapEmpty();
 
 			case CHANNEL_JOIN -> {
 				RpcPrototypes.ChannelInfo ci = gn.getContentAs(RpcPrototypes.ChannelInfo.class);
@@ -1626,19 +1779,27 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 				// optimistic insert. The server will later broadcast a CONTACT_MUTATE notification
 				// triggered by the device that initiated the original CHANNEL_CREATE request,
 				// which will perform the formal, synchronized update of the contact list and revision state.
-				yield repository.putContactLocally(channel).map(v -> {
+				yield repository.putContactLocally(channel).compose(v -> {
+					if (!ci.members().isEmpty())
+						return repository.putChannelMembers(channel.getId(), ci.members());
+					else
+						return Future.succeededFuture();
+				}).andThen(ar -> {
 					if (channelListener != null)
 						channelListener.onJoinedChannel(ch);
-					return null;
 				});
 			}
 
 			case CHANNEL_LEAVE -> {
-				yield repository.removeContactLocally(channel.getId()).map(removed -> {
-					if (removed && channelListener != null)
+				yield repository.removeContactLocally(channel.getId()).andThen(ar -> {
+					contactCache.synchronous().invalidate(channel.getId());
+
+					if (ar.succeeded() && !ar.result()) // no local channel removed
+						return;
+
+					if (channelListener != null)
 						channelListener.onLeftChannel(channel);
-					return null;
-				});
+				}).mapEmpty();
 			}
 
 			case CHANNEL_TRANSFER_OWNERSHIP -> {
@@ -1646,91 +1807,78 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 				Id oldOwnerId = channel.getOwnerId();
 				ChannelMember oldOwner = channel.getMember(channel.getOwnerId());
 				ChannelMember newOwner = channel.getMember(newOwnerId);
-				if (oldOwner == null || newOwner == null || !oldOwner.isOwner()) {
+				if (oldOwner == null || newOwner == null) {
 					// not up-to-date?
-					yield refeshChannel(channel.getId()).mapEmpty();
+					yield refreshChannel(channel);
 				} else {
-					yield repository.updateChannelOwnership(channel.getId(), channel.getOwnerId(), newOwnerId).map(updated -> {
-						if (updated) {
-							ChannelImpl updatedChannel = channel.editChannel().setOwnerId(newOwnerId).build();
-							repository.putContactLocally(updatedChannel);
-							contactCache.synchronous().asMap().compute(updatedChannel.getId(), (k, v) -> updatedChannel);
-							channel.invalidateMembers();
-							if (channelListener != null)
-								channelListener.onChannelOwnershipTransferred(channel, oldOwnerId, newOwnerId);
-						}
-
-						return null;
+					yield repository.updateChannelOwnership(channel.getId(), channel.getOwnerId(), newOwnerId).compose(v -> {
+						ChannelImpl updatedChannel = channel.editChannel().setOwnerId(newOwnerId).build();
+						repository.putContactLocally(updatedChannel);
+						channel.invalidateMembers();
+						contactCache.synchronous().invalidate(channel.getId());
+						return Future.succeededFuture();
+					}, error -> refreshChannel(channel)).andThen(ar -> {
+						if (channelListener != null)
+							channelListener.onChannelOwnershipTransferred(channel, oldOwnerId, newOwnerId);
 					});
 				}
 			}
 
 			case CHANNEL_ROTATE_SESSION_KEY -> {
 				AbstractContact updatedChannel = channel.edit().setSessionKey(gn.getContentAs(byte[].class)).build();
-				yield repository.putContactLocally(updatedChannel).map(v -> {
-					contactCache.synchronous().asMap().compute(updatedChannel.getId(), (k, c) -> updatedChannel);
+				yield repository.putContactLocally(updatedChannel).andThen(ar -> {
+					contactCache.synchronous().invalidate(channel.getId());
 					if (channelListener != null)
 						channelListener.onChannelSessionKeyRotated(channel);
-					return null;
 				});
 			}
 
 			case CHANNEL_UPDATE_INFO -> {
 				ChannelImpl updatedChannel = channel.editChannel().patch(gn.getContent()).build();
-				yield repository.putContactLocally(updatedChannel).map(v -> {
-					contactCache.synchronous().asMap().compute(updatedChannel.getId(), (k, c) -> updatedChannel);
+				yield repository.putContactLocally(updatedChannel).andThen(ar -> {
+					contactCache.synchronous().invalidate(channel.getId());
 					if (channelListener != null)
 						channelListener.onChannelUpdated(channel);
-					return null;
 				});
 			}
 
 			case CHANNEL_UPDATE_MEMBERS_ROLE -> {
 				RpcPrototypes.ChannelMembersRoleParams content = gn.getContentAs(RpcPrototypes.ChannelMembersRoleParams.class);
-				yield repository.updateChannelMembersRole(channel.getId(), content.memberIds(), content.role()).map(updated -> {
-					if (updated) {
-						channel.invalidateMembers();
-						if (channelListener != null) {
-							repository.getChannelMembers(channel.getId(), content.memberIds()).onSuccess(members -> {
-								if (channelListener != null)
-									channelListener.onChannelMembersRoleChanged(channel, members, content.role());
-							});
-						}
+				yield repository.updateChannelMembersRole(channel.getId(), content.memberIds(), content.role()).andThen(ar -> {
+					channel.invalidateMembers();
+					if (channelListener != null) {
+						repository.getChannelMembers(channel.getId(), content.memberIds()).onSuccess(members -> {
+							if (channelListener != null)
+								channelListener.onChannelMembersRoleChanged(channel, members, content.role());
+						});
 					}
-					return null;
-				});
+				}).mapEmpty();
 			}
 
 			case CHANNEL_BAN_MEMBERS -> {
 				List<Id> memberIds = gn.getContentAsListOf(Id.class);
-				yield repository.updateChannelMembersRole(channel.getId(), memberIds, Channel.Role.BANNED).map(updated -> {
-					if (updated) {
-						channel.invalidateMembers();
-						if (channelListener != null) {
-							repository.getChannelMembers(channel.getId(), memberIds).onSuccess(members -> {
-								if (channelListener != null)
-									channelListener.onChannelMembersBanned(channel, members);
-							});
-						}
+				yield repository.updateChannelMembersRole(channel.getId(), memberIds, Channel.Role.BANNED).andThen(ar -> {
+					channel.invalidateMembers();
+					if (channelListener != null) {
+						repository.getChannelMembers(channel.getId(), memberIds).onSuccess(members -> {
+							if (channelListener != null)
+								channelListener.onChannelMembersBanned(channel, members);
+						});
 					}
-					return null;
-				});
+				}).mapEmpty();
 			}
 
 			case CHANNEL_UNBAN_MEMBERS -> {
 				List<Id> memberIds = gn.getContentAsListOf(Id.class);
-				yield repository.updateChannelMembersRole(channel.getId(), memberIds, Channel.Role.MEMBER).map(updated -> {
-					if (updated) {
-						channel.invalidateMembers();
-						if (channelListener != null) {
-							repository.getChannelMembers(channel.getId(), memberIds).onSuccess(members -> {
-								if (channelListener != null)
-									channelListener.onChannelMembersUnbanned(channel, members);
-							});
-						}
+				yield repository.updateChannelMembersRole(channel.getId(), memberIds, Channel.Role.MEMBER).andThen(ar -> {
+					channel.invalidateMembers();
+					if (channelListener != null) {
+						repository.getChannelMembers(channel.getId(), memberIds).onSuccess(members -> {
+							if (channelListener != null)
+								channelListener.onChannelMembersUnbanned(channel, members);
+						});
 					}
-					return null;
-				});
+				}).mapEmpty();
 			}
 
 			case CHANNEL_REMOVE_MEMBERS -> {
@@ -1739,24 +1887,20 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 					if (members.isEmpty())
 						return Future.succeededFuture();
 
-					return repository.removeChannelMembers(channel.getId(), memberIds).map(removed -> {
-						if (removed) {
-							channel.invalidateMembers();
-							if (channelListener != null)
-								channelListener.onChannelMembersRemoved(channel, members);
-						}
-						return null;
-					});
+					return repository.removeChannelMembers(channel.getId(), memberIds).andThen(ar -> {
+						channel.invalidateMembers();
+						if (channelListener != null)
+							channelListener.onChannelMembersRemoved(channel, members);
+					}).mapEmpty();
 				});
 			}
 
 			case CHANNEL_MEMBER_JOIN -> {
 				ChannelMember member = gn.getContentAs(ChannelMember.class);
-				yield repository.putChannelMember(channel.getId(), member).map(v -> {
+				yield repository.putChannelMember(channel.getId(), member).andThen(ar -> {
 					channel.invalidateMembers();
 					if (channelListener != null)
 						channelListener.onChannelMemberJoined(channel, member);
-					return null;
 				});
 			}
 
@@ -1764,17 +1908,16 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 				Id memberId = gn.getContentAs(Id.class);
 				yield repository.getChannelMember(channel.getId(), memberId).compose(member -> {
 					if (member == null)
-						return Future.succeededFuture();
-
-					return repository.removeChannelMember(channel.getId(), memberId).map(removed -> {
-						if (removed) {
-							channel.invalidateMembers();
-							if (channelListener != null)
-								channelListener.onChannelMemberLeft(channel, member);
-						}
-
-						return null;
-					});
+						return Future.succeededFuture(new ChannelMember(memberId, Channel.Role.MEMBER, 0));
+					else
+						return repository.removeChannelMember(channel.getId(), memberId).map(member);
+				}, error ->
+						Future.succeededFuture(new ChannelMember(memberId, Channel.Role.MEMBER, 0))
+				).map(member -> {
+					channel.invalidateMembers();
+					if (channelListener != null)
+						channelListener.onChannelMemberLeft(channel, member);
+					return null;
 				});
 			}
 
@@ -1785,12 +1928,44 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		};
 	}
 
+	private Future<Void> applyContactSync(ContactSync contactSync) {
+		return switch (contactSync.getType()) {
+			case UP_TO_DATE -> Future.succeededFuture();
+
+			case DELTA -> {
+				int revision = contactSync.getRevision();
+				List<ContactMutation.GenericContactMutation> mutations = contactSync.getMutations();
+				Future<Void> applyChain = Future.succeededFuture();
+				for (ContactMutation.GenericContactMutation mutation : mutations) {
+					applyChain = applyChain.compose(v -> applyContactMutation(mutation));
+				}
+				yield applyChain.compose(v -> {
+					if (contactsRevision != revision) {
+						log.error("the revision not up-to-data after applied the mutations, expected: {}, actual: {}",
+								revision, contactsRevision);
+						return Future.failedFuture(new IllegalStateException("the revision not up-to-data after applied the mutations"));
+					}
+
+					return Future.succeededFuture();
+				});
+			}
+
+			case SNAPSHOT -> {
+				int revision = contactSync.getRevision();
+				List<Contact> contacts = contactSync.getContacts();
+				yield repository.putContacts(revision, contacts).onSuccess(v -> {
+					contactsRevision = revision;
+				});
+			}
+		};
+	}
 	private Future<Void> applyContactMutation(ContactMutation.GenericContactMutation mutation) {
 		final int revision = mutation.getRevision();
 		return switch (mutation.getOp()) {
 			case ADD -> {
 				Contact contact = mutation.getDataAs(AbstractContact.class);
 				yield repository.putContacts(revision, List.of(contact)).map(v -> {
+					contactsRevision = revision;
 					if (contactListener != null)
 						contactListener.onContactAdded(contact);
 					return null;
@@ -1817,7 +1992,8 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 
 					AbstractContact updatedContact = contact.edit().patch(changes).build();
 					return repository.putContacts(revision, List.of(updatedContact)).map(v -> {
-						contactCache.synchronous().asMap().compute(updatedContact.getId(), (k, c) -> updatedContact);
+						contactsRevision = revision;
+						contactCache.synchronous().invalidate(contactId);
 						if(contactListener != null)
 							contactListener.onContactsUpdated(List.of(contact));
 						return null;
@@ -1828,6 +2004,7 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 			case REMOVE -> {
 				List<Id> contactIds = mutation.getDataAsListOf(Id.class);
 				yield repository.removeContacts(revision, contactIds).map(removed -> {
+					contactsRevision = revision;
 					if (removed && contactListener != null)
 						contactListener.onContactRemoved(contactIds);
 					return null;
@@ -1835,14 +2012,11 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 			}
 
 			case CLEAR -> repository.clearContacts(revision).map(v -> {
+				contactsRevision = revision;
 				if (contactListener != null)
 						contactListener.onContactsCleared();
 				return null;
 			});
 		};
-	}
-
-	private Future<Channel> refeshChannel(Id channelId) {
-		return Future.succeededFuture();
 	}
 }
