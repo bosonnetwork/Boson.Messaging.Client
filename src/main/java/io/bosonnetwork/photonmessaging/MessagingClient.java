@@ -32,10 +32,16 @@ import io.bosonnetwork.crypto.Signature;
 public interface MessagingClient {
 	static int DEFAULT_MESSAGES_LIMIT = 100;
 
+	////////////////////////////////////////////////////////////////////////////
+	// Client identities
+	////////////////////////////////////////////////////////////////////////////
 	Id getUserId();
 
 	Id getDeviceId();
 
+	////////////////////////////////////////////////////////////////////////////
+	// Listeners
+	////////////////////////////////////////////////////////////////////////////
 	void addConnectionListener(ConnectionListener listener);
 	void removeConnectionListener(ConnectionListener listener);
 
@@ -48,6 +54,9 @@ public interface MessagingClient {
 	void addContactListener(ContactListener listener);
 	void removeContactListener(ContactListener listener);
 
+	////////////////////////////////////////////////////////////////////////////
+	// Start and stop, status check
+	////////////////////////////////////////////////////////////////////////////
 	CompletableFuture<Void> start();
 
 	// The MessagingClient will release all resources after stopped.
@@ -58,8 +67,9 @@ public interface MessagingClient {
 
 	boolean isConnected();
 
+	////////////////////////////////////////////////////////////////////////////
 	// Message and conversation APIs
-
+	////////////////////////////////////////////////////////////////////////////
 	// Message send helper, builder pattern is better than long verbose parameters.
 	default Message.Builder message() {
 		return message(null);
@@ -93,13 +103,29 @@ public interface MessagingClient {
 
 	CompletableFuture<Boolean> removeMessages(Id conversionId);
 
+	////////////////////////////////////////////////////////////////////////////
 	// Session APIs
+	////////////////////////////////////////////////////////////////////////////
 	CompletableFuture<List<SessionInfo>> getSessions();
 
 	CompletableFuture<Void> revokeSession(Id deviceId);
 
+	////////////////////////////////////////////////////////////////////////////
 	// Friend APIs
+	////////////////////////////////////////////////////////////////////////////
 	CompletableFuture<Void> friendRequest(Id id, String hello);
+
+	CompletableFuture<Void> acceptFriendRequest(Id id);
+
+	CompletableFuture<FriendRequest> getFriendRequest(Id id);
+
+	CompletableFuture<List<FriendRequest>> getFriendRequests();
+
+	CompletableFuture<Boolean> removeFriendRequest(Id id);
+
+	CompletableFuture<Boolean> removeFriendRequests(Collection<Id> ids);
+
+	CompletableFuture<Void> clearFriendRequests();
 
 	default CompletableFuture<Contact> addFriend(Id id, byte[] sessionKey) {
 		return addFriend(id, sessionKey, null);
@@ -107,7 +133,9 @@ public interface MessagingClient {
 
 	CompletableFuture<Contact> addFriend(Id id, byte[] sessionKey, String remark);
 
+	////////////////////////////////////////////////////////////////////////////
 	// channel APIs
+	////////////////////////////////////////////////////////////////////////////
 	default CompletableFuture<Channel> createChannel(String name) {
 		return createChannel(Channel.Permission.OWNER_INVITE, name, null, false);
 	}
@@ -121,6 +149,7 @@ public interface MessagingClient {
 	CompletableFuture<Boolean> removeChannel(Id channelId);
 
 	CompletableFuture<Channel> joinChannel(InviteTicket ticket);
+
 	CompletableFuture<Boolean> leaveChannel(Id channelId);
 
 	default CompletableFuture<InviteTicket> createInviteTicket(Id channelId) {
@@ -144,7 +173,9 @@ public interface MessagingClient {
 	CompletableFuture<Void> unbanChannelMembers(Id channelId, List<Id> members);
 	CompletableFuture<Void> removeChannelMembers(Id channelId, List<Id> members);
 
+	////////////////////////////////////////////////////////////////////////////
 	// Generic contact APIs
+	////////////////////////////////////////////////////////////////////////////
 	CompletableFuture<Contact> getContact(Id contactId);
 
 	CompletableFuture<List<Contact>> getContacts();

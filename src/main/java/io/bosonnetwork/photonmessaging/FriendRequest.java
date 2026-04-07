@@ -35,7 +35,7 @@ public interface FriendRequest {
 
 	boolean isExpired();
 
-	long getInitiatedAt();
+	long getCreatedAt();
 
 	long getAcceptedAt();
 

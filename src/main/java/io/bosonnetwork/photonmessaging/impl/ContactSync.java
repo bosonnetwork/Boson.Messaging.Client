@@ -28,18 +28,13 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonValue;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectWriter;
 
-import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.Contact;
 
 /**
  * Represents a contact sync notification or response.
  */
 public class ContactSync {
-	private static final ObjectWriter WRITER = Json.cborMapper().writerFor(ContactSync.class);
-
 	@JsonProperty(value = "t", required = true)
 	private final Type type;
 
@@ -49,7 +44,7 @@ public class ContactSync {
 
 	@JsonProperty("d")
 	@JsonInclude(JsonInclude.Include.NON_EMPTY)
-	private final List<ContactMutation> mutations;
+	private final List<ContactMutation.GenericContactMutation> mutations;
 
 	@JsonProperty("s")
 	@JsonInclude(JsonInclude.Include.NON_EMPTY)
@@ -84,9 +79,9 @@ public class ContactSync {
 
 	@JsonCreator
 	protected ContactSync(@JsonProperty(value = "t", required = true) Type type,
-						  @JsonProperty(value = "v", required = true) int revision,
-						  @JsonProperty("d") List<ContactMutation> mutations,
-						  @JsonProperty("s") List<Contact> contacts) {
+	                      @JsonProperty(value = "v", required = true) int revision,
+	                      @JsonProperty("d") List<ContactMutation.GenericContactMutation> mutations,
+	                      @JsonProperty("s") List<Contact> contacts) {
 		if ((mutations != null && !mutations.isEmpty()) && (contacts != null && !contacts.isEmpty()))
 			throw new IllegalArgumentException("Mutations and contacts can not be both present");
 
@@ -105,18 +100,6 @@ public class ContactSync {
 		this.mutations = mutations == null || mutations.isEmpty() ? null : mutations;
 	}
 
-	protected static ContactSync upToDate(int revision) {
-		return new ContactSync(Type.UP_TO_DATE, revision, null, null);
-	}
-
-	protected static ContactSync delta(int revision, List<ContactMutation> mutations) {
-		return new ContactSync(Type.DELTA, revision, mutations, null);
-	}
-
-	protected static ContactSync snapshot(int revision, List<Contact> contacts) {
-		return new ContactSync(Type.SNAPSHOT, revision, null, contacts);
-	}
-
 	public Type getType() {
 		return type;
 	}
@@ -125,19 +108,11 @@ public class ContactSync {
 		return revision;
 	}
 
-	public List<ContactMutation> getMutations() {
+	public List<ContactMutation.GenericContactMutation> getMutations() {
 		return mutations;
 	}
 
 	public List<Contact> getContacts() {
 		return contacts;
-	}
-
-	public byte[] serialize() {
-		try {
-			return WRITER.writeValueAsBytes(this);
-		} catch (JsonProcessingException e) {
-			throw new RuntimeException("INTERNAL ERROR: ContactSync serialization", e);
-		}
 	}
 }

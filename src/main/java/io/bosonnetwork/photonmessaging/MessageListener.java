@@ -22,6 +22,8 @@
 
 package io.bosonnetwork.photonmessaging;
 
+import io.bosonnetwork.Id;
+
 /**
  * Listener for message-related events.
  */
@@ -40,10 +42,7 @@ public interface MessageListener {
 	 */
 	void onSent(Message message);
 
-	/**
-	 * Called when a notification message is received.
-	 *
-	 * @param message the notification message
-	 */
-	void onNotification(Message message);
+	void onFriendRequest(Id userId, String hello);
+
+	void onFriendRequestAccepted(Id userId);
 }

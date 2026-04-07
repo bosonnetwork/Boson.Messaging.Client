@@ -23,6 +23,8 @@
 package io.bosonnetwork.photonmessaging.impl;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -33,6 +35,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 
 import io.bosonnetwork.Id;
+import io.bosonnetwork.crypto.Hash;
 import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.Message;
 import io.bosonnetwork.photonmessaging.impl.rpc.RpcRequest;
@@ -45,23 +48,22 @@ public class MessageImpl<P> implements Message {
 
 	@JsonProperty(value = "v" , required = true)
 	private final int version;
+	@JsonProperty(value = "id", required = true)
+	private final Id id;
 	@JsonProperty(value = "r", required = true)
-	private Id recipient;
+	private final Id recipient;
 	@JsonProperty(value = "y", required = true)
 	private final Type type;
 	@JsonProperty(value = "f")
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	private Id from;
-	@JsonProperty(value = "s", required = true)
-	private int serialNumber;
 	@JsonProperty(value = "c")
 	@JsonInclude(JsonInclude.Include.NON_DEFAULT)
-	private long createdAt;
+	private final long createdAt;
 
 	@JsonProperty(value = "p", required = true)
-	private P payload;
+	private final P payload;
 
-	private long id;
 	private Id conversationId;
 	private long sentAt;
 	private long receivedAt;
@@ -69,34 +71,30 @@ public class MessageImpl<P> implements Message {
 	private Promise<Void> sentPromise;
 
 	@JsonCreator
-	protected MessageImpl() {
-		this(Type.CONTENT_MESSAGE, null, null);
-	}
-
-	protected MessageImpl(Type type) {
-		this(type, null, null);
-	}
-
-	protected MessageImpl(Type type, Id recipient, P payload) {
+	protected MessageImpl(@JsonProperty(value = "id", required = true) Id id,
+	                      @JsonProperty(value = "r", required = true) Id recipient,
+						  @JsonProperty(value = "y", required = true) Type type,
+						  @JsonProperty(value = "c", required = true) long createdAt,
+						  @JsonProperty(value = "p", required = true) P payload) {
 		this.version = VERSION;
-		this.type = type;
+		this.id = id;
 		this.recipient = recipient;
-		this.serialNumber = nextSerialNumber();
-		this.createdAt = System.currentTimeMillis();
+		this.type = type;
+		this.createdAt = createdAt;
 		this.payload = payload;
 	}
 
 	protected MessageImpl(MessageImpl<?> message, P newPayload) {
 		this.version = message.version;
+		this.id = message.id;
 		this.recipient = message.recipient;
 		this.type = message.type;
 		this.from = message.from;
-		this.serialNumber = message.serialNumber;
 		this.createdAt = message.createdAt;
 		this.payload = newPayload;
 
-		this.id = message.id;
 		this.conversationId = message.conversationId;
+		this.sentAt = message.sentAt;
 		this.receivedAt = message.receivedAt;
 	}
 
@@ -110,7 +108,7 @@ public class MessageImpl<P> implements Message {
 	}
 
 	@Override
-	public long getId() {
+	public Id getId() {
 		return id;
 	}
 
@@ -129,10 +127,6 @@ public class MessageImpl<P> implements Message {
 		return recipient;
 	}
 
-	protected void setRecipient(Id recipient) {
-		this.recipient = recipient;
-	}
-
 	@Override
 	public Type getType() {
 		return type;
@@ -141,11 +135,6 @@ public class MessageImpl<P> implements Message {
 	@Override
 	public Id getFrom() {
 		return from;
-	}
-
-	@Override
-	public int getSerialNumber() {
-		return serialNumber;
 	}
 
 	@Override
@@ -162,8 +151,23 @@ public class MessageImpl<P> implements Message {
 		return sentAt;
 	}
 
+	protected void setSentAt() {
+		this.sentAt = System.currentTimeMillis();
+	}
+
 	protected void received() {
 		this.receivedAt = System.currentTimeMillis();
+	}
+
+	protected boolean isAssociated(Id deviceId) {
+		byte[] seedBytes = ByteBuffer.allocate(Long.BYTES).putLong(createdAt).array();
+		byte[] hash = Hash.sha256(deviceId.bytes(), seedBytes);
+		return Arrays.equals(id.bytes(), hash);
+	}
+
+	protected static Id generateId(Id deviceId, long seed) {
+		byte[] seedBytes = ByteBuffer.allocate(Long.BYTES).putLong(seed).array();
+		return Id.of(Hash.sha256(deviceId.bytes(), seedBytes));
 	}
 
 	@Override
@@ -199,10 +203,6 @@ public class MessageImpl<P> implements Message {
 			return DefaultContent.parse(bytes);
 
 		throw new IllegalStateException("Message payload is not a Content");
-	}
-
-	protected void setPayload(P payload) {
-		this.payload = payload;
 	}
 
 	protected P getPayload() {
