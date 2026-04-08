@@ -36,22 +36,23 @@ public class FriendRequestImpl implements FriendRequest {
 	private boolean accepted;
 	private long acceptedAt;
 
-	public FriendRequestImpl(Id userId, Id initiatorId, String hello) {
-		this.userId = userId;
-		this.initiatorId = initiatorId;
-		this.hello = hello;
-		this.createdAt = System.currentTimeMillis();
-		this.updatedAt = this.createdAt;
-		this.accepted = false;
+	protected FriendRequestImpl(Id userId, Id initiatorId, String hello) {
+		this(userId, initiatorId, hello, System.currentTimeMillis(), 0);
 	}
 
-	public FriendRequestImpl(Id userId, Id initiatorId, String hello, long createdAt, long updatedAt) {
+	protected FriendRequestImpl(Id userId, Id initiatorId, String hello, long createdAt, long updatedAt) {
+		this(userId, initiatorId, hello, createdAt, updatedAt, false, 0);
+	}
+
+	protected FriendRequestImpl(Id userId, Id initiatorId, String hello, long createdAt,
+								long updatedAt, boolean accepted, long acceptedAt) {
 		this.userId = userId;
 		this.initiatorId = initiatorId;
 		this.hello = hello;
 		this.createdAt = createdAt;
-		this.updatedAt = updatedAt;
-		this.accepted = false;
+		this.updatedAt = updatedAt != 0 ? updatedAt : createdAt;
+		this.accepted = accepted;
+		this.acceptedAt = acceptedAt;
 	}
 
 	@Override

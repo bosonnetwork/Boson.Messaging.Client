@@ -26,7 +26,7 @@ import java.time.Instant;
 
 import io.bosonnetwork.Id;
 
-public class AutoContact extends AbstractContact {
+public class AutoContact extends PhotonContact {
 	protected AutoContact(Id id) {
 		this(id, null, null, null, null, false, false, 0, 0);
 	}

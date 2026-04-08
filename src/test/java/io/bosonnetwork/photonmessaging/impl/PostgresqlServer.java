@@ -34,7 +34,7 @@ public class PostgresqlServer {
 	}
 
 	public String getDatabaseUri() {
-		return "postgres://" +
+		return "postgresql://" +
 				container.getUsername() + ":" +
 				container.getPassword() + "@" +
 				container.getHost() + ":" +

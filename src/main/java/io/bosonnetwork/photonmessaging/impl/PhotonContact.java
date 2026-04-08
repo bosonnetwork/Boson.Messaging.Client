@@ -46,7 +46,7 @@ import io.bosonnetwork.photonmessaging.Contact;
  * identity, session keys, profile details, and synchronization state.
  */
 @JsonPropertyOrder({"id", "t", "sk", "n", "r", "ts", "m", "b", "c", "u", "v"})
-public abstract class AbstractContact implements Contact {
+public abstract class PhotonContact implements Contact {
 	private static final long STALE_TIME = 6 * 60 * 60 * 1000; // 6 hours
 
 	@JsonProperty(value = "id", required = true)
@@ -108,8 +108,8 @@ public abstract class AbstractContact implements Contact {
 	 * @param updatedAt the timestamp of the last update
 	 * @param revision the synchronization revision number
 	 */
-	protected AbstractContact(Id id, byte[] sessionKey, String name, String avatar, String remark, String tags,
-	                          boolean muted, boolean blocked, long createdAt, long updatedAt, int revision) {
+	protected PhotonContact(Id id, byte[] sessionKey, String name, String avatar, String remark, String tags,
+	                        boolean muted, boolean blocked, long createdAt, long updatedAt, int revision) {
 		this.id = id;
 		this.name = name;
 		this.avatar = avatar;
@@ -266,7 +266,7 @@ public abstract class AbstractContact implements Contact {
 		return dn;
 	}
 
-	public boolean is(AbstractContact contact) {
+	public boolean is(PhotonContact contact) {
 		if (contact == this)
 			return true;
 
@@ -299,6 +299,18 @@ public abstract class AbstractContact implements Contact {
 		if (key == null || key.length == 0)
 			return null;
 
+		if (key.length != Signature.PrivateKey.BYTES &&
+				key.length != Signature.PrivateKey.BYTES + CryptoBox.MAC_BYTES + CryptoBox.Nonce.BYTES)
+			throw new IllegalArgumentException("invalid session key");
+		
+		return key;
+	}
+
+	/*/
+	private byte[] checkSessionKey(byte[] key) {
+		if (key == null || key.length == 0)
+			return null;
+
 		byte[] privateKey;
 		try {
 			if (key.length == Signature.PrivateKey.BYTES) {
@@ -316,6 +328,7 @@ public abstract class AbstractContact implements Contact {
 			throw new IllegalArgumentException("invalid session key", e);
 		}
 	}
+	 */
 
 	public byte[] sign(byte[] data) {
 		return sessionIdentity.sign(data);

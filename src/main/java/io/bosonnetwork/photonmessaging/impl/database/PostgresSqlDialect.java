@@ -25,7 +25,7 @@ package io.bosonnetwork.photonmessaging.impl.database;
 import io.vertx.pgclient.PgException;
 
 /**
- * PostgreSQL-specific SQL dialect for Photon Messaging.
+ * PostgreSQL-specific SQL dialect for PhotonMessaging.
  */
 public class PostgresSqlDialect extends SqlDialect {
 	@Override

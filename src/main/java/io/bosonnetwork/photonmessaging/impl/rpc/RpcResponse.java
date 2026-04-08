@@ -67,6 +67,22 @@ public class RpcResponse<R> {
 		this.error = error;
 	}
 
+	public RpcResponse(long id, R result) {
+		this(id, result, null);
+	}
+
+	public RpcResponse(long id, RpcError error) {
+		this(id, null, error);
+	}
+
+	public RpcResponse(long id, int errorCode, String errorMessage, String errorData) {
+		this(id, null, new RpcError(errorCode, errorMessage, errorData));
+	}
+
+	public RpcResponse(long id, int errorCode, String errorMessage) {
+		this(id, null, new RpcError(errorCode, errorMessage));
+	}
+
 	public long getId() {
 		return id;
 	}

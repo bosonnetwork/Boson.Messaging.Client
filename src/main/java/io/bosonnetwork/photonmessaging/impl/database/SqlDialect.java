@@ -25,7 +25,7 @@ package io.bosonnetwork.photonmessaging.impl.database;
 import io.bosonnetwork.database.CollectionParameter;
 
 /**
- * SQL dialect for the Photon Messaging Client database.
+ * SQL dialect for the PhotonMessaging Client database.
  */
 public class SqlDialect {
 	// Contacts Revision
@@ -62,7 +62,11 @@ public class SqlDialect {
 				""";
 	}
 
-	public String deleteContactsLocally(CollectionParameter<byte[]> ids) {
+	public String deleteContact() {
+		return "DELETE FROM contacts WHERE id = #{id}";
+	}
+
+	public String deleteContacts(CollectionParameter<?> ids) {
 		return "DELETE FROM contacts WHERE id IN " + ids.getTemplate();
 	}
 
@@ -71,15 +75,29 @@ public class SqlDialect {
 	}
 
 	public String selectContact() {
-		return "SELECT * FROM contacts WHERE id = #{id}";
+		return """
+				SELECT c.*, ch.owner, ch.permission, ch.notice, ch.announce
+				FROM contacts c
+				LEFT JOIN channels ch ON c.id = ch.id
+				WHERE c.id = #{id}
+				""";
 	}
 
-	public String selectContacts(CollectionParameter<byte[]> ids) {
-		return "SELECT * FROM contacts WHERE id IN " + ids.getTemplate();
+	public String selectContacts(CollectionParameter<?> ids) {
+		return """
+				SELECT c.*, ch.owner, ch.permission, ch.notice, ch.announce
+				FROM contacts c
+				LEFT JOIN channels ch ON c.id = ch.id
+				WHERE c.id IN
+				""" + ids.getTemplate();
 	}
 
 	public String selectAllContacts() {
-		return "SELECT * FROM contacts";
+		return """
+				SELECT c.*, ch.owner, ch.permission, ch.notice, ch.announce
+				FROM contacts c
+				LEFT JOIN channels ch ON c.id = ch.id
+				""";
 	}
 
 	public String existsContact() {
@@ -117,7 +135,7 @@ public class SqlDialect {
 				""";
 	}
 
-	public String deleteChannelMembers(CollectionParameter<byte[]> ids) {
+	public String deleteChannelMembers(CollectionParameter<?> ids) {
 		return "DELETE FROM channel_members WHERE channel_id = #{channelId} AND id IN " + ids.getTemplate();
 	}
 
@@ -129,8 +147,9 @@ public class SqlDialect {
 		return "SELECT * FROM channel_members WHERE channel_id = #{channelId} AND id = #{id}";
 	}
 
-	public String selectChannelMembers(CollectionParameter<byte[]> ids) {
-		return "SELECT * FROM channel_members WHERE channel_id = #{channelId} AND id IN " + ids.getTemplate();
+	public String selectChannelMembers(CollectionParameter<?> ids) {
+		return "SELECT * FROM channel_members WHERE channel_id = #{channelId} AND id IN " +
+				ids.getTemplate() + " ORDER BY joined ASC";
 	}
 
 	public String selectAllChannelMembers() {
@@ -141,7 +160,7 @@ public class SqlDialect {
 		return "UPDATE channel_members SET role = #{role} WHERE channel_id = #{channelId} AND id = #{id}";
 	}
 
-	public String updateChannelMembersRole(CollectionParameter<byte[]> ids) {
+	public String updateChannelMembersRole(CollectionParameter<?> ids) {
 		return "UPDATE channel_members SET role = #{role} WHERE channel_id = #{channelId} AND id IN " + ids.getTemplate();
 	}
 
@@ -167,7 +186,11 @@ public class SqlDialect {
 		return "SELECT * FROM friend_requests ORDER BY created_at DESC";
 	}
 
-	public String deleteFriendRequests(CollectionParameter<byte[]> ids) {
+	public String deleteFriendRequest() {
+		return "DELETE FROM friend_requests WHERE id = #{id}";
+	}
+
+	public String deleteFriendRequests(CollectionParameter<?> ids) {
 		return "DELETE FROM friend_requests WHERE id IN " + ids.getTemplate();
 	}
 
@@ -178,8 +201,9 @@ public class SqlDialect {
 	// Messages
 	public String insertMessage() {
 		return """
-				INSERT INTO messages (id, conversation_id, version, recipient, type, from_id, created_at, sent_at, received_at, content_type, content_disposition, headers, body)
-				VALUES (#{id}, #{conversationId}, #{version}, #{recipient}, #{type}, #{fromId}, #{createdAt}, #{sentAt}, #{receivedAt}, #{contentType}, #{contentDisposition}, #{headers}, #{body})
+				INSERT INTO messages (id, conversation_id, version, recipient, type, from_id, created_at, sent_at, received_at, content_type, content_disposition, payload)
+				VALUES (#{id}, #{conversationId}, #{version}, #{recipient}, #{type}, #{fromId}, #{createdAt}, #{sentAt}, #{receivedAt}, #{contentType}, #{contentDisposition}, #{payload})
+				RETURNING rid
 				""";
 	}
 
@@ -191,7 +215,7 @@ public class SqlDialect {
 		return """
 				SELECT * FROM messages
 				WHERE conversation_id = #{conversationId} AND created_at >= #{begin} AND created_at < #{end}
-				ORDER BY created_at ASC, rid ASC
+				ORDER BY rid ASC
 				""";
 	}
 
@@ -199,17 +223,62 @@ public class SqlDialect {
 		return """
 				SELECT * FROM messages
 				WHERE conversation_id = #{conversationId} AND created_at >= #{since}
-				ORDER BY created_at ASC, rid ASC
+				ORDER BY rid ASC
 				LIMIT #{limit} OFFSET #{offset}
 				""";
 	}
 
-	public String deleteMessages(CollectionParameter<Long> rids) {
+	public String deleteMessages(CollectionParameter<?> rids) {
 		return "DELETE FROM messages WHERE rid IN " + rids.getTemplate();
 	}
 
 	public String deleteMessagesByConversation() {
 		return "DELETE FROM messages WHERE conversation_id = #{conversationId}";
+	}
+
+	public String deleteMessagesByConversations(CollectionParameter<?> cids) {
+		return "DELETE FROM messages WHERE conversation_id IN " + cids.getTemplate();
+	}
+
+	public String clearMessages() {
+		return "DELETE FROM messages";
+	}
+
+	public String selectConversation() {
+		return """
+				SELECT c.*, ch.owner, ch.permission, ch.notice, ch.announce,
+					m.rid as last_message_rid, m.id as last_message_id, 
+					m.conversation_id as last_message_conversation_id, m.version as last_message_version,
+					m.recipient as last_message_recipient, m.type as last_message_type, m.from_id as last_message_from_id,
+					m.created_at as last_message_created_at, m.payload as last_message_payload,
+					m.sent_at as last_message_sent_at, m.received_at as last_message_received_at
+				FROM contacts c
+				LEFT JOIN channels ch ON c.id = ch.id
+				JOIN messages m ON c.id = m.conversation_id
+				WHERE c.id = #{contactId}
+				ORDER BY m.rid DESC
+				LIMIT 1
+				""";
+	}
+
+	public String selectAllConversations() {
+		return """
+				SELECT c.*, ch.owner, ch.permission, ch.notice, ch.announce,
+					m.rid as last_message_rid, m.id as last_message_id, 
+					m.conversation_id as last_message_conversation_id, m.version as last_message_version,
+					m.recipient as last_message_recipient, m.type as last_message_type, m.from_id as last_message_from_id,
+					m.created_at as last_message_created_at, m.payload as last_message_payload,
+					m.sent_at as last_message_sent_at, m.received_at as last_message_received_at
+				FROM contacts c
+				LEFT JOIN channels ch ON c.id = ch.id
+				JOIN (
+					SELECT conversation_id, MAX(rid) as max_rid
+					FROM messages
+					GROUP BY conversation_id
+				) last_msg_rid ON c.id = last_msg_rid.conversation_id
+				JOIN messages m ON m.rid = last_msg_rid.max_rid
+				ORDER BY m.received_at DESC, m.rid DESC
+				""";
 	}
 
 	public boolean isUniqueConstraintViolation(Throwable t) {

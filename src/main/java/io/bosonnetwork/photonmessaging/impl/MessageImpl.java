@@ -72,17 +72,38 @@ public class MessageImpl<P> implements Message {
 	private Promise<Void> sentPromise;
 
 	@JsonCreator
-	protected MessageImpl(@JsonProperty(value = "id", required = true) Id id,
+	protected MessageImpl(@JsonProperty(value = "v", required = true) int version,
+						  @JsonProperty(value = "id", required = true) Id id,
 	                      @JsonProperty(value = "r", required = true) Id recipient,
 						  @JsonProperty(value = "y", required = true) Type type,
+						  @JsonProperty(value = "f") Id from,
 						  @JsonProperty(value = "c", required = true) long createdAt,
 						  @JsonProperty(value = "p", required = true) P payload) {
-		this.version = VERSION;
+		this.version = version;
 		this.id = id;
 		this.recipient = recipient;
 		this.type = type;
 		this.createdAt = createdAt;
 		this.payload = payload;
+	}
+
+	protected MessageImpl(Id id, Id recipient, Type type, long createAt, P payload) {
+		this(VERSION, id, recipient, type, null, createAt, payload);
+	}
+
+	protected MessageImpl(long rid, Id conversationId, int version, Id id, Id recipient, Type type, Id from,
+						  long createdAt, P payload, long sentAt, long receivedAt) {
+			this.rid = rid;
+			this.conversationId = conversationId;
+			this.version = version;
+			this.id = id;
+			this.recipient = recipient;
+			this.type = type;
+			this.from = from;
+			this.createdAt = createdAt;
+			this.payload = payload;
+			this.sentAt = sentAt;
+			this.receivedAt = receivedAt;
 	}
 
 	protected MessageImpl(MessageImpl<?> message, P newPayload) {
@@ -113,9 +134,8 @@ public class MessageImpl<P> implements Message {
 		return conversationId;
 	}
 
-	protected MessageImpl<P> setConversationId(Id conversationId) {
+	protected void setConversationId(Id conversationId) {
 		this.conversationId = conversationId;
-		return this;
 	}
 
 	@Override

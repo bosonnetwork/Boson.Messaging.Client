@@ -53,6 +53,14 @@ public class RpcRequest<P> {
 		this.cookie = cookie;
 	}
 
+	public RpcRequest(long id, RpcMethod method, P params) {
+		this(id, method, params, null);
+	}
+
+	public RpcRequest(long id, RpcMethod method) {
+		this(id, method, null, null);
+	}
+
 	public long getId() {
 		return id;
 	}

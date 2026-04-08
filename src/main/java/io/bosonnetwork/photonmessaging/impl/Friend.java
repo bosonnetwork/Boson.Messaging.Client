@@ -26,7 +26,7 @@ import java.time.Instant;
 
 import io.bosonnetwork.Id;
 
-public class Friend extends AbstractContact {
+public class Friend extends PhotonContact {
 	protected Friend(Id id, byte[] sessionKey, String name, String avatar, String remark, String tags, boolean muted,
 					 boolean blocked, long createdAt, long updatedAt, int revision) {
 		super(id, sessionKey, name, avatar, remark, tags, muted, blocked, createdAt, updatedAt, revision);

@@ -39,7 +39,7 @@ public class ChannelMember implements Channel.Member {
 	@JsonProperty(value = "j", required = true)
 	private final long joined;
 
-	private transient AbstractContact contact;
+	private transient PhotonContact contact;
 
 	/**
 	 * Constructs a new Member instance with the specified parameters.
@@ -78,7 +78,7 @@ public class ChannelMember implements Channel.Member {
 	}
 
 	// TODO: remove this method,
-	protected void setContact(AbstractContact contact) {
+	protected void setContact(PhotonContact contact) {
 		this.contact = contact;
 	}
 
