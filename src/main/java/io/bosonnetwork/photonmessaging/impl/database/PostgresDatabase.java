@@ -24,7 +24,6 @@ package io.bosonnetwork.photonmessaging.impl.database;
 
 import java.net.URL;
 import java.nio.file.Path;
-import java.util.Objects;
 
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -40,35 +39,35 @@ import org.slf4j.LoggerFactory;
 import io.bosonnetwork.photonmessaging.impl.Database;
 
 /**
- * PostgreSQL implementation of Photon Messaging Client database.
+ * PostgreSQL implementation of PhotonMessaging Client database.
  */
 public class PostgresDatabase extends Database {
-	private static final Logger log = LoggerFactory.getLogger(PostgresDatabase.class);
-	public static final String CONNECTION_URI_PREFIX = "postgres://";
+	public static final String CONNECTION_URI_PREFIX = "postgresql://";
+	private static final int DEFAULT_POOL_SIZE = 4;
 
-	private final String uri;
+	private final String connectionUri;
 	private final int poolSize;
 	private final String schema;
-	private Pool pool;
-	private final PostgresSqlDialect dialect = new PostgresSqlDialect();
+	private final SqlDialect sqlDialect;
+	private Pool client;
+	private static final Logger log = LoggerFactory.getLogger(PostgresDatabase.class);
 
-	public PostgresDatabase(String uri, int poolSize, String schema) {
-		this.uri = Objects.requireNonNull(uri, "uri");
-		this.poolSize = poolSize > 0 ? poolSize : 5;
+	public PostgresDatabase(String connectionUri, int poolSize, String schema) {
+		this.connectionUri = connectionUri;
+		this.poolSize = poolSize <= 0 ? DEFAULT_POOL_SIZE : poolSize;
 		this.schema = schema;
+		this.sqlDialect = new PostgresSqlDialect();
 	}
 
-	@Override
-	protected Logger getLogger() {
-		return log;
+	protected PostgresDatabase(String connectionUri) {
+		this(connectionUri, 0, null);
 	}
 
 	@Override
 	protected void init(Vertx vertx) {
-		PgConnectOptions connectOptions = PgConnectOptions.fromUri(uri);
+		PgConnectOptions connectOptions = PgConnectOptions.fromUri(connectionUri);
 		PoolOptions poolOptions = new PoolOptions().setMaxSize(poolSize);
-
-		this.pool = PgBuilder.pool()
+		client = PgBuilder.pool()
 				.with(poolOptions)
 				.connectingTo(connectOptions)
 				.using(vertx)
@@ -76,8 +75,22 @@ public class PostgresDatabase extends Database {
 	}
 
 	@Override
+	protected Path getMigrationPath() {
+		URL migrationResource = getClass().getResource("/db/photonmessaging/client/postgres");
+		if (migrationResource == null || migrationResource.getPath() == null)
+			throw new IllegalStateException("Migration path not exists");
+
+		return Path.of(migrationResource.getPath());
+	}
+
+	@Override
 	public SqlClient getClient() {
-		return pool;
+		return client;
+	}
+
+	@Override
+	protected String getSchema() {
+		return schema;
 	}
 
 	@Override
@@ -91,29 +104,12 @@ public class PostgresDatabase extends Database {
 	}
 
 	@Override
-	protected String getSchema() {
-		return schema;
-	}
-
-	@Override
 	public SqlDialect getDialect() {
-		return dialect;
+		return sqlDialect;
 	}
 
 	@Override
-	protected Path getMigrationPath() {
-		URL migrationResource = getClass().getResource("/db/photonmessaging/client/postgres");
-		if (migrationResource == null || migrationResource.getPath() == null)
-			throw new IllegalStateException("Migration path not exists");
-
-		return Path.of(migrationResource.getPath());
-	}
-
-	@Override
-	public Future<Void> close() {
-		if (pool != null) {
-			return pool.close();
-		}
-		return Future.succeededFuture();
+	protected Logger getLogger() {
+		return log;
 	}
 }

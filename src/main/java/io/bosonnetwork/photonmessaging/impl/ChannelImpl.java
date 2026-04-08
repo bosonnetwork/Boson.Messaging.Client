@@ -42,7 +42,7 @@ import io.bosonnetwork.Id;
 import io.bosonnetwork.crypto.CryptoException;
 import io.bosonnetwork.photonmessaging.Channel;
 
-public class ChannelImpl extends AbstractContact implements Channel {
+public class ChannelImpl extends PhotonContact implements Channel {
 	/**
 	 * The unique identifier of the channel's owner (the creator or current administrator).
 	 */

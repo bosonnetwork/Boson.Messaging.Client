@@ -69,8 +69,7 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at BIGINT NOT NULL,
     content_type VARCHAR(128) DEFAULT NULL,
     content_disposition VARCHAR(512) DEFAULT NULL,
-    headers BLOB DEFAULT NULL,
-    body BLOB DEFAULT NULL,
+    payload BLOB DEFAULT NULL,
     sent_at BIGINT DEFAULT 0,
     received_at BIGINT DEFAULT 0
 );

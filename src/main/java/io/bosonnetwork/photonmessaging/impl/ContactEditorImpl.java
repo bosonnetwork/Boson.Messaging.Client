@@ -42,10 +42,10 @@ public class ContactEditorImpl implements ContactEditor {
 	private long updatedAt;
 	private int revision;
 
-	private final AbstractContact origin;
+	private final PhotonContact origin;
 	private boolean modified;
 
-	protected ContactEditorImpl(AbstractContact contact) {
+	protected ContactEditorImpl(PhotonContact contact) {
 		this.origin = contact;
 		this.sessionKey = contact.getSessionKey();
 		this.name = contact.getName();
@@ -161,7 +161,7 @@ public class ContactEditorImpl implements ContactEditor {
 	}
 
 	@Override
-	public AbstractContact build() {
+	public PhotonContact build() {
 		if (!modified)
 			return origin;
 

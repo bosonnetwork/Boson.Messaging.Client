@@ -1,3 +1,25 @@
+/*
+ * Copyright (c) 2023 -      bosonnetwork.io
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 package io.bosonnetwork.photonmessaging.impl;
 
 import java.net.URI;
@@ -69,7 +91,7 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 	private MessagingRepository repository;
 
 	private int contactsRevision;
-	private AsyncLoadingCache<Id, AbstractContact> contactCache;
+	private AsyncLoadingCache<Id, PhotonContact> contactCache;
 	private AsyncLoadingCache<Id, ConversationImpl> conversationCache;
 	private final Map<Integer, MessageImpl<?>> inflightMessages;
 	private final Map<Long, RpcCall<?, ?>> inflightRpcCalls;
@@ -958,8 +980,8 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		Future<List<Contact>> future = repository.getAllContacts().map(contacts -> {
 			Map<Id, Contact> result = new LinkedHashMap<>();
 			for (Contact c : contacts) {
-				AbstractContact cached = contactCache.synchronous().asMap()
-						.compute(c.getId(), (k, cc) -> cc != null ? cc : (AbstractContact) c);
+				PhotonContact cached = contactCache.synchronous().asMap()
+						.compute(c.getId(), (k, cc) -> cc != null ? cc : (PhotonContact) c);
 				result.put(c.getId(), cached);
 			}
 
@@ -1060,7 +1082,7 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 				.maximumSize(512)
 				.expireAfterAccess(5, TimeUnit.MINUTES)
 				.buildAsync((id, executor) ->
-						VertxFuture.of(repository.getContact(id).map(c -> (AbstractContact) c)));
+						VertxFuture.of(repository.getContact(id).map(c -> (PhotonContact) c)));
 
 		this.conversationCache = VertxCaffeine.newBuilder(vertx)
 				.maximumSize(512)
@@ -1080,7 +1102,7 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		});
 	}
 
-	private Future<AbstractContact> contact(Id id) {
+	private Future<PhotonContact> contact(Id id) {
 		return Future.fromCompletionStage(contactCache.get(id));
 	}
 
@@ -1826,7 +1848,7 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 			}
 
 			case CHANNEL_ROTATE_SESSION_KEY -> {
-				AbstractContact updatedChannel = channel.edit().setSessionKey(gn.getContentAs(byte[].class)).build();
+				PhotonContact updatedChannel = channel.edit().setSessionKey(gn.getContentAs(byte[].class)).build();
 				yield repository.putContactLocally(updatedChannel).andThen(ar -> {
 					contactCache.synchronous().invalidate(channel.getId());
 					if (channelListener != null)
@@ -1964,7 +1986,7 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 		final int revision = mutation.getRevision();
 		return switch (mutation.getOp()) {
 			case ADD -> {
-				Contact contact = mutation.getDataAs(AbstractContact.class);
+				Contact contact = mutation.getDataAs(PhotonContact.class);
 				yield repository.putContacts(revision, List.of(contact)).map(v -> {
 					contactsRevision = revision;
 					if (contactListener != null)
@@ -1991,7 +2013,7 @@ public class MessagingClientImpl extends BosonVerticle implements MessagingClien
 						return Future.failedFuture("Non-exists contact mutation");
 					}
 
-					AbstractContact updatedContact = contact.edit().patch(changes).build();
+					PhotonContact updatedContact = contact.edit().patch(changes).build();
 					return repository.putContacts(revision, List.of(updatedContact)).map(v -> {
 						contactsRevision = revision;
 						contactCache.synchronous().invalidate(contactId);

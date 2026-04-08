@@ -24,9 +24,7 @@ package io.bosonnetwork.photonmessaging.impl.database;
 
 import java.net.URL;
 import java.nio.file.Path;
-import java.util.Objects;
 
-import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.jdbcclient.JDBCPool;
 import io.vertx.sqlclient.Pool;
@@ -39,46 +37,40 @@ import org.sqlite.SQLiteDataSource;
 import io.bosonnetwork.photonmessaging.impl.Database;
 
 /**
- * SQLite implementation of Photon Messaging Client database.
+ * SQLite implementation of PhotonMessaging Client database.
  */
 public class SqliteDatabase extends Database {
-	private static final Logger log = LoggerFactory.getLogger(SqliteDatabase.class);
 	public static final String CONNECTION_URI_PREFIX = "jdbc:sqlite:";
+	private static final int DEFAULT_POOL_SIZE = 1;
 
-	private final String uri;
+	private final String connectionUri;
 	private final int poolSize;
-	private Pool pool;
-	private final SqliteSqlDialect dialect = new SqliteSqlDialect();
+	private final SqlDialect sqlDialect;
+	private Pool client;
+	private static final Logger log = LoggerFactory.getLogger(SqliteDatabase.class);
 
-	public SqliteDatabase(String uri, int poolSize) {
-		this.uri = Objects.requireNonNull(uri, "uri");
-		this.poolSize = poolSize > 0 ? poolSize : 1;
+	public SqliteDatabase(String connectionUri, int poolSize) {
+		this.connectionUri = connectionUri;
+		this.poolSize = poolSize <= 0 ? DEFAULT_POOL_SIZE : poolSize;
+		this.sqlDialect = new SqlDialect();
 	}
 
-	@Override
-	protected Logger getLogger() {
-		return log;
+	protected SqliteDatabase(String connectionUri) {
+		this(connectionUri, 0);
 	}
 
 	@Override
 	protected void init(Vertx vertx) {
 		SQLiteDataSource dataSource = new SQLiteDataSource();
-		dataSource.setUrl(uri);
+		dataSource.setUrl(connectionUri);
 		dataSource.setJournalMode("WAL");
 		dataSource.setEnforceForeignKeys(true);
 		dataSource.setBusyTimeout(5000);
+		dataSource.setLockingMode("NORMAL");
+		dataSource.setSharedCache(false);
+		dataSource.setFullSync(true);
 
-		this.pool = JDBCPool.pool(vertx, dataSource, new PoolOptions().setMaxSize(poolSize));
-	}
-
-	@Override
-	public SqlClient getClient() {
-		return pool;
-	}
-
-	@Override
-	public SqlDialect getDialect() {
-		return dialect;
+		this.client = JDBCPool.pool(vertx, dataSource, new PoolOptions().setMaxSize(poolSize));
 	}
 
 	@Override
@@ -91,10 +83,17 @@ public class SqliteDatabase extends Database {
 	}
 
 	@Override
-	public Future<Void> close() {
-		if (pool != null) {
-			return pool.close();
-		}
-		return Future.succeededFuture();
+	public SqlClient getClient() {
+		return client;
+	}
+
+	@Override
+	public SqlDialect getDialect() {
+		return sqlDialect;
+	}
+
+	@Override
+	protected Logger getLogger() {
+		return log;
 	}
 }

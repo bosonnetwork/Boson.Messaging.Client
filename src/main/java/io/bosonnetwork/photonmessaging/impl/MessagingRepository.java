@@ -87,12 +87,12 @@ interface MessagingRepository {
 	}
 
 	/**
-	 * Removes multiple messages from the repository by their IDs.
+	 * Removes multiple messages from the repository by their repository IDs.
 	 *
-	 * @param ids the collection of message IDs to remove
+	 * @param rids the collection of message rids to remove
 	 * @return a Future that completes when the messages are removed
 	 */
-	Future<Boolean> removeMessages(Collection<Long> ids);
+	Future<Boolean> removeMessages(Collection<Long> rids);
 
 	/**
 	 * Removes all messages associated with a specific conversation.
@@ -101,6 +101,13 @@ interface MessagingRepository {
 	 * @return a Future that completes when the messages are removed
 	 */
 	Future<Boolean> removeMessages(Id conversationId);
+
+	/**
+	 * Clears all messages from the system or designated storage.
+	 *
+	 * @return a Future representing the completion of the clear operation.
+	 */
+	Future<Void> clearMessages();
 
 	/**
 	 * Sends a friend request to the repository.
@@ -146,7 +153,7 @@ interface MessagingRepository {
 
 	/**
 	 * Clears all pending friend requests for the current user.
-	 *
+	 * <p>
 	 * This method removes all friend request entries from the system or database
 	 * that are associated with the user. It ensures that there are no remaining
 	 * pending friend requests to process.
@@ -271,10 +278,10 @@ interface MessagingRepository {
 	/**
 	 * Retrieves multiple contacts by their IDs.
 	 *
-	 * @param contactIds the list of contact IDs
+	 * @param contactIds the collection of contact IDs
 	 * @return a Future with the list of found contacts
 	 */
-	Future<List<Contact>> getContacts(List<Id> contactIds);
+	Future<List<Contact>> getContacts(Collection<Id> contactIds);
 
 	/**
 	 * Retrieves all contacts from the repository.
@@ -352,20 +359,28 @@ interface MessagingRepository {
 	 * Retrieves the list of members for a specific channel based on the provided channel ID and an optional list of member IDs.
 	 *
 	 * @param channelId The unique identifier of the channel whose members are to be fetched.
-	 * @param memberId A list of unique identifiers for specific members. If provided, only members matching these IDs will be retrieved.
+	 * @param memberIds A collection of unique identifiers for specific members. If provided, only members matching these IDs will be retrieved.
 	 * @return A future representing the asynchronous computation of a list of members in the specified channel, filtered by the provided member IDs if applicable.
 	 */
-	Future<List<Channel.Member>> getChannelMembers(Id channelId, List<Id> memberId);
+	Future<List<Channel.Member>> getChannelMembers(Id channelId, Collection<Id> memberIds);
+
+	/**
+	 * Retrieves the list of all members for a specific channel.
+	 *
+	 * @param channelId The unique identifier of the channel whose members are to be fetched.
+	 * @return A future representing the asynchronous computation of a list of all members in the specified channel.
+	 */
+	Future<List<Channel.Member>> getAllChannelMembers(Id channelId);
 
 	/**
 	 * Sets the role for multiple members in a channel.
 	 *
 	 * @param channelId the ID of the channel
-	 * @param memberIds the list of member IDs
+	 * @param memberIds the collection of member IDs
 	 * @param role the new role to assign to all specified members
 	 * @return a Future that completes when the roles are updated
 	 */
-	Future<Boolean> updateChannelMembersRole(Id channelId, List<Id> memberIds, Channel.Role role);
+	Future<Boolean> updateChannelMembersRole(Id channelId, Collection<Id> memberIds, Channel.Role role);
 
 	/**
 	 * Removes a single member from a channel.

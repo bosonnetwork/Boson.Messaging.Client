@@ -60,7 +60,7 @@ public class DefaultContent<B> implements Message.Content {
 
 	@Override
 	public String getContentType() {
-		return (String) headers.getOrDefault(ContentType.HEADER_NAME, ContentType.TEXT);
+		return (String) headers.get(ContentType.HEADER_NAME);
 	}
 
 	@Override
@@ -69,6 +69,10 @@ public class DefaultContent<B> implements Message.Content {
 			return ContentDisposition.parse((String) headers.get(ContentDisposition.HEADER_NAME));
 		else
 			return null;
+	}
+
+	public byte[] getBody() {
+		return body != null ? Json.toBytes(body) : null;
 	}
 
 	@Override
