@@ -1,3 +1,25 @@
+/*
+ * Copyright (c) 2023 -      bosonnetwork.io
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 package io.bosonnetwork.photonmessaging.impl;
 
 import java.util.HashMap;
@@ -5,22 +27,24 @@ import java.util.Map;
 import java.util.Objects;
 
 import io.bosonnetwork.Id;
+import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.ContentDisposition;
 import io.bosonnetwork.photonmessaging.ContentType;
 import io.bosonnetwork.photonmessaging.Message;
 import io.bosonnetwork.vertx.VertxFuture;
 
 public class MessageBuilder implements Message.Builder {
-	private final static Map<String, Object> EMPTY_HEADERS = Map.of();
-
-	private final MessagingClientImpl client;
+	private final PhotonMessagingClient client;
 	private Id recipient;
-	private Map<String, Object> headers;
-	private Object body;
+	private final Map<String, Object> headers;
+	MessageContent.Format format;
+	private Object content;
+	private Object origin;
 
-	protected MessageBuilder(MessagingClientImpl client, Id recipient) {
+	protected MessageBuilder(PhotonMessagingClient client, Id recipient) {
 		this.client = client;
-		this.headers = EMPTY_HEADERS;
+		this.headers = new HashMap<>();
+		this.recipient = recipient;
 	}
 
 	@Override
@@ -33,15 +57,10 @@ public class MessageBuilder implements Message.Builder {
 	@Override
 	public MessageBuilder header(String name, Object value) {
 		Objects.requireNonNull(name, "name");
-		if (value != null) {
-			if (headers == EMPTY_HEADERS)
-				headers = new HashMap<>();
-
+		if (value != null)
 			headers.put(name, value);
-		} else {
-			if (headers != EMPTY_HEADERS)
-				headers.remove(name);
-		}
+		else
+			headers.remove(name);
 
 		return this;
 	}
@@ -68,9 +87,18 @@ public class MessageBuilder implements Message.Builder {
 	}
 
 	@Override
-	public MessageBuilder body(byte[] body) {
-		Objects.requireNonNull(body, "body");
-		this.body = body;
+	public MessageBuilder contentText(String text) {
+		Objects.requireNonNull(text, "text");
+		this.format = MessageContent.Format.TEXT;
+		this.content = text;
+		return this;
+	}
+
+	@Override
+	public MessageBuilder contentBinary(byte[] binary) {
+		Objects.requireNonNull(binary, "binary");
+		this.format = MessageContent.Format.BINARY;
+		this.content = binary;
 		if (!headers.containsKey(ContentType.HEADER_NAME))
 			headers.put(ContentType.HEADER_NAME, ContentType.BINARY);
 
@@ -78,16 +106,36 @@ public class MessageBuilder implements Message.Builder {
 	}
 
 	@Override
-	public MessageBuilder body(String body) {
-		Objects.requireNonNull(body, "body");
-		this.body = body;
+	public MessageBuilder contentObject(Object object) {
+		Objects.requireNonNull(object, "object");
+		this.format = MessageContent.Format.OBJECT;
+		this.content = Json.toBytes(object);
+		this.origin = object;
+		if (!headers.containsKey(ContentType.HEADER_NAME))
+			headers.put(ContentType.HEADER_NAME, ContentType.CBOR);
+
 		return this;
 	}
 
 	@Override
-	public MessageBuilder body(Object body) {
-		Objects.requireNonNull(body, "body");
-		this.body = body;
+	public Message.Builder contentJson(String json) {
+		Objects.requireNonNull(json, "json");
+		this.format = MessageContent.Format.OBJECT;
+		this.content = Json.jsonToCbor(json);
+		this.origin = null;
+		if (!headers.containsKey(ContentType.HEADER_NAME))
+			headers.put(ContentType.HEADER_NAME, ContentType.JSON);
+		return this;
+	}
+
+	@Override
+	public Message.Builder contentCbor(byte[] cbor) {
+		Objects.requireNonNull(cbor, "cbor");
+		this.format = MessageContent.Format.OBJECT;
+		this.content = cbor;
+		this.origin = null;
+		if (!headers.containsKey(ContentType.HEADER_NAME))
+			headers.put(ContentType.HEADER_NAME, ContentType.CBOR);
 		return this;
 	}
 
@@ -95,14 +143,18 @@ public class MessageBuilder implements Message.Builder {
 		if (recipient == null)
 			throw new IllegalStateException("Recipient not set");
 
-		if (body == null)
-			throw new IllegalStateException("Body not set");
-
 		long now = System.currentTimeMillis();
-		Id messageId = MessageImpl.generateId(client.getDeviceId(), now);
-		DefaultContent<?> payload = new DefaultContent<>(headers, body);
+		Id messageId = PhotonMessage.generateId(client.getDeviceId(), now);
 
-		return new MessageImpl<>(messageId, recipient, Message.Type.CONTENT_MESSAGE, now, payload);
+		if (content == null)
+			throw new IllegalStateException("content not set");
+
+		MessageContent payload = switch (format) {
+			case TEXT -> MessageContent.text(headers, (String) content);
+			case BINARY -> MessageContent.binary(headers, (byte[]) content);
+			case OBJECT -> MessageContent.objectWithSerialized(headers, (byte[]) content, origin);
+		};
+		return new PhotonMessage<>(messageId, recipient, Message.Type.CONTENT_MESSAGE, now, payload);
 	}
 
 	@Override

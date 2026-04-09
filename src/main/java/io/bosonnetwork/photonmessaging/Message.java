@@ -157,7 +157,9 @@ public interface Message {
 		 *
 		 * @return the content type as a string, representing the media type (e.g., "text/plain", "application/json").
 		 */
-		String getContentType();
+		default String getContentType() {
+			return getHeaders().getOrDefault(ContentType.HEADER_NAME, ContentType.TEXT).toString();
+		}
 
 		/**
 		 * Retrieves the content disposition of the message.
@@ -165,7 +167,27 @@ public interface Message {
 		 * @return the content disposition, indicating how the content is expected
 		 *         to be displayed (e.g., "inline" or "attachment").
 		 */
-		ContentDisposition getContentDisposition();
+		default ContentDisposition getContentDisposition() {
+			Object disposition = getHeaders().get(ContentDisposition.HEADER_NAME);
+			if (disposition != null)
+				return ContentDisposition.parse(disposition.toString());
+			else
+				return null;
+		}
+
+		/**
+		 * Retrieves the body of the content as a string representation.
+		 *
+		 * @return the body of the content as a string, or null if the body is not present.
+		 */
+		String asText();
+
+		/**
+		 * Retrieves the body of the content as an array of bytes.
+		 *
+		 * @return a byte array representing the body of the content, or null if the body is not present.
+		 */
+		byte[] asBinary();
 
 		/**
 		 * Retrieves the body of the content.
@@ -173,7 +195,7 @@ public interface Message {
 		 * @param <T> the expected type of the body
 		 * @return the body of the content, cast to the specified type
 		 */
-		<T> T getBodyAs(Class<T> type);
+		<T> T asObject(Class<T> type);
 
 		/**
 		 * Retrieves the body of the content as a list of elements of the specified type.
@@ -182,7 +204,7 @@ public interface Message {
 		 * @param elementType the class of the elements to cast the body elements to
 		 * @return a list of elements of the specified type representing the content body
 		 */
-		<E> List<E> getBodyAsListOf(Class<E> elementType);
+		<E> List<E> asListOf(Class<E> elementType);
 	}
 
 	/**
@@ -232,16 +254,7 @@ public interface Message {
 		Builder contentDisposition(ContentDisposition contentDisposition);
 
 		/**
-		 * Sets the message body as a byte array.
-		 * The content-type header will be set to "application/octet-stream" if not already set.
-		 *
-		 * @param body the raw bytes of the content
-		 * @return this builder instance
-		 */
-		Builder body(byte[] body);
-
-		/**
-		 * Sets the message body as a string.
+		 * Sets the message content as a string.
 		 * The content is treated as {@code text/plain}. The corresponding
 		 * {@code Content-Type} header is assumed as the default and therefore
 		 * is not explicitly set.
@@ -249,19 +262,43 @@ public interface Message {
 		 * @param body the string content
 		 * @return this builder instance
 		 */
-		Builder body(String body);
+		Builder contentText(String body);
 
 		/**
-		 * Sets the message body as an object.
-		 * The content-type header will be set to the following value if not already set:
-		 * - byte[]: "application/json"
-		 * - String: "text/plain" default content type, omitted if already set
-		 * - others: "application/cbor"
+		 * Sets the message content as a byte array.
+		 * The content-type header will be set to "application/octet-stream" if not already set.
+		 *
+		 * @param body the raw bytes of the content
+		 * @return this builder instance
+		 */
+		Builder contentBinary(byte[] body);
+
+		/**
+		 * Sets the message content as an object.
+		 * The content-type header will be set to "application/cbor" if not already set.
 		 *
 		 * @param body the object to be used as the message body
 		 * @return this builder instance
 		 */
-		Builder body(Object body);
+		Builder contentObject(Object body);
+
+		/**
+		 * Sets the message content as a JSON string.
+		 * The content-type header will be set to "application/json" if not already set.
+		 *
+		 * @param json the JSON string to be used as the message body
+		 * @return this builder instance
+		 */
+		Builder contentJson(String json);
+
+		/**
+		 * Sets the message content as a CBOR-encoded byte array.
+		 * The content-type header will be set to "application/cbor" if not already set.
+		 *
+		 * @param cbor the CBOR-encoded data to be used as the message body
+		 * @return this builder instance
+		 */
+		Builder contentCbor(byte[] cbor);
 
 		/**
 		 * Composes and sends the message.

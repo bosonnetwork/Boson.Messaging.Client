@@ -50,7 +50,7 @@ public class Notification<T> {
 	@JsonProperty(value = "t", required = true)
 	private final long timestamp;
 	@JsonProperty(value = "c")
-	@JsonInclude(JsonInclude.Include.NON_NULL)
+	@JsonInclude(JsonInclude.Include.NON_EMPTY)
 	private final T content;
 
 	public enum Event {
@@ -85,7 +85,7 @@ public class Notification<T> {
 		}
 
 		@JsonCreator
-		public Event valueOf(int value) {
+		public static Event valueOf(int value) {
 			return switch (value) {
 				case 0x01 -> SESSION_NEW;
 				case 0x02 -> CONTACT_SYNC;

@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging;
+package io.bosonnetwork.photonmessaging.exceptions;
 
 /**
  * This exception is thrown to indicate that an operation failed because the user

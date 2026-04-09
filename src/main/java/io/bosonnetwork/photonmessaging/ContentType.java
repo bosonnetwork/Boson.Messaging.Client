@@ -34,7 +34,7 @@ package io.bosonnetwork.photonmessaging;
  */
 public class ContentType {
 	/**
-	 * The standard header name for content type.
+	 * The standard header name for the content type.
 	 */
 	public static final String HEADER_NAME = "Content-Type";
 

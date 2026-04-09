@@ -179,12 +179,56 @@ public interface Contact extends Comparable<Contact> {
 	}
 
 	/**
-	 * Creates a {@link ContactEditor} instance for editing the current {@link Contact}.
+	 * Creates a {@link Editor} instance for editing the current {@link Contact}.
 	 * <p>
 	 * Since {@link Contact} is immutable, the builder will return a new instance
-	 * reflecting any modifications when {@link ContactEditor#build()} is called.
+	 * reflecting any modifications when {@link Editor#build()} is called.
 	 *
-	 * @return a {@link ContactEditor} instance to modify and update the contact details
+	 * @return a {@link Editor} instance to modify and update the contact details
 	 */
-	ContactEditor edit();
+	Editor edit();
+
+	/**
+	 * A builder for creating or updating {@link Contact} instances.
+	 */
+	interface Editor {
+		/**
+		 * Sets the remark (alias) for the contact.
+		 *
+		 * @param remark the contact remark
+		 * @return this builder instance
+		 */
+		Editor setRemark(String remark);
+
+		/**
+		 * Sets the tags associated with the contact.
+		 *
+		 * @param tags the contact tags
+		 * @return this builder instance
+		 */
+		Editor setTags(String tags);
+
+		/**
+		 * Sets whether the contact is muted.
+		 *
+		 * @param muted true if muted, false otherwise
+		 * @return this builder instance
+		 */
+		Editor setMuted(boolean muted);
+
+		/**
+		 * Sets whether the contact is blocked.
+		 *
+		 * @param blocked true if blocked, false otherwise
+		 * @return this builder instance
+		 */
+		Editor setBlocked(boolean blocked);
+
+		/**
+		 * Builds and returns the {@link Contact} instance.
+		 *
+		 * @return the constructed Contact
+		 */
+		Contact build();
+	}
 }

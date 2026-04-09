@@ -28,19 +28,19 @@ import io.bosonnetwork.photonmessaging.Contact;
 import io.bosonnetwork.photonmessaging.Conversation;
 import io.bosonnetwork.photonmessaging.Message;
 
-public class ConversationImpl implements Conversation {
+public class PhotonConversation implements Conversation {
 	public static final int MAX_SNIPPET_LENGTH = 128;
 
 	private Contact participant;
 	private Message lastMessage;
 	private transient String preview;
 
-	protected ConversationImpl(Contact participant, Message lastMessage) {
+	protected PhotonConversation(Contact participant, Message lastMessage) {
 		this.participant = participant;
 		update(lastMessage);
 	}
 
-	protected ConversationImpl(Contact participant) {
+	protected PhotonConversation(Contact participant) {
 		this.participant = participant;
 	}
 
@@ -56,7 +56,7 @@ public class ConversationImpl implements Conversation {
 			Message.Content content = lastMessage.getPayloadAsContent();
 			String contentType = content.getContentType();
 			if (contentType.startsWith("text/")) {
-				String body = content.getBodyAs(String.class).trim();
+				String body = content.asText().trim();
 				snippet = body.length() < MAX_SNIPPET_LENGTH ? body : body.substring(0, MAX_SNIPPET_LENGTH - 3) + "...";
 			} else if (contentType.startsWith("image/")) {
 				preview = "(Image)";

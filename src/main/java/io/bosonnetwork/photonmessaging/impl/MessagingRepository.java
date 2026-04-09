@@ -45,7 +45,7 @@ interface MessagingRepository {
 	 * @param message the message to save
 	 * @return a Future that completes when the message is saved
 	 */
-	Future<Void> putMessage(MessageImpl<DefaultContent<?>> message);
+	Future<Void> putMessage(PhotonMessage<MessageContent> message);
 
 	/**
 	 * Updates the sent time of the specified message in the repository.
@@ -53,7 +53,7 @@ interface MessagingRepository {
 	 * @param message the message whose sent time needs to be updated
 	 * @return a Future that completes when the message's sent time is updated
 	 */
-	Future<Void> updateMessageSentTime(MessageImpl<DefaultContent<?>> message);
+	Future<Void> updateMessageSentTime(PhotonMessage<MessageContent> message);
 
 	/**
 	 * Retrieves messages for a specific conversation within a time range.
@@ -63,7 +63,7 @@ interface MessagingRepository {
 	 * @param end the end timestamp (exclusive)
 	 * @return a Future with the list of messages found
 	 */
-	Future<List<MessageImpl<DefaultContent<?>>>> getMessages(Id conversationId, long begin, long end);
+	Future<List<PhotonMessage<MessageContent>>> getMessages(Id conversationId, long begin, long end);
 
 	/**
 	 * Retrieves messages for a specific conversation with pagination.
@@ -74,7 +74,7 @@ interface MessagingRepository {
 	 * @param offset the number of messages to skip
 	 * @return a Future with the list of messages found
 	 */
-	Future<List<MessageImpl<DefaultContent<?>>>> getMessages(Id conversationId, long since, int limit, int offset);
+	Future<List<PhotonMessage<MessageContent>>> getMessages(Id conversationId, long since, int limit, int offset);
 
 	/**
 	 * Removes a single message from the repository by its ID.

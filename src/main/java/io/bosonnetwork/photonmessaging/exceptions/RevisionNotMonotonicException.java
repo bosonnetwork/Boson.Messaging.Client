@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging;
+package io.bosonnetwork.photonmessaging.exceptions;
 
 /**
  * This exception is thrown when a revision in a contact operation is detected

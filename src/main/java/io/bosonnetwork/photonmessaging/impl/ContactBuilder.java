@@ -168,7 +168,7 @@ public class ContactBuilder {
 		return switch (type) {
 			case AUTO -> new AutoContact(id, name, null, remark, tags, muted, blocked, createdAt, updatedAt);
 			case FRIEND -> new Friend(id, sessionKey, name, null, remark, tags, muted, blocked, createdAt, updatedAt, revision);
-			case CHANNEL -> new ChannelImpl(id, sessionKey, ownerId, permission, name, notice, announce, remark, tags,
+			case CHANNEL -> new PhotonChannel(id, sessionKey, ownerId, permission, name, notice, announce, remark, tags,
 					muted, blocked, createdAt, updatedAt, revision);
 		};
 	}
