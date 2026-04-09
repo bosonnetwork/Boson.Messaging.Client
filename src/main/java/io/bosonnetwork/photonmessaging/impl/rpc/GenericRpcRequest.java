@@ -27,6 +27,7 @@ import java.io.IOException;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectReader;
 
@@ -61,6 +62,17 @@ public class GenericRpcRequest extends RpcRequest<JsonNode> {
 		try {
 			return Json.cborMapper().convertValue(params, type);
 		} catch (IllegalArgumentException e) {
+			throw new InvalidRpcParametersException("Invalid RPC parameters", e);
+		}
+	}
+
+	public <R> R getParamsAs(JavaType type) throws InvalidRpcParametersException {
+		if (params == null)
+			return null;
+
+		try {
+			return Json.cborMapper().convertValue(params, type);
+		} catch (Exception e) {
 			throw new InvalidRpcParametersException("Invalid RPC parameters", e);
 		}
 	}

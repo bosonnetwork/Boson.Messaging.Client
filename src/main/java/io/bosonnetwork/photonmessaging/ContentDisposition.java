@@ -235,7 +235,7 @@ public class ContentDisposition {
 
 	private static String toAsciiFallback(String filename) {
 		String normalized = java.text.Normalizer.normalize(filename, java.text.Normalizer.Form.NFKD);
-		return normalized.replaceAll("[^\\x20-\\x7E]", "_");
+		return normalized.replaceAll("\\p{M}", "").replaceAll("[^\\x20-\\x7E]", "_");
 	}
 
 	/**

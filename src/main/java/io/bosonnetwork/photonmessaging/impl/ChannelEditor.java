@@ -30,19 +30,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Channel;
-import io.bosonnetwork.photonmessaging.ChannelEditor;
 
-public class ChannelEditorImpl implements ChannelEditor {
+public class ChannelEditor implements Channel.Editor {
 	private Id ownerId;
 	private Channel.Permission permission;
 	private String name;
 	private String notice;
 	private boolean announce;
 
-	private final ChannelImpl origin;
+	private final PhotonChannel origin;
 	private boolean modified;
 
-	protected ChannelEditorImpl(ChannelImpl channel) {
+	protected ChannelEditor(PhotonChannel channel) {
 		this.origin = channel;
 		this.ownerId = channel.getOwnerId();
 		this.permission = channel.getPermission();
@@ -52,7 +51,7 @@ public class ChannelEditorImpl implements ChannelEditor {
 		this.modified = false;
 	}
 
-	protected ChannelEditorImpl setOwnerId(Id ownerId) {
+	protected ChannelEditor setOwnerId(Id ownerId) {
 		if (!Objects.equals(this.ownerId, ownerId)) {
 			this.ownerId = ownerId;
 			this.modified = true;
@@ -61,7 +60,7 @@ public class ChannelEditorImpl implements ChannelEditor {
 	}
 
 	@Override
-	public ChannelEditorImpl setPermission(Channel.Permission permission) {
+	public ChannelEditor setPermission(Channel.Permission permission) {
 		if (this.permission != permission) {
 			this.permission = permission;
 			this.modified = true;
@@ -70,7 +69,7 @@ public class ChannelEditorImpl implements ChannelEditor {
 	}
 
 	@Override
-	public ChannelEditorImpl setName(String name) {
+	public ChannelEditor setName(String name) {
 		if (!Objects.equals(this.name, name)) {
 			this.name = name;
 			this.modified = true;
@@ -79,7 +78,7 @@ public class ChannelEditorImpl implements ChannelEditor {
 	}
 
 	@Override
-	public ChannelEditorImpl setNotice(String notice) {
+	public ChannelEditor setNotice(String notice) {
 		if (!Objects.equals(this.notice, notice)) {
 			this.notice = notice;
 			this.modified = true;
@@ -88,7 +87,7 @@ public class ChannelEditorImpl implements ChannelEditor {
 	}
 
 	@Override
-	public ChannelEditorImpl setAnnounce(boolean announce) {
+	public ChannelEditor setAnnounce(boolean announce) {
 		if (this.announce != announce) {
 			this.announce = announce;
 			this.modified = true;
@@ -96,7 +95,7 @@ public class ChannelEditorImpl implements ChannelEditor {
 		return this;
 	}
 
-	protected ChannelEditorImpl patch(JsonNode changes) {
+	protected ChannelEditor patch(JsonNode changes) {
 		Iterator<Map.Entry<String, JsonNode>> fields = changes.fields();
 		while (fields.hasNext()) {
 			final Map.Entry<String, JsonNode> field = fields.next();
@@ -114,8 +113,8 @@ public class ChannelEditorImpl implements ChannelEditor {
 	}
 
 	@Override
-	public ChannelImpl build() {
-		return new ChannelImpl(origin.getId(), origin.getSessionKey(), origin.getOwnerId(), origin.getPermission(),
+	public PhotonChannel build() {
+		return new PhotonChannel(origin.getId(), origin.getSessionKey(), origin.getOwnerId(), origin.getPermission(),
 				origin.getName(), origin.getNotice(), origin.isAnnounce(), origin.getRemark(), origin.getTags(),
 				origin.isMuted(), origin.isBlocked(), origin.getCreatedAt(), System.currentTimeMillis(),
 				origin.getRevision());

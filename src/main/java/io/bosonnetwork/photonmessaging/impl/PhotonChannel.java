@@ -42,7 +42,7 @@ import io.bosonnetwork.Id;
 import io.bosonnetwork.crypto.CryptoException;
 import io.bosonnetwork.photonmessaging.Channel;
 
-public class ChannelImpl extends PhotonContact implements Channel {
+public class PhotonChannel extends PhotonContact implements Channel {
 	/**
 	 * The unique identifier of the channel's owner (the creator or current administrator).
 	 */
@@ -82,9 +82,9 @@ public class ChannelImpl extends PhotonContact implements Channel {
 	private Map<Id, CryptoContext> memberRxCryptoContexts;
 
 	// Constructor for database OR mapping
-	protected ChannelImpl(Id id, byte[] sessionKey, Id ownerId, Permission permission, String name, String notice,
-	                  boolean announce, String remark, String tags, boolean muted, boolean blocked,
-	                  long createdAt, long updatedAt, int revision) {
+	protected PhotonChannel(Id id, byte[] sessionKey, Id ownerId, Permission permission, String name, String notice,
+	                        boolean announce, String remark, String tags, boolean muted, boolean blocked,
+	                        long createdAt, long updatedAt, int revision) {
 		super(id, sessionKey, name, null, remark, tags, muted, blocked, createdAt, updatedAt, revision);
 		this.ownerId = ownerId;
 		this.permission = permission;
@@ -92,8 +92,8 @@ public class ChannelImpl extends PhotonContact implements Channel {
 		this.announce = announce;
 	}
 
-	protected ChannelImpl(Id id, byte[] sessionKey, Id ownerId, Permission permission, String name, String notice,
-	                      boolean announce, long createdAt, long updatedAt) {
+	protected PhotonChannel(Id id, byte[] sessionKey, Id ownerId, Permission permission, String name, String notice,
+	                        boolean announce, long createdAt, long updatedAt) {
 		this(id, sessionKey, ownerId, permission, name, notice, announce,
 				null, null, false, false, createdAt, updatedAt, 0);
 	}
@@ -144,8 +144,8 @@ public class ChannelImpl extends PhotonContact implements Channel {
 	}
 
 	@Override
-	public ChannelEditorImpl editChannel() {
-		return new ChannelEditorImpl(this);
+	public ChannelEditor editChannel() {
+		return new ChannelEditor(this);
 	}
 
 	protected void setMembersLoader(Function<Id, Future<List<ChannelMember>>> membersLoader) {

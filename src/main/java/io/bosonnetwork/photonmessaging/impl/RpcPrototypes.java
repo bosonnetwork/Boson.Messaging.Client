@@ -58,7 +58,7 @@ public class RpcPrototypes {
 
 	public static final RpcMethodPrototype SESSION_LIST =
 			new RpcMethodPrototype(RpcMethod.SESSION_LIST, TYPE_VOID, TYPE_SESSIONS);
-	
+
 	public static final RpcMethodPrototype SESSION_REVOKE =
 			new RpcMethodPrototype(RpcMethod.SESSION_REVOKE, TYPE_ID, TYPE_VOID);
 
@@ -102,11 +102,11 @@ public class RpcPrototypes {
 			new RpcMethodPrototype(RpcMethod.CHANNEL_INFO, TYPE_VOID, TYPE_CHANNEL_INFO);
 
 	public record CreateChannelParams(@JsonProperty(value = "sid", required = true) Id sessionId,
-									  @JsonProperty(value = "sk", required = true) byte[] sessionKey,
-									  @JsonProperty(value = "p", required = true) Channel.Permission permission,
-									  @JsonProperty("n") String name,
-									  @JsonProperty("nt") String notice,
-									  @JsonProperty("a") boolean announce) {
+	                                  @JsonProperty(value = "sk", required = true) byte[] sessionKey,
+	                                  @JsonProperty(value = "p", required = true) Channel.Permission permission,
+	                                  @JsonProperty("n") String name,
+	                                  @JsonProperty("nt") String notice,
+	                                  @JsonProperty("a") boolean announce) {
 	}
 
 	public record ChannelInfo(@JsonProperty(value = "id", required = true) Id channelId,
@@ -119,14 +119,14 @@ public class RpcPrototypes {
 	                          @JsonProperty(value = "a") @JsonInclude(JsonInclude.Include.NON_DEFAULT) boolean announce,
 	                          @JsonProperty(value = "c") long createdAt,
 	                          @JsonProperty(value = "u") long updateAt,
-							  @JsonProperty(value = "m") @JsonInclude(JsonInclude.Include.NON_EMPTY) List<Channel.Member> members) {
+	                          @JsonProperty(value = "m") @JsonInclude(JsonInclude.Include.NON_EMPTY) List<Channel.Member> members) {
 	}
 
 	public record ChannelSessionKeyRotationParams(@JsonProperty(value = "sid", required = true) Id sessionId,
-												  @JsonProperty(value = "sk", required = true) byte[] sessionKey) {
+	                                              @JsonProperty(value = "sk", required = true) byte[] sessionKey) {
 	}
 
 	public record ChannelMembersRoleParams(@JsonProperty(value = "ids", required = true) List<Id> memberIds,
-											@JsonProperty(value = "r", required = true) Channel.Role role) {
+	                                       @JsonProperty(value = "r", required = true) Channel.Role role) {
 	}
 }

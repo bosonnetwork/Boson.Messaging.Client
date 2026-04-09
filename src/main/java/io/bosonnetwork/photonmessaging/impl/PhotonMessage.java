@@ -41,7 +41,7 @@ import io.bosonnetwork.photonmessaging.Message;
 import io.bosonnetwork.photonmessaging.impl.rpc.RpcRequest;
 
 @JsonPropertyOrder({"v", "r", "y", "f", "s", "c", "p"})
-public class MessageImpl<P> implements Message {
+public class PhotonMessage<P> implements Message {
 	private static final int VERSION = 2;
 
 	private static final AtomicInteger messageSerialNumber = new AtomicInteger(1);
@@ -72,13 +72,13 @@ public class MessageImpl<P> implements Message {
 	private Promise<Void> sentPromise;
 
 	@JsonCreator
-	protected MessageImpl(@JsonProperty(value = "v", required = true) int version,
-						  @JsonProperty(value = "id", required = true) Id id,
-	                      @JsonProperty(value = "r", required = true) Id recipient,
-						  @JsonProperty(value = "y", required = true) Type type,
-						  @JsonProperty(value = "f") Id from,
-						  @JsonProperty(value = "c", required = true) long createdAt,
-						  @JsonProperty(value = "p", required = true) P payload) {
+	protected PhotonMessage(@JsonProperty(value = "v", required = true) int version,
+	                        @JsonProperty(value = "id", required = true) Id id,
+	                        @JsonProperty(value = "r", required = true) Id recipient,
+	                        @JsonProperty(value = "y", required = true) Type type,
+	                        @JsonProperty(value = "f") Id from,
+	                        @JsonProperty(value = "c", required = true) long createdAt,
+	                        @JsonProperty(value = "p", required = true) P payload) {
 		this.version = version;
 		this.id = id;
 		this.recipient = recipient;
@@ -87,12 +87,12 @@ public class MessageImpl<P> implements Message {
 		this.payload = payload;
 	}
 
-	protected MessageImpl(Id id, Id recipient, Type type, long createAt, P payload) {
+	protected PhotonMessage(Id id, Id recipient, Type type, long createAt, P payload) {
 		this(VERSION, id, recipient, type, null, createAt, payload);
 	}
 
-	protected MessageImpl(long rid, Id conversationId, int version, Id id, Id recipient, Type type, Id from,
-						  long createdAt, P payload, long sentAt, long receivedAt) {
+	protected PhotonMessage(long rid, Id conversationId, int version, Id id, Id recipient, Type type, Id from,
+	                        long createdAt, P payload, long sentAt, long receivedAt) {
 			this.rid = rid;
 			this.conversationId = conversationId;
 			this.version = version;
@@ -106,7 +106,7 @@ public class MessageImpl<P> implements Message {
 			this.receivedAt = receivedAt;
 	}
 
-	protected MessageImpl(MessageImpl<?> message, P newPayload) {
+	protected PhotonMessage(PhotonMessage<?> message, P newPayload) {
 		this.version = message.version;
 		this.id = message.id;
 		this.recipient = message.recipient;
@@ -167,7 +167,7 @@ public class MessageImpl<P> implements Message {
 		return sentAt;
 	}
 
-	public MessageImpl<P> setFrom(Id from) {
+	public PhotonMessage<P> setFrom(Id from) {
 		this.from = from;
 		return this;
 	}
@@ -192,7 +192,7 @@ public class MessageImpl<P> implements Message {
 		return rid;
 	}
 
-	public MessageImpl<P> setRid(long rid) {
+	public PhotonMessage<P> setRid(long rid) {
 		this.rid = rid;
 		return this;
 	}
@@ -216,8 +216,8 @@ public class MessageImpl<P> implements Message {
 		if (payload instanceof byte[] bytes)
 			return bytes;
 
-		if (payload instanceof DefaultContent<?> p)
-			return p.serialize();
+		if (payload instanceof MessageContent c)
+			return c.serialize();
 
 		if (payload instanceof RpcRequest<?> q)
 			return q.serialize();
@@ -236,9 +236,6 @@ public class MessageImpl<P> implements Message {
 
 		if (payload instanceof Content c)
 			return c;
-
-		if (payload instanceof byte[] bytes)
-			return DefaultContent.parse(bytes);
 
 		throw new IllegalStateException("Message payload is not a Content");
 	}

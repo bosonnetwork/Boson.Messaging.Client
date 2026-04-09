@@ -28,13 +28,13 @@ import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.ObjectWriter;
 
 import io.bosonnetwork.json.Json;
-import io.bosonnetwork.photonmessaging.MalformedMessageException;
+import io.bosonnetwork.photonmessaging.exceptions.MalformedMessageException;
 
-public class BytesMessage extends MessageImpl<byte[]> {
+public class BytesMessage extends PhotonMessage<byte[]> {
 	private static final ObjectReader READER = Json.cborMapper().readerFor(BytesMessage.class);
 	private static final ObjectWriter WRITER = Json.cborMapper().writerFor(BytesMessage.class);
 
-	private BytesMessage(MessageImpl<?> ref, byte[] payload) {
+	private BytesMessage(PhotonMessage<?> ref, byte[] payload) {
 		super(ref, payload);
 	}
 
@@ -59,11 +59,11 @@ public class BytesMessage extends MessageImpl<byte[]> {
 		}
 	}
 
-	protected <T> MessageImpl<T> dup(T newPayload) {
-		return new MessageImpl<>(this, newPayload);
+	protected <T> PhotonMessage<T> dup(T newPayload) {
+		return new PhotonMessage<>(this, newPayload);
 	}
 
-	protected static BytesMessage dup(MessageImpl<?> ref, byte[] payload) {
+	protected static BytesMessage dup(PhotonMessage<?> ref, byte[] payload) {
 		return new BytesMessage(ref, payload);
 	}
 }

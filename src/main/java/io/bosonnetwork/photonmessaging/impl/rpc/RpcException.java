@@ -22,7 +22,7 @@
 
 package io.bosonnetwork.photonmessaging.impl.rpc;
 
-import io.bosonnetwork.photonmessaging.MessagingException;
+import io.bosonnetwork.photonmessaging.exceptions.MessagingException;
 
 public class RpcException extends MessagingException {
 	private static final long serialVersionUID = -1363876638838365212L;

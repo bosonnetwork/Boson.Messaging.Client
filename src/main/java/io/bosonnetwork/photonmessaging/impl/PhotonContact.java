@@ -379,7 +379,7 @@ public abstract class PhotonContact implements Contact {
 	}
 
 	@Override
-	public ContactEditorImpl edit() {
-		return new ContactEditorImpl(this);
+	public ContactEditor edit() {
+		return new ContactEditor(this);
 	}
 }

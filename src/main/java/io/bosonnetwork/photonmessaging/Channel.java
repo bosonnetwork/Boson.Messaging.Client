@@ -333,12 +333,57 @@ public interface Channel extends Contact {
 	boolean hasMember(Id memberId);
 
 	/**
-	 * Prepares a {@link ChannelEditor} instance to modify the properties of the current channel.
+	 * Prepares a {@link Editor} instance to modify the properties of the current channel.
 	 * <p>
 	 * Since {@link Channel} is immutable, the builder will return a new instance
-	 * reflecting any modifications when {@link ChannelEditor#build()} is called.
+	 * reflecting any modifications when {@link Editor#build()} is called.
 	 *
-	 * @return a {@link ChannelEditor} instance to configure and apply changes to the channel
+	 * @return a {@link Editor} instance to configure and apply changes to the channel
 	 */
-	ChannelEditor editChannel();
+	Editor editChannel();
+
+	/**
+	 * A builder for creating or updating {@link Channel} instances.
+	 * Extends {@link Contact.Editor} to provide channel-specific configuration.
+	 */
+	interface Editor {
+		/**
+		 * Sets the join permission policy for the channel.
+		 *
+		 * @param permission the join permission level
+		 * @return this builder instance
+		 */
+		Editor setPermission(Permission permission);
+
+		/**
+		 * Sets the name of the channel.
+		 *
+		 * @param name the channel name
+		 * @return this builder instance
+		 */
+		Editor setName(String name);
+
+		/**
+		 * Sets the channel notice or description.
+		 *
+		 * @param notice the channel notice
+		 * @return this builder instance
+		 */
+		Editor setNotice(String notice);
+
+		/**
+		 * Sets whether the channel is announced to the network.
+		 *
+		 * @param announce true if the channel should be announced, false otherwise
+		 * @return this builder instance
+		 */
+		Editor setAnnounce(boolean announce);
+
+		/**
+		 * Builds and returns the {@link Channel} instance.
+		 *
+		 * @return the constructed Channel
+		 */
+		Channel build();
+	}
 }

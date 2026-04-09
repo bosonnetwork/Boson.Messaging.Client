@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging;
+package io.bosonnetwork.photonmessaging.exceptions;
 
 /**
  * This exception is thrown when a member is already present in the channel.

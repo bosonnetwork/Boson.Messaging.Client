@@ -30,9 +30,9 @@ import java.util.Objects;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
-import io.bosonnetwork.photonmessaging.ContactEditor;
+import io.bosonnetwork.photonmessaging.Contact;
 
-public class ContactEditorImpl implements ContactEditor {
+public class ContactEditor implements Contact.Editor {
 	private byte[] sessionKey;
 	private String name;
 	private String remark;
@@ -45,7 +45,7 @@ public class ContactEditorImpl implements ContactEditor {
 	private final PhotonContact origin;
 	private boolean modified;
 
-	protected ContactEditorImpl(PhotonContact contact) {
+	protected ContactEditor(PhotonContact contact) {
 		this.origin = contact;
 		this.sessionKey = contact.getSessionKey();
 		this.name = contact.getName();
@@ -58,7 +58,7 @@ public class ContactEditorImpl implements ContactEditor {
 		this.modified = false;
 	}
 
-	protected ContactEditorImpl setSessionKey(byte[] sessionKey) {
+	protected ContactEditor setSessionKey(byte[] sessionKey) {
 		if (!Arrays.equals(this.sessionKey, sessionKey)) {
 			this.sessionKey = sessionKey;
 			this.modified = true;
@@ -67,7 +67,7 @@ public class ContactEditorImpl implements ContactEditor {
 		return this;
 	}
 
-	protected ContactEditorImpl setName(String name) {
+	protected ContactEditor setName(String name) {
 		if (Objects.equals(this.name, name)) {
 			this.name = name;
 			this.modified = true;
@@ -77,7 +77,7 @@ public class ContactEditorImpl implements ContactEditor {
 	}
 
 	@Override
-	public ContactEditorImpl setRemark(String remark) {
+	public ContactEditor setRemark(String remark) {
 		if (!Objects.equals(this.remark, remark)) {
 			this.remark = remark;
 			this.modified = true;
@@ -87,7 +87,7 @@ public class ContactEditorImpl implements ContactEditor {
 	}
 
 	@Override
-	public ContactEditorImpl setTags(String tags) {
+	public ContactEditor setTags(String tags) {
 		if (!Objects.equals(this.tags, tags)) {
 			this.tags = tags;
 			this.modified = true;
@@ -97,7 +97,7 @@ public class ContactEditorImpl implements ContactEditor {
 	}
 
 	@Override
-	public ContactEditorImpl setMuted(boolean muted) {
+	public ContactEditor setMuted(boolean muted) {
 		if (this.muted != muted) {
 			this.muted = muted;
 			this.modified = true;
@@ -107,7 +107,7 @@ public class ContactEditorImpl implements ContactEditor {
 	}
 
 	@Override
-	public ContactEditorImpl setBlocked(boolean blocked) {
+	public ContactEditor setBlocked(boolean blocked) {
 		if (this.blocked != blocked) {
 			this.blocked = blocked;
 			this.modified = true;
@@ -116,7 +116,7 @@ public class ContactEditorImpl implements ContactEditor {
 		return this;
 	}
 
-	protected ContactEditorImpl setUpdatedAt(long updatedAt) {
+	protected ContactEditor setUpdatedAt(long updatedAt) {
 		if (this.updatedAt != updatedAt) {
 			this.updatedAt = updatedAt;
 			this.modified = true;
@@ -124,7 +124,7 @@ public class ContactEditorImpl implements ContactEditor {
 		return this;
 	}
 
-	protected ContactEditorImpl setRevision(int revision) {
+	protected ContactEditor setRevision(int revision) {
 		if (origin.getRevision() != revision) {
 			this.revision = revision;
 			this.modified = true;
@@ -132,7 +132,7 @@ public class ContactEditorImpl implements ContactEditor {
 		return this;
 	}
 
-	protected ContactEditorImpl patch(JsonNode changes) {
+	protected ContactEditor patch(JsonNode changes) {
 		Iterator<Map.Entry<String, JsonNode>> fields = changes.fields();
 		while (fields.hasNext()) {
 			final Map.Entry<String, JsonNode> field = fields.next();
@@ -168,8 +168,8 @@ public class ContactEditorImpl implements ContactEditor {
 		if (origin instanceof Friend)
 			return new Friend(origin.getId(), sessionKey, name, origin.getAvatar(), remark, tags,
 					muted, blocked, origin.getCreatedAt(), updatedAt, revision);
-		else if (origin instanceof ChannelImpl channel)
-			return new ChannelImpl(channel.getId(), sessionKey, channel.getOwnerId(), channel.getPermission(),
+		else if (origin instanceof PhotonChannel channel)
+			return new PhotonChannel(channel.getId(), sessionKey, channel.getOwnerId(), channel.getPermission(),
 					name, channel.getNotice(), channel.isAnnounce(), remark, tags,
 					muted, blocked, channel.getCreatedAt(), updatedAt, revision);
 		else

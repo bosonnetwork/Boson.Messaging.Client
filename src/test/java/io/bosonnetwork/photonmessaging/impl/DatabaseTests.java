@@ -15,9 +15,8 @@ import java.util.stream.Stream;
 
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
-import io.vertx.junit5.Timeout;
-import io.vertx.junit5.VertxExtension;
-import io.vertx.junit5.VertxTestContext;
+import net.datafaker.Faker;
+
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +24,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import io.vertx.junit5.Timeout;
+import io.vertx.junit5.VertxExtension;
+import io.vertx.junit5.VertxTestContext;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.crypto.Signature;
@@ -35,7 +37,6 @@ import io.bosonnetwork.photonmessaging.Message;
 import io.bosonnetwork.photonmessaging.impl.database.PostgresDatabase;
 import io.bosonnetwork.photonmessaging.impl.database.SqliteDatabase;
 import io.bosonnetwork.utils.FileUtils;
-import net.datafaker.Faker;
 
 @ExtendWith(VertxExtension.class)
 @SuppressWarnings("CodeBlock2Expr")
@@ -158,7 +159,7 @@ public class DatabaseTests {
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
 	void testChannelAndMembers(String name, Database db, VertxTestContext context) {
 		Id channelId = Id.random();
-		ChannelImpl channel = new ChannelImpl(channelId, null, Id.random(), Channel.Permission.PUBLIC, "Channel 1", "Notice", false, System.currentTimeMillis(), System.currentTimeMillis());
+		PhotonChannel channel = new PhotonChannel(channelId, null, Id.random(), Channel.Permission.PUBLIC, "Channel 1", "Notice", false, System.currentTimeMillis(), System.currentTimeMillis());
 
 		Id m1 = Id.random();
 		Id m2 = Id.random();
@@ -191,8 +192,8 @@ public class DatabaseTests {
 		List<Future<Void>> futures = new ArrayList<>();
 		for (int i = 0; i < 3; i++) {
 			Id mid = Id.random();
-			DefaultContent<String> content = new DefaultContent<String>(Map.of(), "Msg " + i);
-			MessageImpl<DefaultContent<?>> msg = new MessageImpl<>(mid, Id.random(), Message.Type.CONTENT_MESSAGE, baseTime, content);
+			MessageContent content = MessageContent.text("Msg " + i);
+			PhotonMessage<MessageContent> msg = new PhotonMessage<>(mid, Id.random(), Message.Type.CONTENT_MESSAGE, baseTime, content);
 			msg.setConversationId(convId);
 			futures.add(db.putMessage(msg));
 		}
@@ -218,8 +219,8 @@ public class DatabaseTests {
 		Friend friend = new Friend(contactId, null, "Bob", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
 
 		Id msgId = Id.random();
-		DefaultContent<String> content = new DefaultContent<String>(Map.of(), "Last");
-		MessageImpl<DefaultContent<?>> msg = new MessageImpl<>(msgId, Id.random(), Message.Type.CONTENT_MESSAGE, System.currentTimeMillis(), content);
+		MessageContent content = MessageContent.text("Last");
+		PhotonMessage<MessageContent> msg = new PhotonMessage<>(msgId, Id.random(), Message.Type.CONTENT_MESSAGE, System.currentTimeMillis(), content);
 		msg.setConversationId(contactId);
 
 		db.putContactLocally(friend)
@@ -240,14 +241,14 @@ public class DatabaseTests {
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
 	void testCascadeDelete(String name, Database db, VertxTestContext context) {
 		Id channelId = Id.random();
-		ChannelImpl channel = new ChannelImpl(channelId, null, Id.random(), Channel.Permission.PUBLIC, "Cascade", "Notice", false, System.currentTimeMillis(), System.currentTimeMillis());
+		PhotonChannel channel = new PhotonChannel(channelId, null, Id.random(), Channel.Permission.PUBLIC, "Cascade", "Notice", false, System.currentTimeMillis(), System.currentTimeMillis());
 		Id m1 = Id.random();
 		Channel.Member member1 = new ChannelMember(m1, Channel.Role.MEMBER, System.currentTimeMillis());
 
 		db.putContactLocally(channel)
 				.compose(v -> db.putChannelMembers(channelId, List.of(member1)))
 				.compose(v -> {
-					MessageImpl<DefaultContent<?>> msg = randomMessage(channelId);
+					PhotonMessage<MessageContent> msg = randomMessage(channelId);
 					return db.putMessage(msg);
 				})
 				.compose(v -> {
@@ -274,9 +275,9 @@ public class DatabaseTests {
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
 	void testMessageManagement(String name, Database db, VertxTestContext context) {
 		Id convId = Id.random();
-		MessageImpl<DefaultContent<?>> m1 = randomMessage(convId);
-		MessageImpl<DefaultContent<?>> m2 = randomMessage(convId);
-		MessageImpl<DefaultContent<?>> m3 = randomMessage(convId);
+		PhotonMessage<MessageContent> m1 = randomMessage(convId);
+		PhotonMessage<MessageContent> m2 = randomMessage(convId);
+		PhotonMessage<MessageContent> m3 = randomMessage(convId);
 
 		db.putMessage(m1)
 				.compose(v -> db.putMessage(m2))
@@ -316,7 +317,7 @@ public class DatabaseTests {
 	@MethodSource("databaseProvider")
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
 	void testChannelManagement(String name, Database db, Vertx vertx, VertxTestContext context) {
-		ChannelImpl channel = randomChannel();
+		PhotonChannel channel = randomChannel();
 		Id c1Id = Id.random();
 		Id c2Id = Id.random();
 		Channel.Member m1 = new ChannelMember(c1Id, Channel.Role.MEMBER, System.currentTimeMillis());
@@ -397,7 +398,7 @@ public class DatabaseTests {
 	@MethodSource("databaseProvider")
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
 	void testChannelMemberRetrieval(String name, Database db, VertxTestContext context) {
-		ChannelImpl channel = randomChannel();
+		PhotonChannel channel = randomChannel();
 		Id m1Id = Id.random();
 		Id m2Id = Id.random();
 		Channel.Member m1 = new ChannelMember(m1Id, Channel.Role.MEMBER, System.currentTimeMillis());
@@ -428,7 +429,7 @@ public class DatabaseTests {
 	void testConversationUpdateOnMessage(String name, Database db, VertxTestContext context) {
 		Id convId = Id.random();
 		Friend friend = new Friend(convId, Signature.KeyPair.random().privateKey().bytes(), "Alice", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
-		MessageImpl<DefaultContent<?>> m1 = randomMessage(convId);
+		PhotonMessage<MessageContent> m1 = randomMessage(convId);
 		long time1 = m1.getReceivedAt();
 
 		db.putContactLocally(friend)
@@ -439,7 +440,7 @@ public class DatabaseTests {
 						assertNotNull(conv);
 						assertEquals(time1, conv.getUpdatedAt());
 					});
-					MessageImpl<DefaultContent<?>> m2 = randomMessage(convId);
+					PhotonMessage<MessageContent> m2 = randomMessage(convId);
 					m2.received(time1 + 5000);
 					return db.putMessage(m2).map(m2.getReceivedAt());
 				})
@@ -457,7 +458,7 @@ public class DatabaseTests {
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
 	void testFullContactSyncScenario(String name, Database db, VertxTestContext context) {
 		Friend f1 = randomFriend();
-		ChannelImpl c1 = randomChannel();
+		PhotonChannel c1 = randomChannel();
 		List<Contact> contacts = List.of(f1, c1);
 		int newRevision = 10;
 
@@ -487,7 +488,7 @@ public class DatabaseTests {
 	void testFriendRequestAcceptanceFlow(String name, Database db, VertxTestContext context) {
 		Id userId = Id.random();
 		Id initiatorId = Id.random();
-		FriendRequest request = new FriendRequestImpl(userId, initiatorId, faker.lorem().sentence());
+		FriendRequest request = new DefaultFriendRequest(userId, initiatorId, faker.lorem().sentence());
 
 		db.putFriendRequest(request)
 				.compose(v -> db.getFriendRequest(userId))
@@ -496,7 +497,7 @@ public class DatabaseTests {
 						assertNotNull(fr);
 						assertTrue(fr.getHello().length() > 0);
 					});
-					FriendRequestImpl fri = (FriendRequestImpl) fr;
+					DefaultFriendRequest fri = (DefaultFriendRequest) fr;
 					fri.accept();
 					return db.putFriendRequest(fri);
 				})
@@ -519,13 +520,13 @@ public class DatabaseTests {
 	@MethodSource("databaseProvider")
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
 	void testChannelLifecycleScenario(String name, Database db, VertxTestContext context) {
-		ChannelImpl channel = randomChannel();
+		PhotonChannel channel = randomChannel();
 		Channel.Member owner = new ChannelMember(channel.getOwnerId(), Channel.Role.OWNER, System.currentTimeMillis());
 
 		db.putContactLocally(channel)
 				.compose(v -> db.putChannelMembers(channel.getId(), List.of(owner)))
 				.compose(v -> {
-					MessageImpl<DefaultContent<?>> msg = randomMessage(channel.getId());
+					PhotonMessage<MessageContent> msg = randomMessage(channel.getId());
 					return db.putMessage(msg);
 				})
 				.compose(v -> db.getConversation(channel.getId()))
@@ -547,8 +548,8 @@ public class DatabaseTests {
 				false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
 	}
 
-	static ChannelImpl randomChannel() {
-		return new ChannelImpl(Id.random(), Signature.KeyPair.random().privateKey().bytes(),
+	static PhotonChannel randomChannel() {
+		return new PhotonChannel(Id.random(), Signature.KeyPair.random().privateKey().bytes(),
 				Id.random(), Channel.Permission.PUBLIC,
 				faker.company().name(), faker.lorem().sentence(),
 				false, System.currentTimeMillis(), System.currentTimeMillis());
@@ -558,11 +559,11 @@ public class DatabaseTests {
 		return new ChannelMember(Id.random(), Channel.Role.MEMBER, System.currentTimeMillis());
 	}
 
-	static MessageImpl<DefaultContent<?>> randomMessage(Id conversationId) {
+	static PhotonMessage<MessageContent> randomMessage(Id conversationId) {
 		Id mid = Id.random();
 		long now = System.currentTimeMillis();
-		DefaultContent<String> content = new DefaultContent<>(Map.of(), faker.lorem().paragraph());
-		MessageImpl<DefaultContent<?>> msg = new MessageImpl<>(mid, Id.random(), Message.Type.CONTENT_MESSAGE, now, content);
+		MessageContent content = MessageContent.text(Map.of(), faker.lorem().paragraph());
+		PhotonMessage<MessageContent> msg = new PhotonMessage<>(mid, Id.random(), Message.Type.CONTENT_MESSAGE, now, content);
 		msg.setConversationId(conversationId);
 		return msg;
 	}

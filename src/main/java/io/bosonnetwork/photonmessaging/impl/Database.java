@@ -31,7 +31,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -51,7 +50,7 @@ import io.bosonnetwork.photonmessaging.Contact;
 import io.bosonnetwork.photonmessaging.Conversation;
 import io.bosonnetwork.photonmessaging.FriendRequest;
 import io.bosonnetwork.photonmessaging.Message;
-import io.bosonnetwork.photonmessaging.RepositoryException;
+import io.bosonnetwork.photonmessaging.exceptions.RepositoryException;
 import io.bosonnetwork.photonmessaging.impl.database.PostgresDatabase;
 import io.bosonnetwork.photonmessaging.impl.database.SqlDialect;
 import io.bosonnetwork.photonmessaging.impl.database.SqliteDatabase;
@@ -303,7 +302,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	////////////////////////////////////////////////////////////////////////////
 
 	@Override
-	public Future<Void> putMessage(MessageImpl<DefaultContent<?>> message) {
+	public Future<Void> putMessage(PhotonMessage<MessageContent> message) {
 		return withTransaction(c ->
 				forQuery(c, getDialect().insertMessage())
 						.execute(paramsFromMessage(message))
@@ -319,7 +318,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	@Override
-	public Future<Void> updateMessageSentTime(MessageImpl<DefaultContent<?>> message) {
+	public Future<Void> updateMessageSentTime(PhotonMessage<MessageContent> message) {
 		return withTransaction(c ->
 				forUpdate(c, getDialect().updateMessageSentTime())
 						.execute(Map.of("id", message.getId().bytes(), "sentAt", message.getSentAt()))
@@ -331,7 +330,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	@Override
-	public Future<List<MessageImpl<DefaultContent<?>>>> getMessages(Id conversationId, long begin, long end) {
+	public Future<List<PhotonMessage<MessageContent>>> getMessages(Id conversationId, long begin, long end) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectMessagesByTimeRange())
 						.execute(Map.of("conversationId", conversationId.bytes(),
@@ -345,7 +344,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	@Override
-	public Future<List<MessageImpl<DefaultContent<?>>>> getMessages(Id conversationId, long since, int limit, int offset) {
+	public Future<List<PhotonMessage<MessageContent>>> getMessages(Id conversationId, long since, int limit, int offset) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectMessagesWithPagination())
 						.execute(Map.of("conversationId", conversationId.bytes(),
@@ -424,7 +423,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	public Future<Void> putFriendRequest(FriendRequest friendRequest) {
 		return withTransaction(c ->
 				forUpdate(c, getDialect().upsertFriendRequest())
-						.execute(paramsFromFriendRequest((FriendRequestImpl) friendRequest))
+						.execute(paramsFromFriendRequest((DefaultFriendRequest) friendRequest))
 						.<Void>mapEmpty()
 		).recover(e -> {
 			getLogger().error("Failed to put friend request for {}", friendRequest.getUserId(), e);
@@ -685,7 +684,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	// Mapping & Parameter Helpers
 	////////////////////////////////////////////////////////////////////////////
 
-	private Map<String, Object> paramsFromMessage(MessageImpl<DefaultContent<?>> message) {
+	private Map<String, Object> paramsFromMessage(PhotonMessage<MessageContent> message) {
 		Map<String, Object> params = new HashMap<>();
 		params.put("id", message.getId().bytes());
 		params.put("conversationId", message.getConversationId().bytes());
@@ -697,14 +696,14 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		params.put("sentAt", message.getSentAt());
 		params.put("receivedAt", message.getReceivedAt());
 
-		DefaultContent<?> content = message.getPayload();
+		MessageContent content = message.getPayload();
 		params.put("contentType", content.getContentType());
 		params.put("contentDisposition", content.getContentDisposition() != null ? content.getContentDisposition().getValue() : null);
 		params.put("payload", content.serialize());
 		return params;
 	}
 
-	private MessageImpl<DefaultContent<?>> rowToMessage(Row row) {
+	private PhotonMessage<MessageContent> rowToMessage(Row row) {
 		long rid = row.getLong("rid");
 		Id conversationId = getId(row, "conversation_id");
 		int version = row.getInteger("version");
@@ -717,13 +716,12 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		long sentAt = row.getLong("sent_at");
 		long receivedAt = row.getLong("received_at");
 
-		DefaultContent<JsonNode> payload = DefaultContent.parse(payloadBytes);
-
-		return new MessageImpl<>(rid, conversationId, version, id, recipient, type, fromId,
-				createdAt, payload, sentAt, receivedAt);
+		MessageContent content = MessageContent.parse(payloadBytes);
+		return new PhotonMessage<>(rid, conversationId, version, id, recipient, type, fromId,
+				createdAt, content, sentAt, receivedAt);
 	}
 
-	private Map<String, Object> paramsFromFriendRequest(FriendRequestImpl request) {
+	private Map<String, Object> paramsFromFriendRequest(DefaultFriendRequest request) {
 		Map<String, Object> params = new HashMap<>();
 		params.put("id", request.getUserId().bytes());
 		params.put("initiator", request.getInitiatorId().bytes());
@@ -744,7 +742,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		boolean accepted = getBoolean(row, "accepted");
 		long acceptedAt = row.getLong("accepted_at");
 
-		return new FriendRequestImpl(userId, initiatorId, hello, createdAt, updatedAt, accepted, acceptedAt);
+		return new DefaultFriendRequest(userId, initiatorId, hello, createdAt, updatedAt, accepted, acceptedAt);
 	}
 
 	private Map<String, Object> paramsFromContact(Contact contact) {
@@ -786,7 +784,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 				int permission = row.getInteger("permission");
 				String notice = row.getString("notice");
 				boolean announce = getBoolean(row, "announce");
-				yield new ChannelImpl(id, sessionKey, owner, Channel.Permission.valueOf(permission),
+				yield new PhotonChannel(id, sessionKey, owner, Channel.Permission.valueOf(permission),
 						name, notice, announce, remark, tags, muted, blocked, createdAt, updatedAt, revision);
 			}
 			case AUTO -> new AutoContact(id, name, avatar, remark, tags, muted, blocked, createdAt, updatedAt);
@@ -824,7 +822,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 
 		Long msgRid = row.getLong("last_message_rid");
 		if (msgRid == null)
-			return new ConversationImpl(contact, null);
+			return new PhotonConversation(contact, null);
 
 		int msgVersion = row.getInteger("last_message_version");
 		Id msgId = getId(row, "last_message_id");
@@ -837,12 +835,11 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		long msgSentAt = row.getLong("last_message_sent_at");
 		long msgReceivedAt = row.getLong("last_message_received_at");
 
-		DefaultContent<JsonNode> msgPayload = DefaultContent.parse(msgPayloadBytes);
+		MessageContent content = MessageContent.parse(msgPayloadBytes);
+		PhotonMessage<MessageContent> lastMessage = new PhotonMessage<>(msgRid, msgConversationId, msgVersion, msgId,
+				msgRecipient, msgType, msgFromId, msgCreatedAt, content, msgSentAt, msgReceivedAt);
 
-		MessageImpl<DefaultContent<?>> lastMessage = new MessageImpl<>(msgRid, msgConversationId, msgVersion, msgId,
-				msgRecipient, msgType, msgFromId, msgCreatedAt, msgPayload, msgSentAt, msgReceivedAt);
-
-		return new ConversationImpl(contact, lastMessage);
+		return new PhotonConversation(contact, lastMessage);
 	}
 
 	////////////////////////////////////////////////////////////////////////////

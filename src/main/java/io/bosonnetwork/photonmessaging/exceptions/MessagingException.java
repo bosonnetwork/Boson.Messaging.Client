@@ -1,4 +1,4 @@
-package io.bosonnetwork.photonmessaging;
+package io.bosonnetwork.photonmessaging.exceptions;
 
 import io.bosonnetwork.BosonException;
 
