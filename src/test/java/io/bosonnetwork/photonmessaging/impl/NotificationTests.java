@@ -1,15 +1,25 @@
 package io.bosonnetwork.photonmessaging.impl;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
+
+import com.fasterxml.jackson.databind.JsonNode;
 
 import org.junit.jupiter.api.Test;
 
 import io.bosonnetwork.Id;
+import io.bosonnetwork.crypto.Random;
+import io.bosonnetwork.json.Json;
+import io.bosonnetwork.photonmessaging.Channel;
+import io.bosonnetwork.photonmessaging.SessionInfo;
 
 public class NotificationTests {
 	@Test
@@ -23,62 +33,108 @@ public class NotificationTests {
 	}
 
 	@Test
-	void testSerializationAndParsing() {
-		Id deviceId = Id.random();
-		Id source = Id.random();
-		long timestamp = System.currentTimeMillis();
-		Id notificationId = Notification.generateId(deviceId, timestamp);
+	void testNotificationSerialization() {
+		SessionInfo sessionInfo = new SessionInfo(Id.random(), true, System.currentTimeMillis());
+		testSerialization(Notification.Event.SESSION_NEW, sessionInfo);
 
-		// Test Id
-		Id contentId = Id.random();
-		Notification<Id> nId = new Notification<>(notificationId, Notification.Event.SESSION_NEW, source, timestamp, contentId);
-		byte[] data = nId.serialize();
-		Notification.GenericNotification parsed = Notification.parse(data);
-		assertEquals(contentId, parsed.getContentAs(Id.class));
+		ContactSync contactSync = new ContactSync(10, ContactSync.Type.UP_TO_DATE, null, null);
+		testSerialization(Notification.Event.CONTACT_SYNC, contactSync);
 
-		// Test List<Id>
-		List<Id> contentList = List.of(Id.random(), Id.random());
-		Notification<List<Id>> nList = new Notification<>(notificationId, Notification.Event.CONTACT_SYNC, source, timestamp, contentList);
-		data = nList.serialize();
-		parsed = Notification.parse(data);
-		assertEquals(contentList, parsed.getContentAsListOf(Id.class));
+		ContactMutation mutation = ContactMutation.remove(9, List.of(Id.random(), Id.random()));
+		testSerialization(Notification.Event.CONTACT_MUTATE, mutation);
 
-		// Test String
-		String contentStr = "Hello Boson";
-		Notification<String> nStr = new Notification<>(notificationId, Notification.Event.FRIEND_REQUEST, source, timestamp, contentStr);
-		data = nStr.serialize();
-		parsed = Notification.parse(data);
-		assertEquals(contentStr, parsed.getContentAs(String.class));
+		ChannelInfo channelInfo = new ChannelInfo(Id.random(), Id.random(),
+				Id.random(), null, Channel.Permission.MEMBER_INVITE, "Test Channel", null,
+				false, System.currentTimeMillis(), System.currentTimeMillis(), null);
+		testSerialization(Notification.Event.CHANNEL_CREATE, channelInfo);
 
-		// Test Boolean
-		Notification<Boolean> nBool = new Notification<>(notificationId, Notification.Event.CHANNEL_JOIN, source, timestamp, true);
-		data = nBool.serialize();
-		parsed = Notification.parse(data);
-		assertTrue(parsed.getContentAs(Boolean.class));
+		testSerialization(Notification.Event.CHANNEL_DELETE, null);
+		testSerialization(Notification.Event.CHANNEL_JOIN, channelInfo);
+		testSerialization(Notification.Event.CHANNEL_LEAVE, null);
+		testSerialization(Notification.Event.CHANNEL_OWNERSHIP_TRANSFER, Id.random());
+		testSerialization(Notification.Event.CHANNEL_SESSION_KEY_ROTATE, Random.randomBytes(64));
 
-		// Test Map<String, Object>
-		Map<String, Object> contentMap = Map.of("key1", "value1", "key2", 123);
-		Notification<Map<String, Object>> nMap = new Notification<>(notificationId, Notification.Event.CHANNEL_UPDATE_INFO, source, timestamp, contentMap);
-		data = nMap.serialize();
-		parsed = Notification.parse(data);
-		Map<?, ?> parsedMap = parsed.getContentAs(Map.class);
-		assertEquals(contentMap.get("key1"), parsedMap.get("key1"));
-		assertEquals(contentMap.get("key2"), parsedMap.get("key2"));
+		JsonNode changes = Json.cborMapper().createObjectNode().put("test", "value");
+		testSerialization(Notification.Event.CHANNEL_INFO_UPDATE, changes);
+
+		ChannelMembersRole membersRole = new ChannelMembersRole(
+				List.of(Id.random(), Id.random()), Channel.Role.MODERATOR);
+		testSerialization(Notification.Event.CHANNEL_MEMBERS_ROLE_UPDATE, membersRole);
+
+		testSerialization(Notification.Event.CHANNEL_MEMBERS_BAN, List.of(Id.random(), Id.random()));
+		testSerialization(Notification.Event.CHANNEL_MEMBERS_UNBAN, List.of(Id.random()));
+		testSerialization(Notification.Event.CHANNEL_MEMBERS_REMOVE, List.of(Id.random(), Id.random()));
+		testSerialization(Notification.Event.CHANNEL_MEMBER_JOIN, new ChannelMember(Id.random(), Channel.Role.MEMBER, System.currentTimeMillis()));
+		testSerialization(Notification.Event.CHANNEL_MEMBER_LEAVE, Id.random());
+		testSerialization(Notification.Event.FRIEND_REQUEST, "Hello from test");
+		testSerialization(Notification.Event.FRIEND_REQUEST_ACCEPT, Random.randomBytes(64));
+	}
+
+	private void testSerialization(Notification.Event event, Object body) {
+		Notification notif = new Notification(Id.random(), Id.random(), System.currentTimeMillis(), event, body);
+		System.out.println(Json.toString(notif));
+
+		Notification parsed = Notification.parse(notif.serialize());
+
+		assertEquals(notif.getId(), parsed.getId());
+		assertEquals(notif.getSource(), parsed.getSource());
+		assertEquals(notif.getTimestamp(), parsed.getTimestamp());
+		assertEquals(event, parsed.getEvent());
+
+		Object parsedBody = parsed.getBody();
+		if (body instanceof byte[]) {
+			assertArrayEquals((byte[]) body, (byte[]) parsedBody);
+		} else if (body instanceof JsonNode) {
+			assertEquals(body.toString(), parsedBody.toString());
+		} else if (body instanceof ContactSync) {
+			assertThat(parsedBody)
+					.usingRecursiveComparison()
+					.isEqualTo(body);
+		} else if (body instanceof ContactMutation) {
+			assertThat(parsedBody)
+					.usingRecursiveComparison()
+					.ignoringFieldsMatchingRegexes(".*b58")
+					.isEqualTo(body);
+		} else {
+			assertEquals(body, parsedBody);
+		}
 	}
 
 	@Test
-	void testIdGenerationAndAssociation() {
+	void testFriendRequest() {
+		Id userId = Id.random();
 		Id deviceId = Id.random();
-		long timestamp = System.currentTimeMillis();
-		Id notificationId = Notification.generateId(deviceId, timestamp);
 
-		Notification<String> notification = new Notification<>(notificationId, Notification.Event.SESSION_NEW, Id.random(), timestamp, "test");
+		String hello = "Hello from test";
+		Notification notif = Notification.friendRequest(userId, deviceId, hello);
+		assertTrue(notif.isAssociated(deviceId));
+		assertFalse(notif.isAssociated(Id.random()));
 
-		assertTrue(notification.isAssociated(deviceId));
-		assertFalse(notification.isAssociated(Id.random()));
+		Notification parsed = Notification.parse(notif.serialize());
 
-		// Test with wrong timestamp
-		Notification<String> wrongTimestamp = new Notification<>(notificationId, Notification.Event.SESSION_NEW, Id.random(), timestamp + 1, "test");
-		assertFalse(wrongTimestamp.isAssociated(deviceId));
+		assertEquals(notif.getId(), parsed.getId());
+		assertEquals(notif.getSource(), parsed.getSource());
+		assertEquals(notif.getTimestamp(), parsed.getTimestamp());
+		assertEquals(Notification.Event.FRIEND_REQUEST, parsed.getEvent());
+		assertEquals(hello, parsed.getBody());
+	}
+
+	@Test
+	void testFriendRequestAccept() {
+		Id userId = Id.random();
+		Id deviceId = Id.random();
+
+		byte[] sessionKey = Random.randomBytes(64);
+		Notification notif = Notification.friendRequestAccept(userId, deviceId, sessionKey);
+		assertTrue(notif.isAssociated(deviceId));
+		assertFalse(notif.isAssociated(Id.random()));
+
+		Notification parsed = Notification.parse(notif.serialize());
+
+		assertEquals(notif.getId(), parsed.getId());
+		assertEquals(notif.getSource(), parsed.getSource());
+		assertEquals(notif.getTimestamp(), parsed.getTimestamp());
+		assertEquals(Notification.Event.FRIEND_REQUEST_ACCEPT, parsed.getEvent());
+		assertArrayEquals(sessionKey, parsed.getBody());
 	}
 }

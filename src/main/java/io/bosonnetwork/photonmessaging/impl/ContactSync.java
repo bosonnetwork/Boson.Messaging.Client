@@ -35,16 +35,16 @@ import io.bosonnetwork.photonmessaging.Contact;
  * Represents a contact sync notification or response.
  */
 public class ContactSync {
+	// last revision of the server
+	@JsonProperty(value = "r", required = true)
+	private final int revision;
+
 	@JsonProperty(value = "t", required = true)
 	private final Type type;
 
-	// last revision of the server
-	@JsonProperty(value = "v", required = true)
-	private final int revision;
-
 	@JsonProperty("d")
 	@JsonInclude(JsonInclude.Include.NON_EMPTY)
-	private final List<ContactMutation.GenericContactMutation> mutations;
+	private final List<ContactMutation> mutations;
 
 	@JsonProperty("s")
 	@JsonInclude(JsonInclude.Include.NON_EMPTY)
@@ -78,9 +78,9 @@ public class ContactSync {
 	}
 
 	@JsonCreator
-	protected ContactSync(@JsonProperty(value = "t", required = true) Type type,
-	                      @JsonProperty(value = "v", required = true) int revision,
-	                      @JsonProperty("d") List<ContactMutation.GenericContactMutation> mutations,
+	protected ContactSync(@JsonProperty(value = "r", required = true) int revision,
+						  @JsonProperty(value = "t", required = true) Type type,
+	                      @JsonProperty("d") List<ContactMutation> mutations,
 	                      @JsonProperty("s") List<Contact> contacts) {
 		if ((mutations != null && !mutations.isEmpty()) && (contacts != null && !contacts.isEmpty()))
 			throw new IllegalArgumentException("Mutations and contacts can not be both present");
@@ -108,7 +108,7 @@ public class ContactSync {
 		return revision;
 	}
 
-	public List<ContactMutation.GenericContactMutation> getMutations() {
+	public List<ContactMutation> getMutations() {
 		return mutations;
 	}
 
