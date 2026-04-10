@@ -175,6 +175,8 @@ public interface Message {
 				return null;
 		}
 
+		<T> T getBody();
+
 		/**
 		 * Retrieves the body of the content as a string representation.
 		 *
@@ -204,7 +206,19 @@ public interface Message {
 		 * @param elementType the class of the elements to cast the body elements to
 		 * @return a list of elements of the specified type representing the content body
 		 */
-		<E> List<E> asListOf(Class<E> elementType);
+		<E> List<E> asList(Class<E> elementType);
+
+		/**
+		 * Converts the body of the content into a map with the specified key and value types.
+		 *
+		 * @param <K> the type of the map keys
+		 * @param <V> the type of the map values
+		 * @param keyType the class of the keys in the map
+		 * @param valueType the class of the values in the map
+		 * @return a map containing the body of the content with the specified key and value types,
+		 *         or null if the body cannot be converted to the requested map type
+		 */
+		<K, V> Map<K, V> asMap(Class<K> keyType, Class<V> valueType);
 	}
 
 	/**
@@ -281,24 +295,6 @@ public interface Message {
 		 * @return this builder instance
 		 */
 		Builder contentObject(Object body);
-
-		/**
-		 * Sets the message content as a JSON string.
-		 * The content-type header will be set to "application/json" if not already set.
-		 *
-		 * @param json the JSON string to be used as the message body
-		 * @return this builder instance
-		 */
-		Builder contentJson(String json);
-
-		/**
-		 * Sets the message content as a CBOR-encoded byte array.
-		 * The content-type header will be set to "application/cbor" if not already set.
-		 *
-		 * @param cbor the CBOR-encoded data to be used as the message body
-		 * @return this builder instance
-		 */
-		Builder contentCbor(byte[] cbor);
 
 		/**
 		 * Composes and sends the message.

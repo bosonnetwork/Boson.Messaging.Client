@@ -20,21 +20,17 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging;
+package io.bosonnetwork.photonmessaging.impl;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import io.bosonnetwork.Id;
+import io.bosonnetwork.photonmessaging.Channel;
 
-/**
- * Represents session information for a device, including its identifier,
- * online status, and last activity timestamp.
- *
- * @param deviceId   The unique identifier of the device session.
- * @param online     Indicates whether the device is currently online.
- * @param lastActive The timestamp of the last activity in milliseconds since epoch.
- */
-public record SessionInfo(@JsonProperty(value = "id", required = true) Id deviceId,
-						  @JsonProperty("o") boolean online,
-						  @JsonProperty("a") long lastActive) {
+public record NewChannelInfo(@JsonProperty(value = "sid", required = true) Id sessionId,
+                             @JsonProperty(value = "sk", required = true) byte[] sessionKey,
+                             @JsonProperty(value = "p", required = true) Channel.Permission permission,
+                             @JsonProperty("n") String name,
+                             @JsonProperty("nt") String notice,
+                             @JsonProperty("a") boolean announce) {
 }

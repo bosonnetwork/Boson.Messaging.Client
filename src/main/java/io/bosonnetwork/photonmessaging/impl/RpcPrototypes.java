@@ -24,14 +24,11 @@ package io.bosonnetwork.photonmessaging.impl;
 
 import java.util.List;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.json.Json;
-import io.bosonnetwork.photonmessaging.Channel;
 import io.bosonnetwork.photonmessaging.InviteTicket;
 import io.bosonnetwork.photonmessaging.SessionInfo;
 import io.bosonnetwork.photonmessaging.impl.rpc.RpcMethod;
@@ -49,10 +46,10 @@ public class RpcPrototypes {
 	public static final JavaType TYPE_IDS = Json.cborMapper().getTypeFactory().constructCollectionType(List.class, Id.class);
 	public static final JavaType TYPE_SESSIONS = Json.cborMapper().getTypeFactory().constructCollectionType(List.class, SessionInfo.class);
 	public static final JavaType TYPE_CONTACT_MUTATION = Json.cborMapper().getTypeFactory().constructParametricType(ContactMutation.class, Object.class);
-	public static final JavaType TYPE_CREATE_CHANNEL_PARAMS = Json.cborMapper().getTypeFactory().constructType(CreateChannelParams.class);
+	public static final JavaType TYPE_CREATE_CHANNEL_PARAMS = Json.cborMapper().getTypeFactory().constructType(NewChannelInfo.class);
 	public static final JavaType TYPE_CHANNEL_INFO = Json.cborMapper().getTypeFactory().constructType(ChannelInfo.class);
-	public static final JavaType TYPE_CHANNEL_SESSION_KEY_ROTATION_PARAMS = Json.cborMapper().getTypeFactory().constructType(ChannelSessionKeyRotationParams.class);
-	public static final JavaType TYPE_CHANNEL_MEMBERS_ROLE_PARAMS = Json.cborMapper().getTypeFactory().constructType(ChannelMembersRoleParams.class);
+	public static final JavaType TYPE_CHANNEL_SESSION_KEY_ROTATION_PARAMS = Json.cborMapper().getTypeFactory().constructType(ChannelSessionKeyRotation.class);
+	public static final JavaType TYPE_CHANNEL_MEMBERS_ROLE_PARAMS = Json.cborMapper().getTypeFactory().constructType(ChannelMembersRole.class);
 	public static final JavaType TYPE_INVITE_TICKET = Json.cborMapper().getTypeFactory().constructType(InviteTicket.class);
 	public static final JavaType TYPE_JSON_NODE = Json.cborMapper().getTypeFactory().constructType(JsonNode.class);
 
@@ -101,32 +98,4 @@ public class RpcPrototypes {
 	public static final RpcMethodPrototype CHANNEL_INFO =
 			new RpcMethodPrototype(RpcMethod.CHANNEL_INFO, TYPE_VOID, TYPE_CHANNEL_INFO);
 
-	public record CreateChannelParams(@JsonProperty(value = "sid", required = true) Id sessionId,
-	                                  @JsonProperty(value = "sk", required = true) byte[] sessionKey,
-	                                  @JsonProperty(value = "p", required = true) Channel.Permission permission,
-	                                  @JsonProperty("n") String name,
-	                                  @JsonProperty("nt") String notice,
-	                                  @JsonProperty("a") boolean announce) {
-	}
-
-	public record ChannelInfo(@JsonProperty(value = "id", required = true) Id channelId,
-	                          @JsonProperty(value = "o", required = true) Id ownerId,
-	                          @JsonProperty(value = "sid", required = true) Id sessionId,
-	                          @JsonProperty(value = "sk") @JsonInclude(JsonInclude.Include.NON_EMPTY) byte[] sessionKey,
-	                          @JsonProperty(value = "p", required = true) Channel.Permission permission,
-	                          @JsonProperty(value = "n") @JsonInclude(JsonInclude.Include.NON_NULL) String name,
-	                          @JsonProperty(value = "nt") @JsonInclude(JsonInclude.Include.NON_EMPTY) String notice,
-	                          @JsonProperty(value = "a") @JsonInclude(JsonInclude.Include.NON_DEFAULT) boolean announce,
-	                          @JsonProperty(value = "c") long createdAt,
-	                          @JsonProperty(value = "u") long updateAt,
-	                          @JsonProperty(value = "m") @JsonInclude(JsonInclude.Include.NON_EMPTY) List<Channel.Member> members) {
-	}
-
-	public record ChannelSessionKeyRotationParams(@JsonProperty(value = "sid", required = true) Id sessionId,
-	                                              @JsonProperty(value = "sk", required = true) byte[] sessionKey) {
-	}
-
-	public record ChannelMembersRoleParams(@JsonProperty(value = "ids", required = true) List<Id> memberIds,
-	                                       @JsonProperty(value = "r", required = true) Channel.Role role) {
-	}
 }

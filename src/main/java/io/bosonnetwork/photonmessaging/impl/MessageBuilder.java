@@ -27,7 +27,6 @@ import java.util.Map;
 import java.util.Objects;
 
 import io.bosonnetwork.Id;
-import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.ContentDisposition;
 import io.bosonnetwork.photonmessaging.ContentType;
 import io.bosonnetwork.photonmessaging.Message;
@@ -39,7 +38,6 @@ public class MessageBuilder implements Message.Builder {
 	private final Map<String, Object> headers;
 	MessageContent.Format format;
 	private Object content;
-	private Object origin;
 
 	protected MessageBuilder(PhotonMessagingClient client, Id recipient) {
 		this.client = client;
@@ -109,33 +107,10 @@ public class MessageBuilder implements Message.Builder {
 	public MessageBuilder contentObject(Object object) {
 		Objects.requireNonNull(object, "object");
 		this.format = MessageContent.Format.OBJECT;
-		this.content = Json.toBytes(object);
-		this.origin = object;
+		this.content = object;
 		if (!headers.containsKey(ContentType.HEADER_NAME))
 			headers.put(ContentType.HEADER_NAME, ContentType.CBOR);
 
-		return this;
-	}
-
-	@Override
-	public Message.Builder contentJson(String json) {
-		Objects.requireNonNull(json, "json");
-		this.format = MessageContent.Format.OBJECT;
-		this.content = Json.jsonToCbor(json);
-		this.origin = null;
-		if (!headers.containsKey(ContentType.HEADER_NAME))
-			headers.put(ContentType.HEADER_NAME, ContentType.JSON);
-		return this;
-	}
-
-	@Override
-	public Message.Builder contentCbor(byte[] cbor) {
-		Objects.requireNonNull(cbor, "cbor");
-		this.format = MessageContent.Format.OBJECT;
-		this.content = cbor;
-		this.origin = null;
-		if (!headers.containsKey(ContentType.HEADER_NAME))
-			headers.put(ContentType.HEADER_NAME, ContentType.CBOR);
 		return this;
 	}
 
@@ -152,7 +127,7 @@ public class MessageBuilder implements Message.Builder {
 		MessageContent payload = switch (format) {
 			case TEXT -> MessageContent.text(headers, (String) content);
 			case BINARY -> MessageContent.binary(headers, (byte[]) content);
-			case OBJECT -> MessageContent.objectWithSerialized(headers, (byte[]) content, origin);
+			case OBJECT -> MessageContent.object(headers, content);
 		};
 		return new PhotonMessage<>(messageId, recipient, Message.Type.CONTENT_MESSAGE, now, payload);
 	}

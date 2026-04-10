@@ -118,11 +118,11 @@ public class RpcCall<P, R> {
 		return new RpcCall<>(RpcMethod.SESSION_REVOKE, deviceId, RpcPrototypes.SESSION_REVOKE.resultType());
 	}
 
-	public static <T> RpcCall<ContactMutation<T>, Integer> contactMutate(ContactMutation<T> mutation) {
+	public static <T> RpcCall<ContactMutation, Integer> contactMutate(ContactMutation mutation) {
 		return new RpcCall<>(RpcMethod.CONTACT_MUTATE, mutation, RpcPrototypes.CONTACT_MUTATE.resultType());
 	}
 
-	public static RpcCall<RpcPrototypes.CreateChannelParams, RpcPrototypes.ChannelInfo> createChannel(RpcPrototypes.CreateChannelParams params) {
+	public static RpcCall<NewChannelInfo, ChannelInfo> createChannel(NewChannelInfo params) {
 		return new RpcCall<>(RpcMethod.CHANNEL_CREATE, params, RpcPrototypes.CHANNEL_CREATE.resultType());
 	}
 
@@ -130,7 +130,7 @@ public class RpcCall<P, R> {
 		return new RpcCall<>(RpcMethod.CHANNEL_DELETE, null, RpcPrototypes.CHANNEL_DELETE.resultType());
 	}
 
-	public static RpcCall<InviteTicket, RpcPrototypes.ChannelInfo> joinChannel(InviteTicket ticket) {
+	public static RpcCall<InviteTicket, ChannelInfo> joinChannel(InviteTicket ticket) {
 		return new RpcCall<>(RpcMethod.CHANNEL_JOIN, ticket, RpcPrototypes.CHANNEL_JOIN.resultType());
 	}
 
@@ -142,7 +142,7 @@ public class RpcCall<P, R> {
 		return new RpcCall<>(RpcMethod.CHANNEL_TRANSFER_OWNERSHIP, newOwner, RpcPrototypes.CHANNEL_TRANSFER_OWNERSHIP.resultType());
 	}
 
-	public static RpcCall<RpcPrototypes.ChannelSessionKeyRotationParams, Void> rotateChannelSessionKey(RpcPrototypes.ChannelSessionKeyRotationParams params) {
+	public static RpcCall<ChannelSessionKeyRotation, Void> rotateChannelSessionKey(ChannelSessionKeyRotation params) {
 		return new RpcCall<>(RpcMethod.CHANNEL_ROTATE_SESSION_KEY, params, RpcPrototypes.CHANNEL_ROTATE_SESSION_KEY.resultType());
 	}
 
@@ -150,7 +150,7 @@ public class RpcCall<P, R> {
 		return new RpcCall<>(RpcMethod.CHANNEL_UPDATE_INFO, changes, RpcPrototypes.CHANNEL_UPDATE_INFO.resultType());
 	}
 
-	public static RpcCall<RpcPrototypes.ChannelMembersRoleParams, List<Id>> updateChannelMembersRole(RpcPrototypes.ChannelMembersRoleParams params) {
+	public static RpcCall<ChannelMembersRole, List<Id>> updateChannelMembersRole(ChannelMembersRole params) {
 		return new RpcCall<>(RpcMethod.CHANNEL_UPDATE_MEMBERS_ROLE, params, RpcPrototypes.CHANNEL_UPDATE_MEMBERS_ROLE.resultType());
 	}
 
@@ -166,7 +166,7 @@ public class RpcCall<P, R> {
 		return new RpcCall<>(RpcMethod.CHANNEL_REMOVE_MEMBERS, memberIds, RpcPrototypes.CHANNEL_REMOVE_MEMBERS.resultType());
 	}
 
-	public static RpcCall<Void, RpcPrototypes.ChannelInfo> getChannelInfo() {
+	public static RpcCall<Void, ChannelInfo> getChannelInfo() {
 		return new RpcCall<>(RpcMethod.CHANNEL_INFO, null, RpcPrototypes.CHANNEL_INFO.resultType());
 	}
 }
