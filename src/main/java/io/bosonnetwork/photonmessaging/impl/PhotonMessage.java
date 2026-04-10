@@ -219,7 +219,7 @@ public class PhotonMessage<P> implements Message {
 		if (payload instanceof MessageContent c)
 			return c.serialize();
 
-		if (payload instanceof RpcRequest<?> q)
+		if (payload instanceof RpcRequest q)
 			return q.serialize();
 
 		try {

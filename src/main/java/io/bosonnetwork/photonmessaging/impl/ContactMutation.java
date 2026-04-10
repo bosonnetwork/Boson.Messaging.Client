@@ -22,7 +22,6 @@
 
 package io.bosonnetwork.photonmessaging.impl;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -151,10 +150,6 @@ public class ContactMutation {
 			@JsonSubTypes.Type(value = Void.class, name = "c")
 	})
 	private final Object data;
-
-	public static class IdList extends ArrayList<Id> {
-		private static final long serialVersionUID = 2458943030695999635L;
-	}
 
 	public enum Op {
 		@JsonProperty("a")
