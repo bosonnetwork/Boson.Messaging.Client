@@ -23,7 +23,6 @@
 package io.bosonnetwork.photonmessaging.impl;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Arrays;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -184,10 +183,6 @@ public class Notification {
 			@JsonSubTypes.Type(value = byte[].class, name = "fra")
 	})
 	private final Object body;
-
-	public static class IdList extends ArrayList<Id> {
-		private static final long serialVersionUID = -5827799966237868670L;
-	}
 
 	public enum Event {
 		@JsonProperty("sn")

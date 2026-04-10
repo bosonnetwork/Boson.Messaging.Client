@@ -24,15 +24,32 @@ package io.bosonnetwork.photonmessaging.impl.rpc;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectReader;
+import com.fasterxml.jackson.databind.ObjectWriter;
 
+import io.bosonnetwork.Id;
 import io.bosonnetwork.json.Json;
+import io.bosonnetwork.photonmessaging.InviteTicket;
+import io.bosonnetwork.photonmessaging.impl.ChannelMembersRole;
+import io.bosonnetwork.photonmessaging.impl.ChannelSessionKeyRotation;
+import io.bosonnetwork.photonmessaging.impl.ContactMutation;
+import io.bosonnetwork.photonmessaging.impl.IdList;
+import io.bosonnetwork.photonmessaging.impl.NewChannelInfo;
 
-public class RpcRequest<P> {
-	@JsonProperty(value = "i", required = true)
+public class RpcRequest {
+	private static final ObjectReader READER = Json.cborMapper().readerFor(RpcRequest.class);
+	private static final ObjectWriter WRITER = Json.cborMapper().writerFor(RpcRequest.class);
+
+	@JsonProperty(value = "id", required = true)
 	protected final long id;
 
 	@JsonProperty(value = "m", required = true)
@@ -40,25 +57,48 @@ public class RpcRequest<P> {
 
 	@JsonProperty("p")
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	protected final P params;
+	@JsonTypeInfo(
+			use = JsonTypeInfo.Id.NAME,
+			include = JsonTypeInfo.As.EXTERNAL_PROPERTY,
+			property = "m",
+			defaultImpl = Void.class
+	)
+	@JsonSubTypes({
+			@JsonSubTypes.Type(value = Void.class, name = "sl"),
+			@JsonSubTypes.Type(value = Id.class, name = "sr"),
+			@JsonSubTypes.Type(value = ContactMutation.class, name = "cm"),
+			@JsonSubTypes.Type(value = NewChannelInfo.class, name = "cc"),
+			@JsonSubTypes.Type(value = Void.class, name = "cd"),
+			@JsonSubTypes.Type(value = Id.class, name = "cot"),
+			@JsonSubTypes.Type(value = ChannelSessionKeyRotation.class, name = "csr"),
+			@JsonSubTypes.Type(value = JsonNode.class, name = "ciu"),
+			@JsonSubTypes.Type(value = ChannelMembersRole.class, name = "cru"),
+			@JsonSubTypes.Type(value = IdList.class, name = "cmb"),
+			@JsonSubTypes.Type(value = IdList.class, name = "cmu"),
+			@JsonSubTypes.Type(value = IdList.class, name = "cmr"),
+			@JsonSubTypes.Type(value = InviteTicket.class, name = "cj"),
+			@JsonSubTypes.Type(value = Void.class, name = "cl"),
+			@JsonSubTypes.Type(value = Void.class, name = "ci")
+	})
+	protected final Object params;
 
 	@JsonProperty("c")
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	protected final byte[] cookie;
 
-	public RpcRequest(long id, RpcMethod method, P params, byte[] cookie) {
+	@JsonCreator
+	protected RpcRequest(@JsonProperty(value = "id", required = true) long id,
+						 @JsonProperty(value = "m", required = true) RpcMethod method,
+						 @JsonProperty(value = "p") Object params,
+						 @JsonProperty(value = "c") byte[] cookie) {
 		this.id = id;
 		this.method = method;
 		this.params = params;
 		this.cookie = cookie;
 	}
 
-	public RpcRequest(long id, RpcMethod method, P params) {
+	protected RpcRequest(long id, RpcMethod method, Object params) {
 		this(id, method, params, null);
-	}
-
-	public RpcRequest(long id, RpcMethod method) {
-		this(id, method, null, null);
 	}
 
 	public long getId() {
@@ -69,8 +109,9 @@ public class RpcRequest<P> {
 		return method;
 	}
 
-	public P getParams() {
-		return params;
+	@SuppressWarnings("unchecked")
+	public <T> T getParams() {
+		return (T) params;
 	}
 
 	/**
@@ -94,12 +135,20 @@ public class RpcRequest<P> {
 		}
 	}
 
+	public static RpcRequest parse(byte[] data) {
+		try {
+			return READER.readValue(data);
+		} catch (IOException e) {
+			throw new IllegalStateException("INTERNAL ERROR: RpcRequest deserialization", e);
+		}
+	}
+
 	@Override
 	public boolean equals(Object o) {
 		if (this == o)
 			return true;
 
-		if (o instanceof RpcRequest<?> that)
+		if (o instanceof RpcRequest that)
 			return id == that.id &&
 					method == that.method &&
 					Objects.equals(params, that.params) &&
@@ -111,5 +160,65 @@ public class RpcRequest<P> {
 	@Override
 	public int hashCode() {
 		return Objects.hash(id, method, params, Arrays.hashCode(cookie));
+	}
+
+	public static RpcRequest listSessions(long id) {
+		return new RpcRequest(id, RpcMethod.SESSION_LIST, null);
+	}
+
+	public static RpcRequest revokeSession(long id, Id deviceId) {
+		return new RpcRequest(id, RpcMethod.SESSION_REVOKE, deviceId);
+	}
+
+	public static RpcRequest contactMutate(long id, ContactMutation mutation) {
+		return new RpcRequest(id, RpcMethod.CONTACT_MUTATE, mutation);
+	}
+
+	public static RpcRequest createChannel(long id, NewChannelInfo params) {
+		return new RpcRequest(id, RpcMethod.CHANNEL_CREATE, params);
+	}
+
+	public static RpcRequest deleteChannel(long id) {
+		return new RpcRequest(id, RpcMethod.CHANNEL_DELETE, null);
+	}
+
+	public static RpcRequest joinChannel(long id, InviteTicket ticket) {
+		return new RpcRequest(id, RpcMethod.CHANNEL_JOIN, ticket);
+	}
+
+	public static RpcRequest leaveChannel(long id) {
+		return new RpcRequest(id, RpcMethod.CHANNEL_LEAVE, null);
+	}
+
+	public static RpcRequest transferChannelOwnership(long id, Id newOwner) {
+		return new RpcRequest(id, RpcMethod.CHANNEL_OWNERSHIP_TRANSFER, newOwner);
+	}
+
+	public static RpcRequest rotateChannelSessionKey(long id, ChannelSessionKeyRotation params) {
+		return new RpcRequest(id, RpcMethod.CHANNEL_SESSION_KEY_ROTATE, params);
+	}
+
+	public static RpcRequest updateChannelInfo(long id, JsonNode changes) {
+		return new RpcRequest(id, RpcMethod.CHANNEL_INFO_UPDATE, changes);
+	}
+
+	public static RpcRequest updateChannelMembersRole(long id, ChannelMembersRole params) {
+		return new RpcRequest(id, RpcMethod.CHANNEL_MEMBERS_ROLE_UPDATE, params);
+	}
+
+	public static RpcRequest banChannelMembers(long id, List<Id> memberIds) {
+		return new RpcRequest(id, RpcMethod.CHANNEL_MEMBERS_BAN, memberIds);
+	}
+
+	public static RpcRequest unbanChannelMembers(long id, List<Id> memberIds) {
+		return new RpcRequest(id, RpcMethod.CHANNEL_MEMBERS_UNBAN, memberIds);
+	}
+
+	public static RpcRequest removeChannelMembers(long id, List<Id> memberIds) {
+		return new RpcRequest(id, RpcMethod.CHANNEL_MEMBERS_REMOVE, memberIds);
+	}
+
+	public static RpcRequest getChannelInfo(long id) {
+		return new RpcRequest(id, RpcMethod.CHANNEL_INFO, null);
 	}
 }

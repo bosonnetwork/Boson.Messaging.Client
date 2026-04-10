@@ -3,7 +3,6 @@ package io.bosonnetwork.photonmessaging.impl.rpc;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.EnumSet;
 import java.util.Set;
@@ -26,32 +25,38 @@ public class RpcMethodTests {
 		Set<RpcMethod> methods = EnumSet.allOf(RpcMethod.class);
 
 		for (RpcMethod method : methods) {
-			if (method.value() < 0x50) {
-				assertTrue(method.isServiceRpc());
-				assertFalse(method.isChannelRpc());
-				assertFalse(method.isOwnerPrivilegedChannelRpc());
-				assertFalse(method.isModeratorPrivilegedChannelRpc());
-				assertFalse(method.isUnprivilegedChannelRpc());
-			} else if (method.value() < 0x60) {
-				assertFalse(method.isServiceRpc());
-				assertTrue(method.isChannelRpc());
-				assertTrue(method.isOwnerPrivilegedChannelRpc());
-				assertFalse(method.isModeratorPrivilegedChannelRpc());
-				assertFalse(method.isUnprivilegedChannelRpc());
-			} else if (method.value() < 0x70) {
-				assertFalse(method.isServiceRpc());
-				assertTrue(method.isChannelRpc());
-				assertFalse(method.isOwnerPrivilegedChannelRpc());
-				assertTrue(method.isModeratorPrivilegedChannelRpc());
-				assertFalse(method.isUnprivilegedChannelRpc());
-			} else if (method.value() < 0x80) {
-				assertFalse(method.isServiceRpc());
-				assertTrue(method.isChannelRpc());
-				assertFalse(method.isOwnerPrivilegedChannelRpc());
-				assertFalse(method.isModeratorPrivilegedChannelRpc());
-				assertTrue(method.isUnprivilegedChannelRpc());
-			} else {
-				fail("Illegal RPC method");
+			switch (method) {
+				case SESSION_LIST, SESSION_REVOKE, CONTACT_MUTATE, CHANNEL_CREATE -> {
+					assertTrue(method.isServiceRpc());
+					assertFalse(method.isChannelRpc());
+					assertFalse(method.isOwnerPrivilegedChannelRpc());
+					assertFalse(method.isModeratorPrivilegedChannelRpc());
+					assertFalse(method.isUnprivilegedChannelRpc());
+				}
+
+				case CHANNEL_DELETE, CHANNEL_OWNERSHIP_TRANSFER, CHANNEL_SESSION_KEY_ROTATE, CHANNEL_INFO_UPDATE -> {
+					assertFalse(method.isServiceRpc());
+					assertTrue(method.isChannelRpc());
+					assertTrue(method.isOwnerPrivilegedChannelRpc());
+					assertFalse(method.isModeratorPrivilegedChannelRpc());
+					assertFalse(method.isUnprivilegedChannelRpc());
+				}
+
+				case CHANNEL_MEMBERS_ROLE_UPDATE, CHANNEL_MEMBERS_BAN, CHANNEL_MEMBERS_UNBAN, CHANNEL_MEMBERS_REMOVE  -> {
+					assertFalse(method.isServiceRpc());
+					assertTrue(method.isChannelRpc());
+					assertFalse(method.isOwnerPrivilegedChannelRpc());
+					assertTrue(method.isModeratorPrivilegedChannelRpc());
+					assertFalse(method.isUnprivilegedChannelRpc());
+				}
+
+				case CHANNEL_JOIN, CHANNEL_LEAVE, CHANNEL_INFO -> {
+					assertFalse(method.isServiceRpc());
+					assertTrue(method.isChannelRpc());
+					assertFalse(method.isOwnerPrivilegedChannelRpc());
+					assertFalse(method.isModeratorPrivilegedChannelRpc());
+					assertTrue(method.isUnprivilegedChannelRpc());
+				}
 			}
 		}
 	}

@@ -57,7 +57,19 @@ import io.bosonnetwork.crypto.CryptoException;
 import io.bosonnetwork.crypto.CryptoIdentity;
 import io.bosonnetwork.crypto.Signature;
 import io.bosonnetwork.json.Json;
-import io.bosonnetwork.photonmessaging.*;
+import io.bosonnetwork.photonmessaging.Channel;
+import io.bosonnetwork.photonmessaging.ChannelListener;
+import io.bosonnetwork.photonmessaging.Configuration;
+import io.bosonnetwork.photonmessaging.ConnectionListener;
+import io.bosonnetwork.photonmessaging.Contact;
+import io.bosonnetwork.photonmessaging.ContactListener;
+import io.bosonnetwork.photonmessaging.Conversation;
+import io.bosonnetwork.photonmessaging.FriendRequest;
+import io.bosonnetwork.photonmessaging.InviteTicket;
+import io.bosonnetwork.photonmessaging.Message;
+import io.bosonnetwork.photonmessaging.MessageListener;
+import io.bosonnetwork.photonmessaging.MessagingClient;
+import io.bosonnetwork.photonmessaging.SessionInfo;
 import io.bosonnetwork.photonmessaging.exceptions.AlreadyMemberException;
 import io.bosonnetwork.photonmessaging.exceptions.ChannelNotExistsException;
 import io.bosonnetwork.photonmessaging.exceptions.ContactNotExistsException;
@@ -65,8 +77,9 @@ import io.bosonnetwork.photonmessaging.exceptions.InsufficientPermissionExceptio
 import io.bosonnetwork.photonmessaging.exceptions.MessageTimeoutException;
 import io.bosonnetwork.photonmessaging.exceptions.NotChannelMemberException;
 import io.bosonnetwork.photonmessaging.exceptions.RevisionNotMonotonicException;
-import io.bosonnetwork.photonmessaging.impl.rpc.GenericRpcResponse;
+import io.bosonnetwork.photonmessaging.impl.rpc.RpcCall;
 import io.bosonnetwork.photonmessaging.impl.rpc.RpcRequest;
+import io.bosonnetwork.photonmessaging.impl.rpc.RpcResponse;
 import io.bosonnetwork.utils.Base58;
 import io.bosonnetwork.vertx.BosonVerticle;
 import io.bosonnetwork.vertx.VertxCaffeine;
@@ -101,7 +114,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private AsyncLoadingCache<Id, PhotonContact> contactCache;
 	private AsyncLoadingCache<Id, PhotonConversation> conversationCache;
 	private final Map<Integer, PhotonMessage<?>> inflightMessages;
-	private final Map<Long, RpcCall<?, ?>> inflightRpcCalls;
+	private final Map<Long, RpcCall<?>> inflightRpcCalls;
 
 	private volatile boolean connected;
 	private volatile boolean running;
@@ -347,7 +360,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	public VertxFuture<List<SessionInfo>> getSessions() {
 		runningCheck();
 
-		RpcCall<Void, List<SessionInfo>> call = RpcCall.sessionList();
+		RpcCall<List<SessionInfo>> call = RpcCall.listSessions();
 		Promise<List<SessionInfo>> promise = Promise.promise();
 		runOnContext(v -> {
 			sendRpcCall(homePeerId, call).onComplete(promise);
@@ -360,7 +373,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		Objects.requireNonNull(deviceId, "deviceId");
 		runningCheck();
 
-		RpcCall<Id, Void> call = RpcCall.revokeSession(deviceId);
+		RpcCall<Void> call = RpcCall.revokeSession(deviceId);
 		Promise<Void> promise = Promise.promise();
 		runOnContext(v -> {
 			sendRpcCall(homePeerId, call).onComplete(promise);
@@ -478,7 +491,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private Future<Contact> addFriendInternal(Id id, byte[] sessionKey, String remark) {
 		Friend friend = new Friend(id, sessionKey, remark);
 		ContactMutation mutation = ContactMutation.add(contactsRevision, friend);
-		RpcCall<ContactMutation, Integer> call = RpcCall.contactMutate(mutation);
+		RpcCall<Integer> call = RpcCall.contactMutate(mutation);
 		return sendRpcCall(homePeerId, call).compose(revision -> {
 			Contact contact = friend.edit().setRevision(revision).build();
 			return repository.putContacts(revision, List.of(contact)).map(vv -> {
@@ -516,7 +529,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		Promise<Channel> promise = Promise.promise();
 		runOnContext(v -> {
 			// 1. Request to create a channel
-			RpcCall<NewChannelInfo, ChannelInfo> createChannelCall = RpcCall.createChannel(params);
+			RpcCall<ChannelInfo> createChannelCall = RpcCall.createChannel(params);
 			sendRpcCall(homePeerId, createChannelCall).compose(ci -> {
 				// 2. Save the channel locally
 				PhotonChannel channel = new PhotonChannel(ci.channelId(), ci.sessionKey(), ci.ownerId(), ci.permission(),
@@ -530,7 +543,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			}).compose(ch -> {
 				// 3. Add the channel as a new contact (sync cross all devices)
 				ContactMutation mutation = ContactMutation.add(contactsRevision, ch);
-				RpcCall<ContactMutation, Integer> addContactCall = RpcCall.contactMutate(mutation);
+				RpcCall<Integer> addContactCall = RpcCall.contactMutate(mutation);
 				return sendRpcCall(homePeerId, addContactCall).compose(revision -> {
 					PhotonChannel channel = (PhotonChannel) ch.edit().setRevision(revision).build();
 					return repository.putContacts(revision, List.of(channel)).map(vv -> {
@@ -558,11 +571,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					return Future.failedFuture(new InsufficientPermissionException("Only the owner can delete the channel"));
 
 				// 1. Request to delete the channel
-				RpcCall<Void, Void> deleteChannelCall = RpcCall.deleteChannel();
+				RpcCall<Void> deleteChannelCall = RpcCall.deleteChannel();
 				return sendRpcCall(channelId, deleteChannelCall).compose(vv -> {
 					// 2. Remove the channel from the contact list (sync cross all devices)
 					ContactMutation mutation = ContactMutation.remove(contactsRevision, List.of(channelId));
-					RpcCall<ContactMutation, Integer> removeContactCall = RpcCall.contactMutate(mutation);
+					RpcCall<Integer> removeContactCall = RpcCall.contactMutate(mutation);
 					return sendRpcCall(homePeerId, removeContactCall).compose(revision ->
 							repository.removeContacts(revision, List.of(channelId)).map(ignored -> {
 								contactsRevision = revision;
@@ -610,7 +623,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					return Future.succeededFuture(existing);
 
 				// 3. request to join the channel
-				RpcCall<InviteTicket, ChannelInfo> joinChannelCall = RpcCall.joinChannel(revisedTicket);
+				RpcCall<ChannelInfo> joinChannelCall = RpcCall.joinChannel(revisedTicket);
 				return sendRpcCall(ticket.getChannelId(), joinChannelCall).compose(ci -> {
 					PhotonChannel channel = new PhotonChannel(ci.channelId(), ci.sessionKey(), ci.ownerId(), ci.permission(),
 							ci.name(), ci.notice(), ci.announce(), ci.createdAt(), ci.updateAt());
@@ -623,7 +636,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				}).compose(ch -> {
 					// 4. add the channel as a new contact (sync cross all devices)
 					ContactMutation mutation = ContactMutation.add(contactsRevision, ch);
-					RpcCall<ContactMutation, Integer> addContactCall = RpcCall.contactMutate(mutation);
+					RpcCall<Integer> addContactCall = RpcCall.contactMutate(mutation);
 					return sendRpcCall(homePeerId, addContactCall).compose(revision -> {
 						PhotonChannel channel = (PhotonChannel) ch.edit().setRevision(revision).build();
 						return repository.putContacts(revision, List.of(channel)).map(vv -> {
@@ -651,10 +664,10 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				if (channel.getOwnerId().equals(getUserId()))
 					return Future.failedFuture(new InsufficientPermissionException("owner can not leave the channel"));
 
-				RpcCall<Void, Void> leaveChannelCall = RpcCall.leaveChannel();
+				RpcCall<Void> leaveChannelCall = RpcCall.leaveChannel();
 				return sendRpcCall(channelId, leaveChannelCall).compose(vv -> {
 					ContactMutation mutation = ContactMutation.remove(contactsRevision, List.of(channelId));
-					RpcCall<ContactMutation, Integer> removeContactCall = RpcCall.contactMutate(mutation);
+					RpcCall<Integer> removeContactCall = RpcCall.contactMutate(mutation);
 					return sendRpcCall(homePeerId, removeContactCall).compose(revision ->
 							repository.removeContacts(revision, List.of(channelId)).map(ignored -> {
 								contactsRevision = revision;
@@ -741,7 +754,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					if (member.isBanned())
 						return Future.failedFuture(new NotChannelMemberException("newOwner is banned from the channel"));
 
-					RpcCall<Id, Void> call = RpcCall.transferChannelOwnership(newOwner);
+					RpcCall<Void> call = RpcCall.transferChannelOwnership(newOwner);
 					return sendRpcCall(channelId, call).compose(vvv -> {
 						Contact updatedChannel = channel.editChannel().setOwnerId(newOwner).build();
 						return repository.putContactLocally(updatedChannel);
@@ -776,9 +789,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				}
 
 				Id sessionId = Id.of(keypair.publicKey().bytes());
-				ChannelSessionKeyRotation params =
-						new ChannelSessionKeyRotation(sessionId, sessionKey);
-				RpcCall<ChannelSessionKeyRotation, Void> call = RpcCall.rotateChannelSessionKey(params);
+				ChannelSessionKeyRotation params = new ChannelSessionKeyRotation(sessionId, sessionKey);
+				RpcCall<Void> call = RpcCall.rotateChannelSessionKey(params);
 				return sendRpcCall(channelId, call).compose(vv -> {
 					Contact updatedChannel = channel.edit().setSessionKey(sessionKey).build();
 					return repository.putContactLocally(updatedChannel);
@@ -817,7 +829,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				if (channel.getUpdatedAt() != origin.getUpdatedAt())
 					changes.put("u", channel.getUpdatedAt());
 
-				RpcCall<JsonNode, Void> call = RpcCall.updateChannelInfo(changes);
+				RpcCall<Void> call = RpcCall.updateChannelInfo(changes);
 				return sendRpcCall(channel.getId(), call).compose(vv -> {
 					contactCache.synchronous().invalidate(channel.getId());
 					return repository.putContactLocally(channel);
@@ -852,7 +864,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 						return Future.failedFuture(new InsufficientPermissionException("Not an owner or a moderator of the channel"));
 
 					ChannelMembersRole params = new ChannelMembersRole(members, role);
-					RpcCall<ChannelMembersRole, List<Id>> call = RpcCall.updateChannelMembersRole(params);
+					RpcCall<List<Id>> call = RpcCall.updateChannelMembersRole(params);
 					return sendRpcCall(channelId, call).compose(ids -> {
 						channel.invalidateMembers();
 						return repository.updateChannelMembersRole(channelId, ids, role).<Void>mapEmpty();
@@ -884,7 +896,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					if (!member.isOwner() && !member.isModerator())
 						return Future.failedFuture(new InsufficientPermissionException("Not an owner or a moderator of the channel"));
 
-					RpcCall<List<Id>, List<Id>> call = RpcCall.banChannelMembers(members);
+					RpcCall<List<Id>> call = RpcCall.banChannelMembers(members);
 					return sendRpcCall(channelId, call).compose(banned -> {
 						if (!banned.isEmpty()) {
 							channel.invalidateMembers();
@@ -920,7 +932,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					if (!member.isOwner() && !member.isModerator())
 						return Future.failedFuture(new InsufficientPermissionException("Not an owner or a moderator of the channel"));
 
-					RpcCall<List<Id>, List<Id>> call = RpcCall.unbanChannelMembers(members);
+					RpcCall<List<Id>> call = RpcCall.unbanChannelMembers(members);
 					return sendRpcCall(channelId, call).compose(unbanned -> {
 						if (!unbanned.isEmpty()) {
 							channel.invalidateMembers();
@@ -956,7 +968,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					if (!member.isOwner() && !member.isModerator())
 						return Future.failedFuture(new InsufficientPermissionException("Not an owner or a moderator of the channel"));
 
-					RpcCall<List<Id>, List<Id>> call = RpcCall.removeChannelMembers(members);
+					RpcCall<List<Id>> call = RpcCall.removeChannelMembers(members);
 					return sendRpcCall(channelId, call).compose(removed -> {
 						if (!removed.isEmpty()) {
 							channel.invalidateMembers();
@@ -1026,7 +1038,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					changes.put("u", contact.getUpdatedAt());
 
 				ContactMutation mutation = ContactMutation.update(contactsRevision, changes);
-				RpcCall<ContactMutation, Integer> call = RpcCall.contactMutate(mutation);
+				RpcCall<Integer> call = RpcCall.contactMutate(mutation);
 				return sendRpcCall(contact.getId(), call).compose(revision -> {
 					Contact updatedContact = ((ContactEditor) contact.edit()).setRevision(revision).build();
 					return repository.putContacts(revision, List.of(updatedContact)).onSuccess(vv ->
@@ -1048,7 +1060,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		Promise<Boolean> promise = Promise.promise();
 		runOnContext(v -> {
 			ContactMutation mutation = ContactMutation.remove(contactsRevision, contactIds);
-			RpcCall<ContactMutation, Integer> call = RpcCall.contactMutate(mutation);
+			RpcCall<Integer> call = RpcCall.contactMutate(mutation);
 			sendRpcCall(homePeerId, call).compose(revision ->
 					repository.removeContacts(revision, contactIds).map(ignored -> {
 						contactsRevision = revision;
@@ -1066,7 +1078,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		Promise<Void> promise = Promise.promise();
 		runOnContext(v -> {
 			ContactMutation mutation = ContactMutation.clear(contactsRevision);
-			RpcCall<ContactMutation, Integer> call = RpcCall.contactMutate(mutation);
+			RpcCall<Integer> call = RpcCall.contactMutate(mutation);
 			sendRpcCall(homePeerId, call).<Void>compose(revision ->
 					repository.clearContacts(revision).map(vv -> {
 						contactsRevision = revision;
@@ -1119,7 +1131,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private Future<Void> refreshChannel(PhotonChannel channel) {
 		final Id channelId = channel.getId();
 
-		RpcCall<Void, ChannelInfo> call = RpcCall.getChannelInfo();
+		RpcCall<ChannelInfo> call = RpcCall.getChannelInfo();
 		return sendRpcCall(channelId, call).compose(ci -> {
 			PhotonChannel updatedChannel = new PhotonChannel(channelId, ci.sessionKey(), ci.ownerId(), ci.permission(),
 					ci.name(), ci.notice(), ci.announce(), channel.getRemark(), channel.getTags(), channel.isMuted(),
@@ -1132,11 +1144,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		});
 	}
 
-	private <P, R> Future<R> sendRpcCall(Id recipient, RpcCall<P, R> call) {
+	private <R> Future<R> sendRpcCall(Id recipient, RpcCall<R> call) {
 		inflightRpcCalls.put(call.getId(), call);
 		long now = System.currentTimeMillis();
 		Id messageId = PhotonMessage.generateId(getDeviceId(), now);
-		PhotonMessage<RpcRequest<P>> message = new PhotonMessage<>(messageId, recipient, Message.Type.CONTROL_MESSAGE, now, call.getRequest());
+		PhotonMessage<RpcRequest> message = new PhotonMessage<>(messageId, recipient, Message.Type.CONTROL_MESSAGE, now, call.getRequest());
 		log.debug("Sending RPC call {}:{} to {} ...", call.getId(), call.getMethod(), recipient);
 		return sendMessageInternal(message).compose(packageId -> call.getFuture(), error -> {
 			inflightRpcCalls.remove(call.getId());
@@ -1671,16 +1683,16 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			return;
 		}
 
-		final GenericRpcResponse response;
+		final RpcResponse response;
 		try {
-			response = GenericRpcResponse.parse(message.getPayload());
+			response = RpcResponse.parse(message.getPayload());
 		} catch (Exception e) {
 			log.error("Failed to parse RPC response from the message from device inbox", e);
 			return;
 		}
 
 		@SuppressWarnings("unchecked")
-		final RpcCall<?, ?> call = inflightRpcCalls.remove(response.getId());
+		final RpcCall<?> call = inflightRpcCalls.remove(response.getId());
 		if (call == null) {
 			log.warn("Received a RPC response but no matching call found, ignored");
 			return;

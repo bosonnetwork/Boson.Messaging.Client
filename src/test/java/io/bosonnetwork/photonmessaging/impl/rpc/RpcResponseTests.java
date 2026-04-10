@@ -1,168 +1,93 @@
 package io.bosonnetwork.photonmessaging.impl.rpc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
-import org.junit.jupiter.api.Test;
-
+import io.bosonnetwork.Id;
+import io.bosonnetwork.crypto.Random;
 import io.bosonnetwork.json.Json;
+import io.bosonnetwork.photonmessaging.Channel;
+import io.bosonnetwork.photonmessaging.SessionInfo;
+import io.bosonnetwork.photonmessaging.impl.ChannelInfo;
 
 public class RpcResponseTests {
-	private record SampleResult(@JsonProperty("value") String value, @JsonProperty("count") int count) {
+	private static long nextId() {
+		return Random.random().nextLong();
 	}
 
-	@Test
-	void testSuccessResponse() throws Exception {
-		SampleResult result = new SampleResult("ok", 2);
-		RpcResponse<SampleResult> response = new RpcResponse<>(2001L, result);
+	private static Stream<Arguments> responseProvider() {
+		List<Arguments> responses = new ArrayList<>();
 
-		GenericRpcResponse parsed = GenericRpcResponse.parse(response.serialize());
-		SampleResult mapped = parsed.getResultAs(SampleResult.class);
+		ChannelInfo channelInfo = new ChannelInfo(Id.random(), Id.random(), Id.random(), Random.randomBytes(64),
+				Channel.Permission.MODERATOR_INVITE, "Foo Bar", "Hello world", true,
+				System.currentTimeMillis(), System.currentTimeMillis(), null);
 
-		assertEquals(2001L, parsed.getId());
-		assertTrue(parsed.succeeded());
-		assertFalse(parsed.failed());
-		assertNull(parsed.getError());
-		assertEquals(result, mapped);
+		responses.add(Arguments.of(RpcMethod.SESSION_LIST.toString(),
+				RpcResponse.listSessions(nextId(), List.of(new SessionInfo(Id.random(), true, System.currentTimeMillis())))));
+		responses.add(Arguments.of(RpcMethod.SESSION_REVOKE.toString(),
+				RpcResponse.revokeSession(nextId())));
+		responses.add(Arguments.of(RpcMethod.CONTACT_MUTATE.toString(),
+				RpcResponse.contactMutate(nextId(), 67)));
+		responses.add(Arguments.of(RpcMethod.CHANNEL_CREATE.toString(),
+				RpcResponse.createChannel(nextId(), channelInfo)));
+		responses.add(Arguments.of(RpcMethod.CHANNEL_DELETE.toString(),
+				RpcResponse.deleteChannel(nextId())));
+		responses.add(Arguments.of(RpcMethod.CHANNEL_OWNERSHIP_TRANSFER.toString(),
+				RpcResponse.transferChannelOwnership(nextId())));
+		responses.add(Arguments.of(RpcMethod.CHANNEL_SESSION_KEY_ROTATE.toString(),
+				RpcResponse.rotateChannelSessionKey(nextId())));
+		responses.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_ROLE_UPDATE.toString(),
+				RpcResponse.updateChannelMembersRole(nextId(), List.of(Id.random(), Id.random()))));
+		responses.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_BAN.toString(),
+				RpcResponse.banChannelMembers(nextId(), List.of(Id.random(), Id.random()))));
+		responses.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_UNBAN.toString(),
+				RpcResponse.unbanChannelMembers(nextId(), List.of(Id.random()))));
+		responses.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_REMOVE.toString(),
+				RpcResponse.removeChannelMembers(nextId(), List.of(Id.random(), Id.random()))));
+		responses.add(Arguments.of(RpcMethod.CHANNEL_JOIN.toString(),
+				RpcResponse.joinChannel(nextId(), channelInfo)));
+		responses.add(Arguments.of(RpcMethod.CHANNEL_LEAVE.toString(),
+				RpcResponse.leaveChannel(nextId())));
+		responses.add(Arguments.of(RpcMethod.CHANNEL_INFO.toString(),
+				RpcResponse.getChannelInfo(nextId(), channelInfo)));
+		responses.add(Arguments.of(RpcMethod.CHANNEL_JOIN.toString(),
+				RpcResponse.error(nextId(), RpcMethod.CHANNEL_JOIN, 10000, "Test error")));
+
+		return responses.stream();
 	}
 
-	@Test
-	void testErrorResponse() throws Exception {
-		RpcResponse<Void> response = new RpcResponse<>(2002L, RpcError.InvalidParameters);
+	@ParameterizedTest(name = "{0}")
+	@MethodSource("responseProvider")
+	void testSerialization(String name, RpcResponse response) {
+		System.out.println(Json.toString(response));
+		RpcResponse parsed = RpcResponse.parse(response.serialize());
 
-		GenericRpcResponse parsed = GenericRpcResponse.parse(response.serialize());
+		assertEquals(response.getId(), parsed.getId());
+		assertEquals(response.getMethod(), parsed.getMethod());
 
-		assertEquals(2002L, parsed.getId());
-		assertFalse(parsed.succeeded());
-		assertTrue(parsed.failed());
-		assertNull(parsed.getResult());
-		assertEquals(RpcError.InvalidParameters.getCode(), parsed.getError().getCode());
-		assertEquals(RpcError.InvalidParameters.getMessage(), parsed.getError().getMessage());
-	}
+		Object result = response.getResult();
+		if (result instanceof ChannelInfo) {
+			Object parsedResult = parsed.getResult();
+			assertThat(parsedResult)
+					.usingRecursiveComparison()
+					.ignoringFieldsMatchingRegexes(".*b58")
+					.isEqualTo(result);
+		} else {
+			assertEquals(result, parsed.getResult());
+		}
 
-	@Test
-	void testNullResultSuccessBehavior() throws Exception {
-		RpcResponse<Void> response = new RpcResponse<>(2003L, (Void) null);
+		RpcError error = response.getError();
+		assertEquals(error, parsed.getError());
 
-		GenericRpcResponse parsed = GenericRpcResponse.parse(response.serialize());
-
-		assertEquals(2003L, parsed.getId());
-		assertTrue(parsed.succeeded());
-		assertFalse(parsed.failed());
-		assertNull(parsed.getResult());
-		assertNull(parsed.getError());
-	}
-
-	@Test
-	void testMalformedBytes() {
-		byte[] malformed = new byte[]{0x11, 0x22, 0x33};
-
-		assertThrows(MalformedRpcResponseException.class, () -> GenericRpcResponse.parse(malformed));
-	}
-
-	@Test
-	void testRejectBothResultAndError() {
-		assertThrows(IllegalArgumentException.class,
-				() -> new RpcResponse<>(2004L, "ok", RpcError.Timeout));
-	}
-
-	@Test
-	void testAllowNeitherResultNorError() throws Exception {
-		RpcResponse<Void> response = new RpcResponse<>(2005L, (Void) null);
-
-		GenericRpcResponse parsed = GenericRpcResponse.parse(response.serialize());
-
-		assertEquals(2005L, parsed.getId());
-		assertNull(parsed.getResult());
-		assertNull(parsed.getError());
-		assertTrue(parsed.succeeded());
-		assertFalse(parsed.failed());
-	}
-
-	@Test
-	void testResultConversionWithClass() throws Exception {
-		RpcResponse<SampleResult> response = new RpcResponse<>(2006L, new SampleResult("done", 7));
-
-		GenericRpcResponse parsed = GenericRpcResponse.parse(response.serialize());
-		SampleResult mapped = parsed.getResultAs(SampleResult.class);
-
-		assertEquals(new SampleResult("done", 7), mapped);
-	}
-
-	@Test
-	void testResultConversionWithTypeReference() throws Exception {
-		List<String> result = List.of("x", "y", "z");
-		RpcResponse<List<String>> response = new RpcResponse<>(2007L, result);
-
-		GenericRpcResponse parsed = GenericRpcResponse.parse(response.serialize());
-		List<String> mapped = parsed.getResultAs(new TypeReference<List<String>>() {
-		});
-
-		assertEquals(result, mapped);
-	}
-
-	@Test
-	void testResultConversionFailure() throws Exception {
-		RpcResponse<SampleResult> response = new RpcResponse<>(2008L, new SampleResult("bad", 1));
-
-		GenericRpcResponse parsed = GenericRpcResponse.parse(response.serialize());
-
-		assertThrows(InvalidRpcResultException.class, () -> parsed.getResultAs(Integer.class));
-	}
-
-	@Test
-	void testNullFieldsAreOmitted() throws Exception {
-		RpcResponse<Void> response = new RpcResponse<>(2009L, (Void) null);
-
-		JsonNode tree = Json.cborMapper().readTree(response.serialize());
-
-		assertTrue(tree.has("i"));
-		assertFalse(tree.has("r"));
-		assertFalse(tree.has("e"));
-	}
-
-	@Test
-	void testEmptyResultIsNotOmitted() throws Exception {
-		RpcResponse<List<String>> response = new RpcResponse<>(2010L, List.of());
- 
-		JsonNode tree = Json.cborMapper().readTree(response.serialize());
- 
-		assertTrue(tree.has("r"));
-		assertTrue(tree.get("r").isArray());
-		assertEquals(0, tree.get("r").size());
-	}
- 
-	@Test
-	void testEqualsAndHashCode() {
-		RpcResponse<String> res1 = new RpcResponse<>(1L, "ok");
-		RpcResponse<String> res2 = new RpcResponse<>(1L, "ok");
-		RpcResponse<String> res3 = new RpcResponse<>(1L, RpcError.Timeout);
- 
-		assertEquals(res1, res2);
-		assertEquals(res1.hashCode(), res2.hashCode());
-		assertFalse(res1.equals(res3));
- 
-		RpcError err1 = new RpcError(-1, "msg", "data");
-		RpcError err2 = new RpcError(-1, "msg", "data");
-		assertEquals(err1, err2);
-		assertEquals(err1.hashCode(), err2.hashCode());
-	}
- 
-	@Test
-	void testNullNodeBehavior() throws Exception {
-		// Test behavior when Jackson deserializes a literal null into a NullNode
-		byte[] bytes = Json.cborMapper().writeValueAsBytes(java.util.Map.of("i", 2011L, "r", com.fasterxml.jackson.databind.node.NullNode.getInstance()));
-		GenericRpcResponse parsed = GenericRpcResponse.parse(bytes);
-		
-		assertNull(parsed.getResultAs(String.class));
+		assertEquals(response.failed(), parsed.failed());
+		assertEquals(response.succeeded(), parsed.succeeded());
 	}
 }
