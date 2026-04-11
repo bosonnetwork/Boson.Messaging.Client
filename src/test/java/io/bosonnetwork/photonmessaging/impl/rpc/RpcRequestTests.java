@@ -30,35 +30,35 @@ public class RpcRequestTests {
 	private static Stream<Arguments> requestProvider() {
 		List<Arguments> requests = new ArrayList<>();
 
-		requests.add(Arguments.of(RpcMethod.SESSION_LIST.toString(),
+		requests.add(Arguments.of(RpcMethod.SESSION_LIST,
 				RpcRequest.listSessions(nextId())));
-		requests.add(Arguments.of(RpcMethod.SESSION_REVOKE.toString(),
+		requests.add(Arguments.of(RpcMethod.SESSION_REVOKE,
 				RpcRequest.revokeSession(nextId(), Id.random())));
-		requests.add(Arguments.of(RpcMethod.CONTACT_MUTATE.toString(),
+		requests.add(Arguments.of(RpcMethod.CONTACT_MUTATE,
 				RpcRequest.contactMutate(nextId(), ContactMutation.clear(10))));
-		requests.add(Arguments.of(RpcMethod.CHANNEL_CREATE.toString(),
+		requests.add(Arguments.of(RpcMethod.CHANNEL_CREATE,
 				RpcRequest.createChannel(nextId(), new NewChannelInfo(Id.random(), Random.randomBytes(64),
 						Channel.Permission.MEMBER_INVITE, "Test Channel", null, false))));
-		requests.add(Arguments.of(RpcMethod.CHANNEL_DELETE.toString(),
+		requests.add(Arguments.of(RpcMethod.CHANNEL_DELETE,
 				RpcRequest.deleteChannel(nextId())));
-		requests.add(Arguments.of(RpcMethod.CHANNEL_OWNERSHIP_TRANSFER.toString(),
+		requests.add(Arguments.of(RpcMethod.CHANNEL_OWNERSHIP_TRANSFER,
 				RpcRequest.transferChannelOwnership(nextId(), Id.random())));
-		requests.add(Arguments.of(RpcMethod.CHANNEL_SESSION_KEY_ROTATE.toString(),
+		requests.add(Arguments.of(RpcMethod.CHANNEL_SESSION_KEY_ROTATE,
 				RpcRequest.rotateChannelSessionKey(nextId(), new ChannelSessionKeyRotation(Id.random(), Random.randomBytes(64)))));
-		requests.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_ROLE_UPDATE.toString(),
+		requests.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_ROLE_UPDATE,
 				RpcRequest.updateChannelMembersRole(nextId(), new ChannelMembersRole(List.of(Id.random(), Id.random()), Channel.Role.MODERATOR))));
-		requests.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_BAN.toString(),
+		requests.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_BAN,
 				RpcRequest.banChannelMembers(nextId(), List.of(Id.random(), Id.random()))));
-		requests.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_UNBAN.toString(),
+		requests.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_UNBAN,
 				RpcRequest.unbanChannelMembers(nextId(), List.of(Id.random()))));
-		requests.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_REMOVE.toString(),
+		requests.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_REMOVE,
 				RpcRequest.removeChannelMembers(nextId(), List.of(Id.random(), Id.random()))));
-		requests.add(Arguments.of(RpcMethod.CHANNEL_JOIN.toString(),
+		requests.add(Arguments.of(RpcMethod.CHANNEL_JOIN,
 				RpcRequest.joinChannel(nextId(), InviteTicket.create(new CryptoIdentity(), Id.random(), Id.random(),
 						null, System.currentTimeMillis() + 100000L, Random.randomBytes(64)))));
-		requests.add(Arguments.of(RpcMethod.CHANNEL_LEAVE.toString(),
+		requests.add(Arguments.of(RpcMethod.CHANNEL_LEAVE,
 				RpcRequest.leaveChannel(nextId())));
-		requests.add(Arguments.of(RpcMethod.CHANNEL_INFO.toString(),
+		requests.add(Arguments.of(RpcMethod.CHANNEL_INFO,
 				RpcRequest.getChannelInfo(nextId())));
 
 		return requests.stream();
@@ -66,7 +66,8 @@ public class RpcRequestTests {
 
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("requestProvider")
-	void testSerialization(String name, RpcRequest request) {
+	void testSerialization(RpcMethod method, RpcRequest request) {
+		assertEquals(method, request.getMethod()); // make sure the test data is correct
 		System.out.println(Json.toString(request));
 		RpcRequest parsed = RpcRequest.parse(request.serialize());
 
@@ -74,17 +75,11 @@ public class RpcRequestTests {
 		assertEquals(request.getMethod(), parsed.getMethod());
 
 		Object params = request.getParams();
-		if (params instanceof NewChannelInfo ||
-				params instanceof ContactMutation ||
-				params instanceof ChannelSessionKeyRotation ||
-				params instanceof InviteTicket) {
-			Object parsedParams = parsed.getParams();
-			assertThat(parsedParams)
-					.usingRecursiveComparison()
-					.ignoringFieldsMatchingRegexes(".*b58")
-					.isEqualTo(params);
-		} else {
-			assertEquals(params, parsed.getParams());
-		}
+		Object parsedParams = parsed.getParams();
+
+		assertThat(parsedParams)
+				.usingRecursiveComparison()
+				.withComparatorForType(Id::compare, Id.class)
+				.isEqualTo(params);
 	}
 }

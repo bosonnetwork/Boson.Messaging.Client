@@ -70,7 +70,7 @@ public class RpcCallTests {
 	}
 
 	@Test
-	void testTimeoutCall(Vertx vertx, VertxTestContext context) {
+	void testTimeoutCall(VertxTestContext context) {
 		RpcCall<ChannelInfo> call = new RpcCall<>(RpcRequest.getChannelInfo(10), 1500);
 		call.getFuture().onComplete(ar ->
 				context.verify(() -> {

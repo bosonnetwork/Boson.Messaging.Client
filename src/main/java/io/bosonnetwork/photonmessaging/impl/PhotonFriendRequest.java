@@ -25,7 +25,7 @@ package io.bosonnetwork.photonmessaging.impl;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.FriendRequest;
 
-public class DefaultFriendRequest implements FriendRequest {
+public class PhotonFriendRequest implements FriendRequest {
 	private static final long EXPIRATION = 1000L * 60L * 60L * 24L * 7L; // 1 week
 
 	private final Id userId;
@@ -36,16 +36,16 @@ public class DefaultFriendRequest implements FriendRequest {
 	private boolean accepted;
 	private long acceptedAt;
 
-	protected DefaultFriendRequest(Id userId, Id initiatorId, String hello) {
+	protected PhotonFriendRequest(Id userId, Id initiatorId, String hello) {
 		this(userId, initiatorId, hello, System.currentTimeMillis(), 0);
 	}
 
-	protected DefaultFriendRequest(Id userId, Id initiatorId, String hello, long createdAt, long updatedAt) {
+	protected PhotonFriendRequest(Id userId, Id initiatorId, String hello, long createdAt, long updatedAt) {
 		this(userId, initiatorId, hello, createdAt, updatedAt, false, 0);
 	}
 
-	protected DefaultFriendRequest(Id userId, Id initiatorId, String hello, long createdAt,
-	                               long updatedAt, boolean accepted, long acceptedAt) {
+	protected PhotonFriendRequest(Id userId, Id initiatorId, String hello, long createdAt,
+	                              long updatedAt, boolean accepted, long acceptedAt) {
 		this.userId = userId;
 		this.initiatorId = initiatorId;
 		this.hello = hello;

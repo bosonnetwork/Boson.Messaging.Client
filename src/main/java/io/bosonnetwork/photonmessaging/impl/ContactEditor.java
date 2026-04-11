@@ -68,7 +68,7 @@ public class ContactEditor implements Contact.Editor {
 	}
 
 	protected ContactEditor setName(String name) {
-		if (Objects.equals(this.name, name)) {
+		if (!Objects.equals(this.name, name)) {
 			this.name = name;
 			this.modified = true;
 			this.updatedAt = System.currentTimeMillis();

@@ -76,7 +76,8 @@ public class ContactBuilder {
 	public ContactBuilder withSessionKey(byte[] sessionKey) {
 		Objects.requireNonNull(sessionKey, "sessionKey");
 		// session key should be encrypted
-		if (sessionKey.length != CryptoBox.Nonce.BYTES + CryptoBox.MAC_BYTES + Signature.PrivateKey.BYTES)
+		if (sessionKey.length != Signature.PrivateKey.BYTES &&
+				sessionKey.length != CryptoBox.Nonce.BYTES + CryptoBox.MAC_BYTES + Signature.PrivateKey.BYTES)
 			throw new IllegalArgumentException("invalid session key (encrypted)");
 
 		this.sessionKey =sessionKey;

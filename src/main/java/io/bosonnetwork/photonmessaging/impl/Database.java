@@ -423,7 +423,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	public Future<Void> putFriendRequest(FriendRequest friendRequest) {
 		return withTransaction(c ->
 				forUpdate(c, getDialect().upsertFriendRequest())
-						.execute(paramsFromFriendRequest((DefaultFriendRequest) friendRequest))
+						.execute(paramsFromFriendRequest((PhotonFriendRequest) friendRequest))
 						.<Void>mapEmpty()
 		).recover(e -> {
 			getLogger().error("Failed to put friend request for {}", friendRequest.getUserId(), e);
@@ -721,7 +721,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 				createdAt, content, sentAt, receivedAt);
 	}
 
-	private Map<String, Object> paramsFromFriendRequest(DefaultFriendRequest request) {
+	private Map<String, Object> paramsFromFriendRequest(PhotonFriendRequest request) {
 		Map<String, Object> params = new HashMap<>();
 		params.put("id", request.getUserId().bytes());
 		params.put("initiator", request.getInitiatorId().bytes());
@@ -742,7 +742,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		boolean accepted = getBoolean(row, "accepted");
 		long acceptedAt = row.getLong("accepted_at");
 
-		return new DefaultFriendRequest(userId, initiatorId, hello, createdAt, updatedAt, accepted, acceptedAt);
+		return new PhotonFriendRequest(userId, initiatorId, hello, createdAt, updatedAt, accepted, acceptedAt);
 	}
 
 	private Map<String, Object> paramsFromContact(Contact contact) {

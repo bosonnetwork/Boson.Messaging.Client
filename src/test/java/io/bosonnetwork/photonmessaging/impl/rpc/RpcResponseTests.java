@@ -30,35 +30,35 @@ public class RpcResponseTests {
 				Channel.Permission.MODERATOR_INVITE, "Foo Bar", "Hello world", true,
 				System.currentTimeMillis(), System.currentTimeMillis(), null);
 
-		responses.add(Arguments.of(RpcMethod.SESSION_LIST.toString(),
+		responses.add(Arguments.of(RpcMethod.SESSION_LIST,
 				RpcResponse.listSessions(nextId(), List.of(new SessionInfo(Id.random(), true, System.currentTimeMillis())))));
-		responses.add(Arguments.of(RpcMethod.SESSION_REVOKE.toString(),
+		responses.add(Arguments.of(RpcMethod.SESSION_REVOKE,
 				RpcResponse.revokeSession(nextId())));
-		responses.add(Arguments.of(RpcMethod.CONTACT_MUTATE.toString(),
+		responses.add(Arguments.of(RpcMethod.CONTACT_MUTATE,
 				RpcResponse.contactMutate(nextId(), 67)));
-		responses.add(Arguments.of(RpcMethod.CHANNEL_CREATE.toString(),
+		responses.add(Arguments.of(RpcMethod.CHANNEL_CREATE,
 				RpcResponse.createChannel(nextId(), channelInfo)));
-		responses.add(Arguments.of(RpcMethod.CHANNEL_DELETE.toString(),
+		responses.add(Arguments.of(RpcMethod.CHANNEL_DELETE,
 				RpcResponse.deleteChannel(nextId())));
-		responses.add(Arguments.of(RpcMethod.CHANNEL_OWNERSHIP_TRANSFER.toString(),
+		responses.add(Arguments.of(RpcMethod.CHANNEL_OWNERSHIP_TRANSFER,
 				RpcResponse.transferChannelOwnership(nextId())));
-		responses.add(Arguments.of(RpcMethod.CHANNEL_SESSION_KEY_ROTATE.toString(),
+		responses.add(Arguments.of(RpcMethod.CHANNEL_SESSION_KEY_ROTATE,
 				RpcResponse.rotateChannelSessionKey(nextId())));
-		responses.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_ROLE_UPDATE.toString(),
+		responses.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_ROLE_UPDATE,
 				RpcResponse.updateChannelMembersRole(nextId(), List.of(Id.random(), Id.random()))));
-		responses.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_BAN.toString(),
+		responses.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_BAN,
 				RpcResponse.banChannelMembers(nextId(), List.of(Id.random(), Id.random()))));
-		responses.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_UNBAN.toString(),
+		responses.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_UNBAN,
 				RpcResponse.unbanChannelMembers(nextId(), List.of(Id.random()))));
-		responses.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_REMOVE.toString(),
+		responses.add(Arguments.of(RpcMethod.CHANNEL_MEMBERS_REMOVE,
 				RpcResponse.removeChannelMembers(nextId(), List.of(Id.random(), Id.random()))));
-		responses.add(Arguments.of(RpcMethod.CHANNEL_JOIN.toString(),
+		responses.add(Arguments.of(RpcMethod.CHANNEL_JOIN,
 				RpcResponse.joinChannel(nextId(), channelInfo)));
-		responses.add(Arguments.of(RpcMethod.CHANNEL_LEAVE.toString(),
+		responses.add(Arguments.of(RpcMethod.CHANNEL_LEAVE,
 				RpcResponse.leaveChannel(nextId())));
-		responses.add(Arguments.of(RpcMethod.CHANNEL_INFO.toString(),
+		responses.add(Arguments.of(RpcMethod.CHANNEL_INFO,
 				RpcResponse.getChannelInfo(nextId(), channelInfo)));
-		responses.add(Arguments.of(RpcMethod.CHANNEL_JOIN.toString(),
+		responses.add(Arguments.of(RpcMethod.CHANNEL_JOIN,
 				RpcResponse.error(nextId(), RpcMethod.CHANNEL_JOIN, 10000, "Test error")));
 
 		return responses.stream();
@@ -66,7 +66,8 @@ public class RpcResponseTests {
 
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("responseProvider")
-	void testSerialization(String name, RpcResponse response) {
+	void testSerialization(RpcMethod method, RpcResponse response) {
+		assertEquals(method, response.getMethod()); // make sure the test data is correct
 		System.out.println(Json.toString(response));
 		RpcResponse parsed = RpcResponse.parse(response.serialize());
 
@@ -74,15 +75,11 @@ public class RpcResponseTests {
 		assertEquals(response.getMethod(), parsed.getMethod());
 
 		Object result = response.getResult();
-		if (result instanceof ChannelInfo) {
-			Object parsedResult = parsed.getResult();
-			assertThat(parsedResult)
-					.usingRecursiveComparison()
-					.ignoringFieldsMatchingRegexes(".*b58")
-					.isEqualTo(result);
-		} else {
-			assertEquals(result, parsed.getResult());
-		}
+		Object parsedResult = parsed.getResult();
+		assertThat(parsedResult)
+				.usingRecursiveComparison()
+				.withComparatorForType(Id::compare, Id.class)
+				.isEqualTo(result);
 
 		RpcError error = response.getError();
 		assertEquals(error, parsed.getError());
