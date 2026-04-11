@@ -134,6 +134,15 @@ public abstract class PhotonContact implements Contact {
 	}
 
 	/**
+	 * Retrieves the type of the contact.
+	 *
+	 * @return an instance of {@link Contact.Type} representing the type of the contact
+	 */
+	@JsonProperty("t")
+	@Override
+	public abstract Contact.Type getType();
+
+	/**
 	 * Returns the session private key.
 	 *
 	 * @return the session key bytes

@@ -41,6 +41,7 @@ import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.crypto.CryptoException;
 import io.bosonnetwork.photonmessaging.Channel;
+import io.bosonnetwork.photonmessaging.Contact;
 
 public class PhotonChannel extends PhotonContact implements Channel {
 	/**
@@ -96,6 +97,11 @@ public class PhotonChannel extends PhotonContact implements Channel {
 	                        boolean announce, long createdAt, long updatedAt) {
 		this(id, sessionKey, ownerId, permission, name, notice, announce,
 				null, null, false, false, createdAt, updatedAt, 0);
+	}
+
+	@Override
+	public Contact.Type getType() {
+		return Contact.Type.CHANNEL;
 	}
 
 	@Override

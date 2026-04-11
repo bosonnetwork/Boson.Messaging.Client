@@ -390,7 +390,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		// friend request is a notification message to the target user
 		long now = System.currentTimeMillis();
 		Notification notif = Notification.friendRequest(getUserId(), getDeviceId(), hello);
-		DefaultFriendRequest request = new DefaultFriendRequest(userId, userIdentity.getId(), hello);
+		PhotonFriendRequest request = new PhotonFriendRequest(userId, userIdentity.getId(), hello);
 
 		Promise<Void> promise = Promise.promise();
 		runOnContext(v -> {
@@ -426,7 +426,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			if (fr.isExpired())
 				return Future.failedFuture(new IllegalStateException("Friend request has expired"));
 
-			DefaultFriendRequest request = (DefaultFriendRequest) fr;
+			PhotonFriendRequest request = (PhotonFriendRequest) fr;
 			Signature.KeyPair sessionKeypair = Signature.KeyPair.random();
 			byte[] sessionKey = sessionKeypair.privateKey().bytes();
 			long now = System.currentTimeMillis();
@@ -1649,7 +1649,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				switch (notif.getEvent()) {
 					case FRIEND_REQUEST -> {
 						String hello = notif.getBody();
-						DefaultFriendRequest fr = new DefaultFriendRequest(message.getRecipient(), notif.getSource(), hello,
+						PhotonFriendRequest fr = new PhotonFriendRequest(message.getRecipient(), notif.getSource(), hello,
 								notif.getTimestamp(), System.currentTimeMillis());
 						repository.putFriendRequest(fr);
 					}
@@ -1663,7 +1663,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 							return Future.succeededFuture();
 						}
 
-						DefaultFriendRequest request = (DefaultFriendRequest) fr;
+						PhotonFriendRequest request = (PhotonFriendRequest) fr;
 						request.accept(notif.getTimestamp());
 						return repository.putFriendRequest(request);
 					});
@@ -1710,7 +1710,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		return switch (notif.getEvent()) {
 			case FRIEND_REQUEST -> {
 				String hello = notif.getBody();
-				DefaultFriendRequest fr = new DefaultFriendRequest(notif.getSource(), notif.getSource(), hello,
+				PhotonFriendRequest fr = new PhotonFriendRequest(notif.getSource(), notif.getSource(), hello,
 						notif.getTimestamp(), System.currentTimeMillis());
 				yield repository.putFriendRequest(fr).andThen(ar -> {
 					if (messageListener != null)
@@ -1730,7 +1730,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					return Future.succeededFuture();
 				}
 
-				DefaultFriendRequest request = (DefaultFriendRequest) fr;
+				PhotonFriendRequest request = (PhotonFriendRequest) fr;
 				request.accept();
 
 				// All user devices receive the 'accept' notification.

@@ -488,7 +488,7 @@ public class DatabaseTests {
 	void testFriendRequestAcceptanceFlow(String name, Database db, VertxTestContext context) {
 		Id userId = Id.random();
 		Id initiatorId = Id.random();
-		FriendRequest request = new DefaultFriendRequest(userId, initiatorId, faker.lorem().sentence());
+		FriendRequest request = new PhotonFriendRequest(userId, initiatorId, faker.lorem().sentence());
 
 		db.putFriendRequest(request)
 				.compose(v -> db.getFriendRequest(userId))
@@ -497,7 +497,7 @@ public class DatabaseTests {
 						assertNotNull(fr);
 						assertTrue(fr.getHello().length() > 0);
 					});
-					DefaultFriendRequest fri = (DefaultFriendRequest) fr;
+					PhotonFriendRequest fri = (PhotonFriendRequest) fr;
 					fri.accept();
 					return db.putFriendRequest(fri);
 				})

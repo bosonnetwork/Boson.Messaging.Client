@@ -114,8 +114,11 @@ public class ChannelEditor implements Channel.Editor {
 
 	@Override
 	public PhotonChannel build() {
-		return new PhotonChannel(origin.getId(), origin.getSessionKey(), origin.getOwnerId(), origin.getPermission(),
-				origin.getName(), origin.getNotice(), origin.isAnnounce(), origin.getRemark(), origin.getTags(),
+		if (!modified)
+			return origin;
+
+		return new PhotonChannel(origin.getId(), origin.getSessionKey(), ownerId, permission,
+				name, notice, announce, origin.getRemark(), origin.getTags(),
 				origin.isMuted(), origin.isBlocked(), origin.getCreatedAt(), System.currentTimeMillis(),
 				origin.getRevision());
 	}

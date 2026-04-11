@@ -24,15 +24,33 @@ package io.bosonnetwork.photonmessaging.impl;
 
 import java.io.IOException;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.ObjectWriter;
 
+import io.bosonnetwork.Id;
 import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.exceptions.MalformedMessageException;
 
 public class BytesMessage extends PhotonMessage<byte[]> {
 	private static final ObjectReader READER = Json.cborMapper().readerFor(BytesMessage.class);
 	private static final ObjectWriter WRITER = Json.cborMapper().writerFor(BytesMessage.class);
+
+	@JsonCreator
+	public BytesMessage(@JsonProperty(value = "v", required = true) int version,
+						@JsonProperty(value = "id", required = true) Id id,
+						@JsonProperty(value = "r", required = true) Id recipient,
+						@JsonProperty(value = "y", required = true) Type type,
+						@JsonProperty(value = "f") Id from,
+						@JsonProperty(value = "c", required = true) long createdAt,
+						@JsonProperty(value = "p", required = true) byte[] payload) {
+		super(version, id, recipient, type, from, createdAt, payload);
+	}
+
+	public BytesMessage(Id id, Id recipient, Type type, long createdAt, byte[] payload) {
+		super(id, recipient, type, createdAt, payload);
+	}
 
 	private BytesMessage(PhotonMessage<?> ref, byte[] payload) {
 		super(ref, payload);
@@ -55,7 +73,7 @@ public class BytesMessage extends PhotonMessage<byte[]> {
 		try {
 			return WRITER.writeValueAsBytes(this);
 		} catch (IOException e) {
-			throw new IllegalStateException("INTERNAL ERROR: Message serialization", e);
+			throw new IllegalStateException("INTERNAL ERROR: BytesMessage serialization", e);
 		}
 	}
 

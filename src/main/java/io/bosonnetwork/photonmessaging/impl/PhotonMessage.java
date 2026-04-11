@@ -39,6 +39,7 @@ import io.bosonnetwork.crypto.Hash;
 import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.Message;
 import io.bosonnetwork.photonmessaging.impl.rpc.RpcRequest;
+import io.bosonnetwork.photonmessaging.impl.rpc.RpcResponse;
 
 @JsonPropertyOrder({"v", "r", "y", "f", "s", "c", "p"})
 public class PhotonMessage<P> implements Message {
@@ -192,9 +193,8 @@ public class PhotonMessage<P> implements Message {
 		return rid;
 	}
 
-	public PhotonMessage<P> setRid(long rid) {
+	protected void setRid(long rid) {
 		this.rid = rid;
-		return this;
 	}
 
 	protected boolean isAssociated(Id deviceId) {
@@ -216,12 +216,20 @@ public class PhotonMessage<P> implements Message {
 		if (payload instanceof byte[] bytes)
 			return bytes;
 
+		// Optimised serialization
 		if (payload instanceof MessageContent c)
 			return c.serialize();
+
+		if (payload instanceof Notification n)
+			return n.serialize();
 
 		if (payload instanceof RpcRequest q)
 			return q.serialize();
 
+		if (payload instanceof RpcResponse r)
+			return r.serialize();
+
+		// general serialization
 		try {
 			return Json.cborMapper().writeValueAsBytes(payload);
 		} catch (IOException e) {
