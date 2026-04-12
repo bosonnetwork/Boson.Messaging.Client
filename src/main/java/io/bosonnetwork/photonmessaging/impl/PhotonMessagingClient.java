@@ -1769,11 +1769,6 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				yield applyContactSync(contactSync);
 			}
 
-			case CONTACT_MUTATE -> {
-				ContactMutation mutation = notif.getBody();
-				yield applyContactMutation(mutation);
-			}
-
 			case CHANNEL_CREATE -> {
 				ChannelInfo ci = notif.getBody();
 				// The session key is encrypted with the user's own key; no external decryption needed.

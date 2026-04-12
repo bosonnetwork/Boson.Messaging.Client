@@ -80,7 +80,7 @@ public enum RpcMethod {
 	CHANNEL_INFO_UPDATE,
 
 	/**
-	 * Updates channel members roles.
+	 * Updates channel members' roles.
 	 */
 	@JsonProperty("cru")
 	CHANNEL_MEMBERS_ROLE_UPDATE,

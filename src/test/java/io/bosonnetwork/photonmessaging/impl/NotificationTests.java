@@ -56,8 +56,6 @@ public class NotificationTests {
 		notifications.add(Arguments.of(Notification.Event.CONTACT_SYNC,
 				new Notification(Id.random(), Id.random(), System.currentTimeMillis(), Notification.Event.CONTACT_SYNC,
 						new ContactSync(10, ContactSync.Type.DELTA, List.of(mutation), null))));
-		notifications.add(Arguments.of(Notification.Event.CONTACT_MUTATE,
-				new Notification(Id.random(), Id.random(), System.currentTimeMillis(), Notification.Event.CONTACT_MUTATE, mutation)));
 
 		notifications.add(Arguments.of(Notification.Event.CHANNEL_CREATE,
 				new Notification(Id.random(), Id.random(), System.currentTimeMillis(), Notification.Event.CHANNEL_CREATE, channelInfo)));
