@@ -77,6 +77,10 @@ import io.bosonnetwork.photonmessaging.exceptions.InsufficientPermissionExceptio
 import io.bosonnetwork.photonmessaging.exceptions.MessageTimeoutException;
 import io.bosonnetwork.photonmessaging.exceptions.NotChannelMemberException;
 import io.bosonnetwork.photonmessaging.exceptions.RevisionNotMonotonicException;
+import io.bosonnetwork.photonmessaging.impl.dto.ChannelInfo;
+import io.bosonnetwork.photonmessaging.impl.dto.ChannelMembersRole;
+import io.bosonnetwork.photonmessaging.impl.dto.ChannelSessionKeyRotation;
+import io.bosonnetwork.photonmessaging.impl.dto.NewChannelInfo;
 import io.bosonnetwork.photonmessaging.impl.rpc.RpcCall;
 import io.bosonnetwork.photonmessaging.impl.rpc.RpcRequest;
 import io.bosonnetwork.photonmessaging.impl.rpc.RpcResponse;

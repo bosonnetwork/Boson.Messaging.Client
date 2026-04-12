@@ -20,12 +20,17 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging.impl;
+package io.bosonnetwork.photonmessaging.impl.dto;
 
-import java.util.ArrayList;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-import io.bosonnetwork.photonmessaging.SessionInfo;
+import io.bosonnetwork.Id;
+import io.bosonnetwork.photonmessaging.Channel;
 
-public class SessionInfoList extends ArrayList<SessionInfo> {
-	private static final long serialVersionUID = 1860533472314309341L;
+public record NewChannelInfo(@JsonProperty(value = "sid", required = true) Id sessionId,
+                             @JsonProperty(value = "sk", required = true) byte[] sessionKey,
+                             @JsonProperty(value = "p", required = true) Channel.Permission permission,
+                             @JsonProperty("n") String name,
+                             @JsonProperty("nt") String notice,
+                             @JsonProperty("a") boolean announce) {
 }

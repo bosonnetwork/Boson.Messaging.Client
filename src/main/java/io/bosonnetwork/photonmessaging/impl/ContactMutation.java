@@ -32,7 +32,9 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import io.bosonnetwork.Id;
+import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.Contact;
+import io.bosonnetwork.photonmessaging.impl.dto.IdList;
 
 /**
  * Represents a compact contact mutation operation used in the messaging system.
@@ -178,8 +180,8 @@ public class ContactMutation {
 
 	@JsonCreator
 	private ContactMutation(@JsonProperty(value = "r", required = true) int revision,
-	                       @JsonProperty(value = "op", required = true) Op op,
-	                       @JsonProperty(value = "d") Object data) {
+	                        @JsonProperty(value = "op", required = true) Op op,
+	                        @JsonProperty(value = "d") Object data) {
 		this.revision = revision;
 		this.op = op;
 		this.data = data;
@@ -196,6 +198,17 @@ public class ContactMutation {
 	@SuppressWarnings("unchecked")
 	public <T> T getData() {
 		return (T) data;
+	}
+
+	public byte[] getDataAsBytes() {
+		if (data == null)
+			return null;
+
+		try {
+			return Json.cborMapper().writeValueAsBytes(data);
+		} catch (Exception e) {
+			throw new IllegalStateException("INTERNAL ERROR: ContactMutation data serialization", e);
+		}
 	}
 
 	public static ContactMutation add(int revision, Contact contact) {

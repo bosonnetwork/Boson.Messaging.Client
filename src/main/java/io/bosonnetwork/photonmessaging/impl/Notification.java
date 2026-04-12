@@ -38,6 +38,9 @@ import io.bosonnetwork.Id;
 import io.bosonnetwork.crypto.Hash;
 import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.SessionInfo;
+import io.bosonnetwork.photonmessaging.impl.dto.ChannelInfo;
+import io.bosonnetwork.photonmessaging.impl.dto.ChannelMembersRole;
+import io.bosonnetwork.photonmessaging.impl.dto.IdList;
 
 /**
  * Represents a binary-encoded notification message exchanged between clients and the server.

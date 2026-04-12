@@ -35,11 +35,11 @@ import io.vertx.core.Promise;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.InviteTicket;
 import io.bosonnetwork.photonmessaging.SessionInfo;
-import io.bosonnetwork.photonmessaging.impl.ChannelInfo;
-import io.bosonnetwork.photonmessaging.impl.ChannelMembersRole;
-import io.bosonnetwork.photonmessaging.impl.ChannelSessionKeyRotation;
+import io.bosonnetwork.photonmessaging.impl.dto.ChannelInfo;
+import io.bosonnetwork.photonmessaging.impl.dto.ChannelMembersRole;
+import io.bosonnetwork.photonmessaging.impl.dto.ChannelSessionKeyRotation;
 import io.bosonnetwork.photonmessaging.impl.ContactMutation;
-import io.bosonnetwork.photonmessaging.impl.NewChannelInfo;
+import io.bosonnetwork.photonmessaging.impl.dto.NewChannelInfo;
 
 public class RpcCall<R> {
 	private static final long DEFAULT_TIMEOUT = 30 * 1000; // 30 seconds

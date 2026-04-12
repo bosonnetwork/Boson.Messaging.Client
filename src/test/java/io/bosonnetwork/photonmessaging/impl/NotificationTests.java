@@ -23,6 +23,8 @@ import io.bosonnetwork.crypto.Random;
 import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.Channel;
 import io.bosonnetwork.photonmessaging.SessionInfo;
+import io.bosonnetwork.photonmessaging.impl.dto.ChannelInfo;
+import io.bosonnetwork.photonmessaging.impl.dto.ChannelMembersRole;
 
 public class NotificationTests {
 	@Test

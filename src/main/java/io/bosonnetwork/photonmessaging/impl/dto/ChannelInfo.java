@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging.impl;
+package io.bosonnetwork.photonmessaging.impl.dto;
 
 import java.util.List;
 

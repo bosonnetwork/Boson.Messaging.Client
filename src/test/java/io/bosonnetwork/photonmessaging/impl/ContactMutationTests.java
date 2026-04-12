@@ -36,9 +36,7 @@ public class ContactMutationTests {
 		mutations.add(Arguments.of(ContactMutation.Op.UPDATE, ContactMutation.update(2, update)));
 
 		// REMOVE
-		IdList ids = new IdList();
-		ids.add(Id.random());
-		ids.add(Id.random());
+		List<Id> ids = List.of(Id.random(), Id.random());
 		mutations.add(Arguments.of(ContactMutation.Op.REMOVE, ContactMutation.remove(3, ids)));
 
 		// CLEAR

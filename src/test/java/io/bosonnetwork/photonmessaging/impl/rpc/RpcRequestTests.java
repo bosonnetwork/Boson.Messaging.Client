@@ -17,10 +17,10 @@ import io.bosonnetwork.crypto.Random;
 import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.Channel;
 import io.bosonnetwork.photonmessaging.InviteTicket;
-import io.bosonnetwork.photonmessaging.impl.ChannelMembersRole;
-import io.bosonnetwork.photonmessaging.impl.ChannelSessionKeyRotation;
+import io.bosonnetwork.photonmessaging.impl.dto.ChannelMembersRole;
+import io.bosonnetwork.photonmessaging.impl.dto.ChannelSessionKeyRotation;
 import io.bosonnetwork.photonmessaging.impl.ContactMutation;
-import io.bosonnetwork.photonmessaging.impl.NewChannelInfo;
+import io.bosonnetwork.photonmessaging.impl.dto.NewChannelInfo;
 
 public class RpcRequestTests {
 	private static long nextId() {
