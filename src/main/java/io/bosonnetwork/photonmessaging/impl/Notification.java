@@ -103,7 +103,7 @@ import io.bosonnetwork.photonmessaging.impl.dto.IdList;
  *     #[serde(rename = "cs")]
  *     ContactSync(ContactSync),
  *     #[serde(rename = "cm")]
- *     ContactMutate(ContactMutation),
+ *     ContactMutate(ContactSync),
  *     #[serde(rename = "cc")]
  *     ChannelCreate(ChannelInfo),
  *     #[serde(rename = "cd")]
@@ -168,7 +168,6 @@ public class Notification {
 	@JsonSubTypes({
 			@JsonSubTypes.Type(value = SessionInfo.class, name = "sn"),
 			@JsonSubTypes.Type(value = ContactSync.class, name = "cs"),
-			@JsonSubTypes.Type(value = ContactMutation.class, name = "cm"),
 			@JsonSubTypes.Type(value = ChannelInfo.class, name = "cc"),
 			@JsonSubTypes.Type(value = Void.class, name = "cd"),
 			@JsonSubTypes.Type(value = ChannelInfo.class, name = "cj"),
@@ -192,8 +191,6 @@ public class Notification {
 		SESSION_NEW(1),
 		@JsonProperty("cs")
 		CONTACT_SYNC(2),
-		@JsonProperty("cm")
-		CONTACT_MUTATE(3),
 		@JsonProperty("cc")
 		CHANNEL_CREATE(21),
 		@JsonProperty("cd")
@@ -239,7 +236,6 @@ public class Notification {
 			return switch (value) {
 				case 1 -> SESSION_NEW;
 				case 2 -> CONTACT_SYNC;
-				case 3 -> CONTACT_MUTATE;
 				case 21 -> CHANNEL_CREATE;
 				case 22 -> CHANNEL_DELETE;
 				case 23 -> CHANNEL_JOIN;

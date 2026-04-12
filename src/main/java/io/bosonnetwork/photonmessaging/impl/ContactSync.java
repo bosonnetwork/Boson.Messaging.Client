@@ -100,15 +100,15 @@ public class ContactSync {
 		this.mutations = mutations == null || mutations.isEmpty() ? null : mutations;
 	}
 
-	protected static ContactSync upToDate(int revision) {
+	public static ContactSync upToDate(int revision) {
 		return new ContactSync(revision, Type.UP_TO_DATE, null, null);
 	}
 
-	protected static ContactSync delta(int revision, List<ContactMutation> mutations) {
+	public static ContactSync delta(int revision, List<ContactMutation> mutations) {
 		return new ContactSync(revision, Type.DELTA, mutations, null);
 	}
 
-	protected static ContactSync snapshot(int revision, List<Contact> contacts) {
+	public static ContactSync snapshot(int revision, List<Contact> contacts) {
 		return new ContactSync(revision, Type.SNAPSHOT, null, contacts);
 	}
 
