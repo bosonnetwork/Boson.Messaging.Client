@@ -37,9 +37,9 @@ import com.fasterxml.jackson.databind.ObjectWriter;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.SessionInfo;
-import io.bosonnetwork.photonmessaging.impl.ChannelInfo;
-import io.bosonnetwork.photonmessaging.impl.IdList;
-import io.bosonnetwork.photonmessaging.impl.SessionInfoList;
+import io.bosonnetwork.photonmessaging.impl.dto.ChannelInfo;
+import io.bosonnetwork.photonmessaging.impl.dto.IdList;
+import io.bosonnetwork.photonmessaging.impl.dto.SessionInfoList;
 
 /**
  * RPC response envelope.

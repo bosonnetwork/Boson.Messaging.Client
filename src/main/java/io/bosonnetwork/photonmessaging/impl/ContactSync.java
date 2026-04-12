@@ -79,7 +79,7 @@ public class ContactSync {
 
 	@JsonCreator
 	protected ContactSync(@JsonProperty(value = "r", required = true) int revision,
-						  @JsonProperty(value = "t", required = true) Type type,
+	                      @JsonProperty(value = "t", required = true) Type type,
 	                      @JsonProperty("d") List<ContactMutation> mutations,
 	                      @JsonProperty("s") List<Contact> contacts) {
 		if ((mutations != null && !mutations.isEmpty()) && (contacts != null && !contacts.isEmpty()))
@@ -98,6 +98,18 @@ public class ContactSync {
 		this.revision = revision;
 		this.contacts = contacts == null || contacts.isEmpty() ? null : contacts;
 		this.mutations = mutations == null || mutations.isEmpty() ? null : mutations;
+	}
+
+	protected static ContactSync upToDate(int revision) {
+		return new ContactSync(revision, Type.UP_TO_DATE, null, null);
+	}
+
+	protected static ContactSync delta(int revision, List<ContactMutation> mutations) {
+		return new ContactSync(revision, Type.DELTA, mutations, null);
+	}
+
+	protected static ContactSync snapshot(int revision, List<Contact> contacts) {
+		return new ContactSync(revision, Type.SNAPSHOT, null, contacts);
 	}
 
 	public Type getType() {

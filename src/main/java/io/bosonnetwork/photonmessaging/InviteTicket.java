@@ -77,7 +77,7 @@ public class InviteTicket {
 	 * @param sessionKey the optional session key associated with the ticket
 	 */
 	@JsonCreator
-	public InviteTicket(@JsonProperty(value = "c", required = true) Id channelId,
+	protected InviteTicket(@JsonProperty(value = "c", required = true) Id channelId,
 	                    @JsonProperty(value = "sid", required = true) Id sessionId,
 	                    @JsonProperty(value = "i", required = true) Id inviter,
 	                    @JsonProperty(value = "ie") Id invitee,

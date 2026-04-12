@@ -16,7 +16,7 @@ import io.bosonnetwork.crypto.Random;
 import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.Channel;
 import io.bosonnetwork.photonmessaging.SessionInfo;
-import io.bosonnetwork.photonmessaging.impl.ChannelInfo;
+import io.bosonnetwork.photonmessaging.impl.dto.ChannelInfo;
 
 public class RpcResponseTests {
 	private static long nextId() {

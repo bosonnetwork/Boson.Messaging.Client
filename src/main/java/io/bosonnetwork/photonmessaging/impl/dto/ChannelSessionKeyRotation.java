@@ -20,15 +20,12 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging.impl;
-
-import java.util.List;
+package io.bosonnetwork.photonmessaging.impl.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import io.bosonnetwork.Id;
-import io.bosonnetwork.photonmessaging.Channel;
 
-public record ChannelMembersRole(@JsonProperty(value = "ids", required = true) List<Id> memberIds,
-                                 @JsonProperty(value = "r", required = true) Channel.Role role) {
+public record ChannelSessionKeyRotation(@JsonProperty(value = "sid", required = true) Id sessionId,
+                                        @JsonProperty(value = "sk", required = true) byte[] sessionKey) {
 }

@@ -35,6 +35,6 @@ import io.bosonnetwork.Id;
  * @param lastActive The timestamp of the last activity in milliseconds since epoch.
  */
 public record SessionInfo(@JsonProperty(value = "id", required = true) Id deviceId,
-						  @JsonProperty("o") boolean online,
-						  @JsonProperty("a") long lastActive) {
+                          @JsonProperty("o") boolean online,
+                          @JsonProperty("a") long lastActive) {
 }
