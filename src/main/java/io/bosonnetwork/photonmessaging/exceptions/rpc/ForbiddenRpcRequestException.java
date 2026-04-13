@@ -20,16 +20,32 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging.impl.rpc;
+package io.bosonnetwork.photonmessaging.exceptions.rpc;
 
-public class InvalidRpcResultException extends RpcException {
-	private static final long serialVersionUID = 5307601615494256275L;
+import io.bosonnetwork.photonmessaging.impl.rpc.RpcErrorCode;
 
-	public InvalidRpcResultException(String message) {
-		super(RpcErrorCode.INVALID_RESULT, message);
+/**
+ * Exception thrown to indicate that an RPC request was forbidden.
+ */
+public class ForbiddenRpcRequestException extends RpcException {
+	private static final long serialVersionUID = -8756343041216704135L;
+
+	/**
+	 * Constructs a new exception indicating that an RPC request was forbidden.
+	 *
+	 * @param message the detail message providing additional information about the reason for the exception
+	 */
+	public ForbiddenRpcRequestException(String message) {
+		super(RpcErrorCode.FORBIDDEN, message);
 	}
 
-	public InvalidRpcResultException(String message, Throwable cause) {
-		super(RpcErrorCode.INVALID_RESULT, message, cause);
+	/**
+	 * Constructs a new exception indicating that an RPC request was forbidden.
+	 *
+	 * @param message the detail message providing additional information about the reason for the exception
+	 * @param cause the cause of the exception, which may provide further details about the context of the error
+	 */
+	public ForbiddenRpcRequestException(String message, Throwable cause) {
+		super(RpcErrorCode.FORBIDDEN, message, cause);
 	}
 }

@@ -29,6 +29,7 @@ import java.util.Objects;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.crypto.Signature;
+import io.bosonnetwork.photonmessaging.impl.Database;
 import io.bosonnetwork.utils.Base58;
 import io.bosonnetwork.utils.ConfigMap;
 import io.bosonnetwork.utils.Hex;
@@ -41,6 +42,10 @@ public class Configuration {
 
 	private Signature.KeyPair userKey;
 	private Signature.KeyPair deviceKey;
+
+	private String databaseUri;
+	private int databasePoolSize;
+	private String databaseSchemaName;
 
 	private Configuration() {
 	}
@@ -91,6 +96,28 @@ public class Configuration {
 			throw new IllegalArgumentException("config error, invalid client devicePrivateKey", e);
 		}
 
+		// Database
+		ConfigMap database = cm.getObject("database");
+		if (database == null || database.isEmpty())
+			throw new IllegalArgumentException("Missing database configuration");
+
+		config.databaseUri = database.getString("uri");
+		if (!Database.supports(config.databaseUri))
+			throw new IllegalArgumentException("Unsupported database URI: " + config.databaseUri);
+
+		config.databasePoolSize = database.getInteger("poolSize", config.databasePoolSize);
+		if (config.databasePoolSize < 0)
+			throw new IllegalArgumentException("Invalid database poolSize: " + config.databasePoolSize);
+
+		String schemaName = database.getString("schema", config.databaseSchemaName);
+		if (schemaName != null && !schemaName.isEmpty()) {
+			if (!schemaName.matches("[a-z][a-z0-9_]{0,31}"))
+				throw new IllegalArgumentException("Invalid database schema name: " + schemaName);
+			config.databaseSchemaName = schemaName;
+		} else {
+			config.databaseSchemaName = null;
+		}
+
 		return config;
 	}
 
@@ -107,6 +134,14 @@ public class Configuration {
 		subMap.put("userPrivateKey", Base58.encode(userKey.privateKey().bytes()));
 		subMap.put("devicePrivateKey", Base58.encode(deviceKey.privateKey().bytes()));
 		map.put("client", subMap);
+
+		Map<String, Object> database = new LinkedHashMap<>();
+		database.put("uri", databaseUri);
+		if (databasePoolSize != 0)
+			database.put("poolSize", databasePoolSize);
+		if (databaseSchemaName != null)
+			database.put("schema", databaseSchemaName);
+		map.put("database", database);
 
 		return map;
 	}
@@ -125,6 +160,18 @@ public class Configuration {
 
 	public Signature.KeyPair getDeviceKey() {
 		return deviceKey;
+	}
+
+	public String getDatabaseUri() {
+		return databaseUri;
+	}
+
+	public int getDatabasePoolSize() {
+		return databasePoolSize;
+	}
+
+	public String getDatabaseSchemaName() {
+		return databaseSchemaName;
 	}
 
 	public static Builder builder() {

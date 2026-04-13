@@ -31,8 +31,12 @@ public final class RpcErrorCode {
 	public static final int UNIMPLEMENTED_METHOD = -5;
 	public static final int INVALID_PARAMS = -6;
 	public static final int INVALID_RESULT = -7;
-	public static final int FORBIDDEN_METHOD = -8;
+	public static final int FORBIDDEN = -8;
 	public static final int TIMEOUT = -9;
+
+	// Session error codes
+	public static final int SESSION_NOT_EXISTS = -101;
+	public static final int REVOKE_CURRENT_SESSION = -102;
 
 	// Contact synchronization error codes
 	public static final int CONTACT_STORE_ERROR = -201;
@@ -46,4 +50,6 @@ public final class RpcErrorCode {
 	public static final int CHANNEL_ALREADY_EXISTS = -302;
 	public static final int ALREADY_JOINED_CHANNEL = -303;
 	public static final int INVALID_INVITE_TICKET = -304;
+	public static final int FORBIDDEN_NON_CHANNEL_MEMBER = -305;
+	public static final int FORBIDDEN_BANNED_CHANNEL_MEMBER = -306;
 }

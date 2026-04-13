@@ -20,15 +20,39 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging.impl.rpc;
+package io.bosonnetwork.photonmessaging.exceptions.rpc;
 
+import io.bosonnetwork.photonmessaging.impl.rpc.RpcErrorCode;
+
+/**
+ * An exception that indicates an attempt to invoke a remote procedure call (RPC) method
+ * that has not been implemented. This exception is typically used to signal that the requested
+ * method exists but has not been defined or implemented on the server.
+ */
 public class UnimplementedRpcMethodException extends RpcException {
 	private static final long serialVersionUID = -7023239290311478528L;
 
+	/**
+	 * Constructs a new {@code UnimplementedRpcMethodException} with the specified detail message.
+	 * This exception is thrown to indicate that a remote procedure call (RPC) method
+	 * has been invoked but is not implemented on the server.
+	 *
+	 * @param message the detail message explaining the reason for the exception
+	 */
 	public UnimplementedRpcMethodException(String message) {
 		super(RpcErrorCode.UNIMPLEMENTED_METHOD, message);
 	}
 
+	/**
+	 * Constructs a new {@code UnimplementedRpcMethodException} with the specified detail message
+	 * and cause. This exception is thrown to indicate that a remote procedure call (RPC) method
+	 * has been invoked but is not implemented on the server.
+	 *
+	 * @param message the detail message explaining the reason for the exception
+	 * @param cause   the underlying cause of the exception, which may be {@code null} to indicate that
+	 *                the cause is nonexistent or unknown
+	 */
 	public UnimplementedRpcMethodException(String message, Throwable cause) {
 		super(RpcErrorCode.UNIMPLEMENTED_METHOD, message, cause);
-	}}
+	}
+}

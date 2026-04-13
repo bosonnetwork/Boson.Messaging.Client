@@ -20,15 +20,37 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging.impl.rpc;
+package io.bosonnetwork.photonmessaging.exceptions.rpc;
 
+import io.bosonnetwork.photonmessaging.impl.rpc.RpcErrorCode;
+
+/**
+ * Thrown to indicate that an RPC operation received a malformed or invalid response.
+ * This exception is typically used when the structure or content of an RPC response
+ * does not conform to the expected format or schema.
+ */
 public class MalformedRpcResponseException extends RpcException {
 	private static final long serialVersionUID = -1904588692624425579L;
 
+	/**
+	 * Constructs a new MalformedRpcResponseException with the specified detail message.
+	 * This exception is thrown to indicate that an RPC operation has received a malformed
+	 * or invalid response.
+	 *
+	 * @param message the detail message explaining the reason for the exception
+	 */
 	public MalformedRpcResponseException(String message) {
 		super(RpcErrorCode.MALFORMED_RESPONSE, message);
 	}
 
+	/**
+	 * Constructs a new MalformedRpcResponseException with the specified detail
+	 * message and cause. This exception is thrown to indicate that an RPC operation
+	 * has received a malformed or invalid response.
+	 *
+	 * @param message the detail message explaining the reason for the exception
+	 * @param cause the underlying cause of the exception
+	 */
 	public MalformedRpcResponseException(String message, Throwable cause) {
 		super(RpcErrorCode.MALFORMED_RESPONSE, message, cause);
 	}

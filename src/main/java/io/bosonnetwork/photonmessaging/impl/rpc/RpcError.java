@@ -30,6 +30,8 @@ import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import io.bosonnetwork.photonmessaging.exceptions.rpc.RpcException;
+
 public class RpcError {
 	private static final boolean INCLUDE_STACKTRACE_IN_ERROR = false;
 
@@ -47,8 +49,15 @@ public class RpcError {
 	public static final RpcError UnimplementedMethod = new RpcError(RpcErrorCode.UNIMPLEMENTED_METHOD, "Unimplemented RPC method");
 	public static final RpcError InvalidParameters = new RpcError(RpcErrorCode.INVALID_PARAMS, "Invalid RPC parameters");
 	public static final RpcError InvalidResult = new RpcError(RpcErrorCode.INVALID_RESULT, "Invalid RPC result");
-	public static final RpcError ForbiddenMethod = new RpcError(RpcErrorCode.FORBIDDEN_METHOD, "Forbidden RPC method");
+	public static final RpcError Forbidden = new RpcError(RpcErrorCode.FORBIDDEN, "Forbidden");
 	public static final RpcError Timeout = new RpcError(RpcErrorCode.TIMEOUT, "RPC call timed out");
+
+	public static final RpcError SessionNotExists = new RpcError(RpcErrorCode.SESSION_NOT_EXISTS, "Session not exists");
+	public static final RpcError RevokeCurrentSession = new RpcError(RpcErrorCode.REVOKE_CURRENT_SESSION, "Cannot revoke the current session");
+
+	public static final RpcError AlreadyJoinedChannel = new RpcError(RpcErrorCode.ALREADY_JOINED_CHANNEL, "Already joined channel");
+	public static final RpcError ForbiddenNonChannelMember = new RpcError(RpcErrorCode.FORBIDDEN_NON_CHANNEL_MEMBER, "Non-channel member is forbidden");
+	public static final RpcError ForbiddenBannedChannelMember = new RpcError(RpcErrorCode.FORBIDDEN_BANNED_CHANNEL_MEMBER, "Banned channel member is forbidden");
 
 	@JsonCreator
 	public RpcError(@JsonProperty(value = "c", required = true) int code,
