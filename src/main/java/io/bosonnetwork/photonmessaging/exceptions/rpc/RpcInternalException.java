@@ -20,15 +20,40 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging.impl.rpc;
+package io.bosonnetwork.photonmessaging.exceptions.rpc;
 
+import io.bosonnetwork.photonmessaging.impl.rpc.RpcErrorCode;
+
+/**
+ * Represents an internal exception thrown during remote procedure call (RPC) operations.
+ * This exception is used to indicate internal errors that occur within the RPC system,
+ * such as unexpected conditions or failures that prevent the system from processing
+ * the RPC request or response correctly.
+ */
 public class RpcInternalException extends RpcException {
 	private static final long serialVersionUID = 560188105191393593L;
 
+	/**
+	 * Constructs a new instance of RpcInternalException with the specified detail message.
+	 * This exception is thrown to indicate internal errors occurring within the RPC system,
+	 * such as unexpected conditions or failures that prevent processing of the RPC request
+	 * or response.
+	 *
+	 * @param message the detail message explaining the reason for the internal error
+	 */
 	public RpcInternalException(String message) {
 		super(RpcErrorCode.RPC_INTERNAL_ERROR, message);
 	}
 
+	/**
+	 * Constructs a new {@code RpcInternalException} with the specified detail message and cause.
+	 * This exception indicates an internal error that occurs during remote procedure call (RPC)
+	 * operations, typically as a result of unexpected conditions or failures within the RPC system.
+	 *
+	 * @param message the detail message explaining the reason for the internal error
+	 * @param cause the underlying cause of the exception, which may be {@code null} to indicate
+	 *              that the cause is nonexistent or unknown
+	 */
 	public RpcInternalException(String message, Throwable cause) {
 		super(RpcErrorCode.RPC_INTERNAL_ERROR, message, cause);
 	}

@@ -112,7 +112,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private ChannelListener channelListener;
 	private ContactListener contactListener;
 
-	private MessagingRepository repository;
+	private final Database repository;
 
 	private int contactsRevision;
 	private AsyncLoadingCache<Id, PhotonContact> contactCache;
@@ -146,6 +146,9 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 		this.inflightMessages = new HashMap<>();
 		this.inflightRpcCalls = new HashMap<>();
+
+		this.repository = Database.create(config.getDatabaseUri(),
+				config.getDatabasePoolSize(), config.getDatabaseSchemaName());
 
 		this.connected = false;
 		this.running = false;
@@ -366,9 +369,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 		RpcCall<List<SessionInfo>> call = RpcCall.listSessions();
 		Promise<List<SessionInfo>> promise = Promise.promise();
-		runOnContext(v -> {
-			sendRpcCall(homePeerId, call).onComplete(promise);
-		});
+		runOnContext(v -> sendRpcCall(homePeerId, call).onComplete(promise));
 		return VertxFuture.of(promise.future());
 	}
 
@@ -379,9 +380,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 		RpcCall<Void> call = RpcCall.revokeSession(deviceId);
 		Promise<Void> promise = Promise.promise();
-		runOnContext(v -> {
-			sendRpcCall(homePeerId, call).onComplete(promise);
-		});
+		runOnContext(v -> sendRpcCall(homePeerId, call).onComplete(promise));
 		return VertxFuture.of(promise.future());
 	}
 
@@ -498,7 +497,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		RpcCall<Integer> call = RpcCall.contactMutate(mutation);
 		return sendRpcCall(homePeerId, call).compose(revision -> {
 			Contact contact = friend.edit().setRevision(revision).build();
-			return repository.putContacts(revision, List.of(contact)).map(vv -> {
+			return repository.putContact(revision, contact).map(vv -> {
 				contactsRevision = revision;
 				return contact;
 			});
@@ -1083,8 +1082,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		runOnContext(v -> {
 			ContactMutation mutation = ContactMutation.clear(contactsRevision);
 			RpcCall<Integer> call = RpcCall.contactMutate(mutation);
-			sendRpcCall(homePeerId, call).<Void>compose(revision ->
-					repository.clearContacts(revision).map(vv -> {
+			sendRpcCall(homePeerId, call).compose(revision ->
+					repository.clearContacts(revision).<Void>map(vv -> {
 						contactsRevision = revision;
 						return null;
 					})
@@ -1096,8 +1095,6 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	@Override
 	protected Future<Void> deploy() {
 		this.running = true;
-
-		// initialize the repository
 
 		this.contactCache = VertxCaffeine.newBuilder(vertx)
 				.maximumSize(512)
@@ -1111,16 +1108,13 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				.buildAsync((id, executor) ->
 						VertxFuture.of(repository.getConversation(id).map(c -> (PhotonConversation) c)));
 
-		return connect();
+		return repository.initialize(vertx).compose(v -> connect());
 	}
 
 	@Override
 	protected Future<Void> undeploy() {
 		this.running = false;
-		return disconnect().compose(v -> {
-			// close the repository
-			return Future.succeededFuture();
-		});
+		return disconnect().compose(v -> repository.close());
 	}
 
 	private Future<PhotonContact> contact(Id id) {

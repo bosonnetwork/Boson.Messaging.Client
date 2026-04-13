@@ -20,16 +20,33 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging.impl.rpc;
+package io.bosonnetwork.photonmessaging.exceptions.rpc;
 
-public class MalformedRpcRequestException extends RpcException {
-	private static final long serialVersionUID = -4570870993883924292L;
+import io.bosonnetwork.photonmessaging.impl.rpc.RpcErrorCode;
 
-	public MalformedRpcRequestException(String message) {
-		super(RpcErrorCode.MALFORMED_REQUEST, message);
+/**
+ * Thrown to indicate that a requested contact does not exist in the system.
+ */
+public class ContactNotExistsException extends RpcException {
+	private static final long serialVersionUID = 8838815432114451832L;
+
+	/**
+	 * Constructs a new ContactNotExistsException with the specified detail message.
+	 *
+	 * @param message the detail message explaining the cause of the exception
+	 */
+	public ContactNotExistsException(String message) {
+		super(RpcErrorCode.CONTACT_NOT_EXISTS, message);
 	}
 
-	public MalformedRpcRequestException(String message, Throwable cause) {
-		super(RpcErrorCode.MALFORMED_REQUEST, message, cause);
+	/**
+	 * Constructs a new ContactNotExistsException with the specified detail message
+	 * and cause.
+	 *
+	 * @param message the detail message explaining the cause of the exception
+	 * @param cause the underlying cause of the exception
+	 */
+	public ContactNotExistsException(String message, Throwable cause) {
+		super(RpcErrorCode.CONTACT_NOT_EXISTS, message, cause);
 	}
 }

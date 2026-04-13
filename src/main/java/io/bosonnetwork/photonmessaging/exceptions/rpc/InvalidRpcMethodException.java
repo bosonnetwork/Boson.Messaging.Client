@@ -20,15 +20,39 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging.impl.rpc;
+package io.bosonnetwork.photonmessaging.exceptions.rpc;
 
+import io.bosonnetwork.photonmessaging.impl.rpc.RpcErrorCode;
+
+/**
+ * This exception is thrown to indicate that an invalid RPC method was invoked.
+ * It is used within the context of remote procedure call (RPC) handling to signify
+ * that the attempted method call does not correspond to a valid or recognized RPC method.
+ */
 public class InvalidRpcMethodException extends RpcException {
 	private static final long serialVersionUID = 1932730186023321355L;
 
+	/**
+	 * Constructs a new InvalidRpcMethodException with the specified detail message.
+	 * This exception is thrown to indicate that an invalid RPC method was invoked,
+	 * typically when the method does not correspond to a valid or recognized RPC method.
+	 *
+	 * @param message the detail message explaining the reason for the exception
+	 */
 	public InvalidRpcMethodException(String message) {
 		super(RpcErrorCode.INVALID_METHOD, message);
 	}
 
+	/**
+	 * Constructs a new InvalidRpcMethodException with the specified detail
+	 * message and cause. This exception is thrown to indicate that an invalid
+	 * RPC method was invoked, typically when the method does not correspond
+	 * to a valid or recognized RPC method.
+	 *
+	 * @param message the detail message explaining the reason for the
+	 *                exception
+	 * @param cause   the underlying cause of the exception
+	 */
 	public InvalidRpcMethodException(String message, Throwable cause) {
 		super(RpcErrorCode.INVALID_METHOD, message, cause);
 	}

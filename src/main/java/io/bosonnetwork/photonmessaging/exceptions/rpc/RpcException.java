@@ -20,25 +20,55 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging.impl.rpc;
+package io.bosonnetwork.photonmessaging.exceptions.rpc;
 
 import io.bosonnetwork.photonmessaging.exceptions.MessagingException;
 
+/**
+ * Represents an exception that is thrown during remote procedure call (RPC) operations.
+ * This exception serves as a base class for other specific RPC-related exception types.
+ * It provides an error code and a detailed message to indicate the nature of the RPC failure.
+ */
 public class RpcException extends MessagingException {
 	private static final long serialVersionUID = -1363876638838365212L;
 
 	private final int code;
 
+	/**
+	 * Constructs a new RpcException with the specified error code and detail message.
+	 * This exception is typically used to indicate an issue encountered during a
+	 * remote procedure call (RPC) operation.
+	 *
+	 * @param code the error code representing the specific type of RPC error
+	 * @param message the detail message explaining the reason for the exception
+	 */
 	public RpcException(int code, String message) {
 		super(message);
 		this.code = code;
 	}
 
+	/**
+	 * Constructs a new RpcException with the specified error code, detail message, and cause.
+	 * This exception serves as a base for exceptions that represent issues encountered
+	 * during remote procedure call (RPC) operations.
+	 *
+	 * @param code the error code representing the specific type of RPC error
+	 * @param message the detail message explaining the reason for the exception
+	 * @param cause the underlying cause of the exception, which may be {@code null} to indicate that
+	 *              the cause is nonexistent or unknown
+	 */
 	public RpcException(int code, String message, Throwable cause) {
 		super(message, cause);
 		this.code = code;
 	}
 
+	/**
+	 * Retrieves the error code associated with this exception.
+	 * The error code signifies the specific type of failure
+	 * encountered during the remote procedure call (RPC) operation.
+	 *
+	 * @return the error code representing the RPC error
+	 */
 	public int getCode() {
 		return code;
 	}

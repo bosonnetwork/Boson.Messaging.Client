@@ -35,6 +35,7 @@ import io.vertx.core.Promise;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.InviteTicket;
 import io.bosonnetwork.photonmessaging.SessionInfo;
+import io.bosonnetwork.photonmessaging.exceptions.rpc.*;
 import io.bosonnetwork.photonmessaging.impl.dto.ChannelInfo;
 import io.bosonnetwork.photonmessaging.impl.dto.ChannelMembersRole;
 import io.bosonnetwork.photonmessaging.impl.dto.ChannelSessionKeyRotation;
@@ -90,7 +91,6 @@ public class RpcCall<R> {
 		this.response = response;
 
 		if (response.getError() != null) {
-			// noinspection unchecked
 			RpcError error = response.getError();
 			responsePromise.tryFail(rpcErrorToException(error));
 		} else {
@@ -100,7 +100,7 @@ public class RpcCall<R> {
 
 	@SuppressWarnings("unchecked")
 	public Future<R> getFuture() {
-		return timeout <= 0 ? (Future<R>) responsePromise.future() :
+		return timeout <= 0 ? responsePromise.future() :
 				responsePromise.future().timeout(timeout, TimeUnit.MILLISECONDS)
 				.recover(err -> {
 					if (err instanceof TimeoutException)
@@ -111,8 +111,35 @@ public class RpcCall<R> {
 	}
 
 	private static RpcException rpcErrorToException(RpcError error) {
-		// TODO: map error codes to the corresponding exceptions
-		return new RpcException(error.getCode(), error.getMessage());
+		return switch (error.getCode()) {
+			case RpcErrorCode.RPC_INTERNAL_ERROR -> new RpcInternalException(error.getMessage());
+			case RpcErrorCode.MALFORMED_REQUEST -> new MalformedRpcRequestException(error.getMessage());
+			case RpcErrorCode.MALFORMED_RESPONSE -> new MalformedRpcResponseException(error.getMessage());
+			case RpcErrorCode.INVALID_METHOD -> new InvalidRpcMethodException(error.getMessage());
+			case RpcErrorCode.UNIMPLEMENTED_METHOD -> new UnimplementedRpcMethodException(error.getMessage());
+			case RpcErrorCode.INVALID_PARAMS -> new InvalidRpcParametersException(error.getMessage());
+			case RpcErrorCode.INVALID_RESULT -> new InvalidRpcResultException(error.getMessage());
+			case RpcErrorCode.FORBIDDEN -> new ForbiddenRpcRequestException(error.getMessage());
+			case RpcErrorCode.TIMEOUT -> new RpcTimeoutException(error.getMessage());
+
+			case RpcErrorCode.SESSION_NOT_EXISTS -> new SessionNotExistsException(error.getMessage());
+			case RpcErrorCode.REVOKE_CURRENT_SESSION -> new RevokeCurrentSessionException(error.getMessage());
+
+			case RpcErrorCode.CONTACT_STORE_ERROR -> new ContactStoreException(error.getMessage());
+			case RpcErrorCode.REVISION_OUT_DATE -> new RevisionOutdateException(error.getMessage());
+			case RpcErrorCode.MALFORMED_MUTATION_DATA -> new MalformedMutationDataException(error.getMessage());
+			case RpcErrorCode.CONTACT_NOT_EXISTS -> new ContactNotExistsException(error.getMessage());
+			case RpcErrorCode.CONTACT_ALREADY_EXISTS -> new ContactAlreadyExistsException(error.getMessage());
+
+			case RpcErrorCode.CHANNEL_NOT_EXISTS -> new ChannelNotExistsException(error.getMessage());
+			case RpcErrorCode.CHANNEL_ALREADY_EXISTS -> new ChannelAlreadyExistsException(error.getMessage());
+			case RpcErrorCode.ALREADY_JOINED_CHANNEL -> new AlreadyJoinedException(error.getMessage());
+			case RpcErrorCode.INVALID_INVITE_TICKET -> new InvalidInviteTicket(error.getMessage());
+			case RpcErrorCode.FORBIDDEN_NON_CHANNEL_MEMBER -> new ForbiddenNonChannelMemberException(error.getMessage());
+			case RpcErrorCode.FORBIDDEN_BANNED_CHANNEL_MEMBER -> new ForbiddenBannedMemberException(error.getMessage());
+
+			default -> new RpcException(error.getCode(), error.getMessage());
+		};
 	}
 
 	private static long nextId() {

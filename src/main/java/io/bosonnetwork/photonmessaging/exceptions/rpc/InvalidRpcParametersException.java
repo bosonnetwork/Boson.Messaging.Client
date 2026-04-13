@@ -20,15 +20,35 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging.impl.rpc;
+package io.bosonnetwork.photonmessaging.exceptions.rpc;
 
+import io.bosonnetwork.photonmessaging.impl.rpc.RpcErrorCode;
+
+/**
+ * This exception is thrown when an operation encounters invalid parameters
+ * in an RPC (Remote Procedure Call) context.
+ */
 public class InvalidRpcParametersException extends RpcException {
 	private static final long serialVersionUID = -7704207833040430658L;
 
+	/**
+	 * Constructs a new InvalidRpcParametersException with the specified detail message.
+	 * This exception is thrown when invalid parameters are encountered in an RPC (Remote Procedure Call) context.
+	 *
+	 * @param message the detail message explaining the reason for the exception
+	 */
 	public InvalidRpcParametersException(String message) {
 		super(RpcErrorCode.INVALID_PARAMS, message);
 	}
 
+	/**
+	 * Constructs a new InvalidRpcParametersException with the specified detail
+	 * message and cause. This exception is thrown when invalid parameters are
+	 * encountered in an RPC (Remote Procedure Call) context.
+	 *
+	 * @param message the detail message explaining the reason for the exception
+	 * @param cause the underlying cause of the exception
+	 */
 	public InvalidRpcParametersException(String message, Throwable cause) {
 		super(RpcErrorCode.INVALID_PARAMS, message, cause);
 	}

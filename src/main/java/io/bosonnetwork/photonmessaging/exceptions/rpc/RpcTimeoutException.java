@@ -20,15 +20,38 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging.impl.rpc;
+package io.bosonnetwork.photonmessaging.exceptions.rpc;
 
+import io.bosonnetwork.photonmessaging.impl.rpc.RpcErrorCode;
+
+/**
+ * Represents an exception that is thrown when a remote procedure call (RPC) operation
+ * exceeds the allowed time limit for completion. This exception is a specific case
+ * of {@code RpcException}, indicating that a timeout occurred in the RPC process.
+ */
 public class RpcTimeoutException extends RpcException {
 	private static final long serialVersionUID = -7090989427712255560L;
 
+	/**
+	 * Constructs a new {@code RpcTimeoutException} with the specified detail message.
+	 * This exception indicates that a remote procedure call (RPC) operation has
+	 * exceeded the allowed time limit for completion, resulting in a timeout.
+	 *
+	 * @param message the detail message explaining the reason for the timeout
+	 */
 	public RpcTimeoutException(String message) {
 		super(RpcErrorCode.TIMEOUT, message);
 	}
 
+	/**
+	 * Constructs a new {@code RpcTimeoutException} with the specified detail message
+	 * and cause. This exception indicates that a remote procedure call (RPC) operation
+	 * has exceeded the allowed time limit for completion, resulting in a timeout.
+	 *
+	 * @param message the detail message explaining the reason for the timeout
+	 * @param cause the underlying cause of the exception, which may be {@code null}
+	 *              to indicate that the cause is nonexistent or unknown
+	 */
 	public RpcTimeoutException(String message, Throwable cause) {
 		super(RpcErrorCode.TIMEOUT, message, cause);
 	}

@@ -18,6 +18,7 @@ import io.vertx.junit5.VertxTestContext;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.SessionInfo;
+import io.bosonnetwork.photonmessaging.exceptions.rpc.RpcTimeoutException;
 import io.bosonnetwork.photonmessaging.impl.dto.ChannelInfo;
 
 @ExtendWith(VertxExtension.class)
