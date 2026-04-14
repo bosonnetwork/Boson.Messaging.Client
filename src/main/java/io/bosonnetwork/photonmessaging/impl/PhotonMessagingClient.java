@@ -719,12 +719,14 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 					try {
 						byte[] sk = selfContext.decrypt(channel.getSessionKey());
+						Signature.KeyPair sessionKeypair = Signature.KeyPair.fromPrivateKey(sk);
+						Id sessionId = Id.of(sessionKeypair.publicKey().bytes());
+
 						if (invitee != null)
 							sk = userIdentity.encrypt(invitee, sk);
 
-						InviteTicket ticket = InviteTicket.create(userIdentity, channelId, channel.getSessionId(), invitee,
+						InviteTicket ticket = InviteTicket.create(userIdentity, channelId, sessionId, invitee,
 								System.currentTimeMillis() + InviteTicket.DEFAULT_EXPIRATION, sk);
-
 						return Future.succeededFuture(ticket);
 					} catch (CryptoException e) {
 						return Future.failedFuture("Invalid session key");
@@ -777,16 +779,18 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 		Promise<Void> promise = Promise.promise();
 		runOnContext(v -> {
-			channel(channelId).compose(channel -> {
-				if (channel == null)
+			getOrCreateConversation(channelId).compose(conv -> {
+				if (conv == null || !conv.isChannel())
 					return Future.failedFuture(new ChannelNotExistsException(channelId.toString()));
 
+				PhotonChannel channel = (PhotonChannel) conv.getContact();
 				if (!channel.getOwnerId().equals(getUserId()))
 					return Future.failedFuture(new InsufficientPermissionException("not owner"));
 
 				final byte[] sessionKey;
 				try {
-					sessionKey = userIdentity.encrypt(channel.getSessionId(), keypair.privateKey().bytes());
+					SessionContext sc = conv.getSessionContext();
+					sessionKey = sc.getTxCryptoContext().encrypt(keypair.privateKey().bytes());
 				} catch (CryptoException e) {
 					return Future.failedFuture(e);
 				}
@@ -1092,6 +1096,23 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		return VertxFuture.of(promise.future());
 	}
 
+	private SessionContext sessionContextFactory(PhotonContact contact) {
+		if (!contact.hasSessionKey())
+			throw new IllegalStateException("INTERNAL ERROR: Contact has no session key");
+
+		try {
+			byte[] sessionKey = selfContext.decrypt(contact.getSessionKey());
+			CryptoIdentity sessionIdentity = new CryptoIdentity(sessionKey);
+
+			if (contact instanceof PhotonChannel)
+				return SessionContext.forChannel(contact.getId(), userIdentity, sessionIdentity);
+			else
+				return SessionContext.forUser(contact.getId(), userIdentity, sessionIdentity);
+		} catch (CryptoException e) {
+			throw new IllegalStateException("INTERNAL ERROR: Failed to decrypt session key", e);
+		}
+	}
+
 	@Override
 	protected Future<Void> deploy() {
 		this.running = true;
@@ -1106,7 +1127,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				.maximumSize(512)
 				.expireAfterAccess(5, TimeUnit.MINUTES)
 				.buildAsync((id, executor) ->
-						VertxFuture.of(repository.getConversation(id).map(c -> (PhotonConversation) c)));
+						VertxFuture.of(repository.getConversation(id).map(c -> {
+							PhotonConversation conv = (PhotonConversation) c;
+							conv.setSessionContextFactory(this::sessionContextFactory);
+							return conv;
+						})));
 
 		return repository.initialize(vertx).compose(v -> connect());
 	}
@@ -1115,6 +1140,23 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	protected Future<Void> undeploy() {
 		this.running = false;
 		return disconnect().compose(v -> repository.close());
+	}
+
+	private Future<PhotonConversation> getOrCreateConversation(Id id) {
+		return Future.fromCompletionStage(conversationCache.get(id)).compose(conv -> {
+			if (conv != null)
+					return Future.succeededFuture(conv);
+			else
+				return contact(id).map(contact -> {
+					if (contact == null)
+						return null;
+
+					PhotonConversation c = new PhotonConversation(contact);
+					c.setSessionContextFactory(this::sessionContextFactory);
+					conversationCache.synchronous().asMap().compute(id, (k, v) -> c);
+					return c;
+				});
+		});
 	}
 
 	private Future<PhotonContact> contact(Id id) {
@@ -1158,17 +1200,18 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	protected Future<Message> sendMessage(Message message) {
 		@SuppressWarnings("unchecked")
 		PhotonMessage<MessageContent> msg = (PhotonMessage<MessageContent>)message;
+		msg.setConversationId(msg.getRecipient());
 
 		Promise<Void> promise = Promise.promise();
-		vertxContext.runOnContext((v) -> {
-			repository.putMessage(msg).compose(vv ->
-					sendMessageInternal(msg).compose(packetId ->
-									msg.getFuture().onSuccess(vvv ->
-											repository.updateMessageSentTime(msg)
-									)
-					)
-			);
-		});
+		vertxContext.runOnContext(v ->
+				repository.putMessage(msg).compose(vv -> sendMessageInternal(msg))
+						.compose(packetId -> msg.getFuture())
+						.compose(vv -> repository.updateMessageSentTime(msg))
+						.compose(vv -> getOrCreateConversation(msg.getRecipient()).map(conv -> {
+							conv.update(msg);
+							return null;
+						}))
+		);
 
 		return promise.future().map(message);
 	}
@@ -1205,9 +1248,10 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			return Future.succeededFuture(BytesMessage.dup(message, null));
 
 		return switch (message.getType()) {
-			case CONTENT_MESSAGE -> contact(message.getRecipient()).compose(contact -> {
+			case CONTENT_MESSAGE -> getOrCreateConversation(message.getConversationId()).compose(conv -> {
 				try {
-					byte[] encryptedPayload = contact.getTxCryptoContext().encrypt(payload);
+					SessionContext sc = conv.getSessionContext();
+					byte[] encryptedPayload = sc.getTxCryptoContext().encrypt(payload);
 					return Future.succeededFuture(BytesMessage.dup(message, encryptedPayload));
 				} catch (CryptoException e) {
 					return Future.failedFuture(e);
@@ -1261,15 +1305,17 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 						return Future.failedFuture("Received a message from blocked contact");
 					}
 
-					try {
-						CryptoContext ctx = contact instanceof PhotonChannel channel ?
-								channel.getRxCryptoContext(from) : contact.getRxCryptoContext();
-						byte[] decryptedPayload = ctx.decrypt(payload);
-						return Future.succeededFuture(BytesMessage.dup(message, decryptedPayload));
-					} catch (CryptoException e) {
-						log.error("Decrypt {} from {} failed", type, from, e);
-						return Future.failedFuture(e);
-					}
+					return getOrCreateConversation(conversationId).compose(conv -> {
+						try {
+							SessionContext sc = conv.getSessionContext();
+							CryptoContext ctx = sc.getRxCryptoContext(from);
+							byte[] decryptedPayload = ctx.decrypt(payload);
+							return Future.succeededFuture(BytesMessage.dup(message, decryptedPayload));
+						} catch (CryptoException e) {
+							log.error("Decrypt {} from {} failed", type, from, e);
+							return Future.failedFuture(e);
+						}
+					});
 				});
 
 			case CONTROL_MESSAGE, STATE_MESSAGE -> {
@@ -1308,14 +1354,17 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 							return Future.failedFuture("Received a message send to non-channel contact");
 						}
 
-						try {
-							CryptoContext ctx = channel.getRxCryptoContext();
-							byte[] decryptedPayload = ctx.decrypt(payload);
-							return Future.succeededFuture(BytesMessage.dup(message, decryptedPayload));
-						} catch (CryptoException e) {
-							log.error("Decrypt {} from channel {} failed", type, recipient, e);
-							return Future.failedFuture(e);
-						}
+						return getOrCreateConversation(conversationId).compose(conv -> {
+							try {
+								SessionContext sc = conv.getSessionContext();
+								CryptoContext ctx = sc.getRxCryptoContext();
+								byte[] decryptedPayload = ctx.decrypt(payload);
+								return Future.succeededFuture(BytesMessage.dup(message, decryptedPayload));
+							} catch (CryptoException e) {
+								log.error("Decrypt {} from channel {} failed", type, recipient, e);
+								return Future.failedFuture(e);
+							}
+						});
 					});
 				}
 			}
@@ -1578,9 +1627,16 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		final Message.Type type = message.getType();
 		if (type == Message.Type.CONTENT_MESSAGE) {
 			MessageContent content = MessageContent.parse(message.getPayload());
-			PhotonMessage<Message.Content> contentMessage = message.dup(content);
-			if (messageListener != null)
-				messageListener.onMessage(contentMessage);
+			PhotonMessage<MessageContent> contentMessage = message.dup(content);
+			repository.putMessage(contentMessage)
+					.compose(v -> getOrCreateConversation(contentMessage.getConversationId()))
+					.map(conv -> {
+						conv.update(contentMessage);
+						if (messageListener != null)
+							messageListener.onMessage(contentMessage);
+
+						return null;
+					});
 
 			return;
 		}
@@ -1626,7 +1682,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	private void processingOutgoingMessage(BytesMessage message) {
-		// message is sent by this device?
+		// message is sent by this device? then ignore
 		if (message.isAssociated(getDeviceId()))
 			return;
 

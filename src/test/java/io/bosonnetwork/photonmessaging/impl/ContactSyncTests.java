@@ -34,8 +34,8 @@ public class ContactSyncTests {
 				new ContactSync(11, ContactSync.Type.DELTA, mutations, null)));
 
 		// SNAPSHOT
-		Friend friend = new Friend(Id.random(), Random.randomBytes(64), "Friend Remark");
-		PhotonChannel channel = new PhotonChannel(Id.random(), Random.randomBytes(64), Id.random(),
+		Friend friend = new Friend(Id.random(), Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Friend Remark");
+		PhotonChannel channel = new PhotonChannel(Id.random(), Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), Id.random(),
 				Channel.Permission.PUBLIC, "Group Name", "Group Notice", true, System.currentTimeMillis(), 0);
 		AutoContact auto = new AutoContact(Id.random(), "Auto Name", null, null, null, false, false, System.currentTimeMillis(), 0);
 

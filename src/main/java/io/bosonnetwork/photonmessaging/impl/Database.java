@@ -818,7 +818,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	private Conversation rowToConversation(Row row) {
-		Contact contact = rowToContact(row);
+		PhotonContact contact = (PhotonContact) rowToContact(row);
 
 		Long msgRid = row.getLong("last_message_rid");
 		if (msgRid == null)
