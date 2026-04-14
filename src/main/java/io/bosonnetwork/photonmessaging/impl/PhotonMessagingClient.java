@@ -23,6 +23,7 @@
 package io.bosonnetwork.photonmessaging.impl;
 
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -77,6 +78,7 @@ import io.bosonnetwork.photonmessaging.exceptions.InsufficientPermissionExceptio
 import io.bosonnetwork.photonmessaging.exceptions.MessageTimeoutException;
 import io.bosonnetwork.photonmessaging.exceptions.NotChannelMemberException;
 import io.bosonnetwork.photonmessaging.exceptions.RevisionNotMonotonicException;
+import io.bosonnetwork.photonmessaging.impl.database.SqliteDatabase;
 import io.bosonnetwork.photonmessaging.impl.dto.ChannelInfo;
 import io.bosonnetwork.photonmessaging.impl.dto.ChannelMembersRole;
 import io.bosonnetwork.photonmessaging.impl.dto.ChannelSessionKeyRotation;
@@ -146,6 +148,14 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 		this.inflightMessages = new HashMap<>();
 		this.inflightRpcCalls = new HashMap<>();
+
+		String databaseUri = config.getDatabaseUri();
+		// fix the sqlite database file location
+		if (databaseUri.startsWith(SqliteDatabase.CONNECTION_URI_PREFIX)) {
+			Path dbFile = Path.of(databaseUri.substring(SqliteDatabase.CONNECTION_URI_PREFIX.length()));
+			if (!dbFile.isAbsolute())
+				databaseUri = SqliteDatabase.CONNECTION_URI_PREFIX + config.getDataDir().resolve(dbFile).toAbsolutePath();
+		}
 
 		this.repository = Database.create(config.getDatabaseUri(),
 				config.getDatabasePoolSize(), config.getDatabaseSchemaName());
