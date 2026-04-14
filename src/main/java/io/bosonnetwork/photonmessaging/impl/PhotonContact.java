@@ -28,15 +28,9 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
-import io.vertx.core.Context;
-import io.vertx.core.Vertx;
 
-import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
-import io.bosonnetwork.Identity;
 import io.bosonnetwork.crypto.CryptoBox;
-import io.bosonnetwork.crypto.CryptoException;
-import io.bosonnetwork.crypto.CryptoIdentity;
 import io.bosonnetwork.crypto.Signature;
 import io.bosonnetwork.photonmessaging.Contact;
 
@@ -47,6 +41,9 @@ import io.bosonnetwork.photonmessaging.Contact;
  */
 @JsonPropertyOrder({"id", "t", "sk", "n", "r", "ts", "m", "b", "c", "u", "v"})
 public abstract class PhotonContact implements Contact {
+	public static final int ENCRYPTED_SESSION_KEY_BYTES = Signature.PrivateKey.BYTES +
+			CryptoBox.MAC_BYTES + CryptoBox.Nonce.BYTES;
+
 	private static final long STALE_TIME = 6 * 60 * 60 * 1000; // 6 hours
 
 	@JsonProperty(value = "id", required = true)
@@ -90,10 +87,6 @@ public abstract class PhotonContact implements Contact {
 	private transient String displayName;
 	private transient long lastRefresh;
 
-	private CryptoIdentity sessionIdentity;
-	private CryptoContext rxCryptoContext;
-	private CryptoContext txCryptoContext;
-
 	/**
 	 * Full constructor to initialize all fields of a Contact.
 	 *
@@ -122,6 +115,16 @@ public abstract class PhotonContact implements Contact {
 		this.revision = revision;
 
 		this.sessionKey = checkSessionKey(sessionKey);
+	}
+
+	private static byte[] checkSessionKey(byte[] key) {
+		if (key == null || key.length == 0)
+			return null;
+
+		if (key.length != ENCRYPTED_SESSION_KEY_BYTES)
+			throw new IllegalArgumentException("invalid session key");
+
+		return key;
 	}
 
 	/**
@@ -158,15 +161,6 @@ public abstract class PhotonContact implements Contact {
 	 */
 	public boolean hasSessionKey() {
 		return sessionKey != null;
-	}
-
-	/**
-	 * Returns the session identifier associated with this contact.
-	 *
-	 * @return the session ID
-	 */
-	public Id getSessionId() {
-		return sessionIdentity.getId();
 	}
 
 	/**
@@ -293,92 +287,6 @@ public abstract class PhotonContact implements Contact {
 
 	public boolean isStaled() {
 		return System.currentTimeMillis() - lastRefresh > STALE_TIME;
-	}
-
-	// TODO: update the context local data
-	private static Identity getUserIdentity() {
-		final Context context = Vertx.currentContext();
-		if (context == null)
-			throw new IllegalStateException("INTERNAL ERROR: no current context");
-
-		return context.get("photon.messaging.user.identity");
-	}
-
-	private byte[] checkSessionKey(byte[] key) {
-		if (key == null || key.length == 0)
-			return null;
-
-		if (key.length != Signature.PrivateKey.BYTES &&
-				key.length != Signature.PrivateKey.BYTES + CryptoBox.MAC_BYTES + CryptoBox.Nonce.BYTES)
-			throw new IllegalArgumentException("invalid session key");
-		
-		return key;
-	}
-
-	/*/
-	private byte[] checkSessionKey(byte[] key) {
-		if (key == null || key.length == 0)
-			return null;
-
-		byte[] privateKey;
-		try {
-			if (key.length == Signature.PrivateKey.BYTES) {
-				// plain session private key
-				privateKey = key;
-				return key = getUserIdentity().encrypt(id, key);
-			} else if (key.length == Signature.PrivateKey.BYTES + CryptoBox.MAC_BYTES + CryptoBox.Nonce.BYTES) {
-				// encrypted session key
-				privateKey = getUserIdentity().decrypt(id, key);
-				return key;
-			} else {
-				throw new IllegalArgumentException("invalid session key");
-			}
-		} catch (CryptoException e) {
-			throw new IllegalArgumentException("invalid session key", e);
-		}
-	}
-	 */
-
-	public byte[] sign(byte[] data) {
-		return sessionIdentity.sign(data);
-	}
-
-	public boolean verify(byte[] data, byte[] signature) {
-		return sessionIdentity.verify(data, signature);
-	}
-
-	// one-shot encryption
-	public byte[] encrypt(Id recipient, byte[] data) throws CryptoException {
-		return sessionIdentity.encrypt(recipient, data);
-	}
-
-	// one-shot decryption
-	public byte[] decrypt(Id sender, byte[] data) throws CryptoException {
-		return sessionIdentity.decrypt(sender, data);
-	}
-
-	protected CryptoContext createCryptoContext(Id id) throws CryptoException {
-		return sessionIdentity.createCryptoContext(id);
-	}
-
-	protected CryptoContext getRxCryptoContext() throws CryptoException {
-		CryptoContext ctx = this.rxCryptoContext;
-		if (ctx == null) {
-			ctx = createCryptoContext(id);
-			this.rxCryptoContext = ctx;
-		}
-
-		return ctx;
-	}
-
-	protected CryptoContext getTxCryptoContext() throws CryptoException {
-		CryptoContext ctx = this.txCryptoContext;
-		if (ctx == null) {
-			ctx = getUserIdentity().createCryptoContext(sessionIdentity.getId());
-			this.txCryptoContext = ctx;
-		}
-
-		return txCryptoContext;
 	}
 
 	@Override

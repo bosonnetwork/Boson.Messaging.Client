@@ -29,7 +29,7 @@ import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
 
 import io.bosonnetwork.Id;
-import io.bosonnetwork.crypto.Signature;
+import io.bosonnetwork.crypto.Random;
 import io.bosonnetwork.photonmessaging.Channel;
 import io.bosonnetwork.photonmessaging.Contact;
 import io.bosonnetwork.photonmessaging.FriendRequest;
@@ -229,7 +229,7 @@ public class DatabaseTests {
 				.onComplete(context.succeeding(conv -> {
 					context.verify(() -> {
 						assertNotNull(conv);
-						assertEquals("Bob", conv.getParticipant().getName());
+						assertEquals("Bob", conv.getContact().getName());
 						assertEquals(msg.getReceivedAt(), conv.getUpdatedAt());
 					});
 					context.completeNow();
@@ -364,8 +364,8 @@ public class DatabaseTests {
 	void testConversationManagement(String name, Database db, VertxTestContext context) {
 		Id c1Id = Id.random();
 		Id c2Id = Id.random();
-		Friend f1 = new Friend(c1Id, Signature.KeyPair.random().privateKey().bytes(), "Alice", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
-		Friend f2 = new Friend(c2Id, Signature.KeyPair.random().privateKey().bytes(), "Bob", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
+		Friend f1 = new Friend(c1Id, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Alice", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
+		Friend f2 = new Friend(c2Id, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Bob", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
 
 		db.putContactLocally(f1)
 				.compose(v -> db.putContactLocally(f2))
@@ -428,7 +428,7 @@ public class DatabaseTests {
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
 	void testConversationUpdateOnMessage(String name, Database db, VertxTestContext context) {
 		Id convId = Id.random();
-		Friend friend = new Friend(convId, Signature.KeyPair.random().privateKey().bytes(), "Alice", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
+		Friend friend = new Friend(convId, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Alice", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
 		PhotonMessage<MessageContent> m1 = randomMessage(convId);
 		long time1 = m1.getReceivedAt();
 
@@ -502,7 +502,7 @@ public class DatabaseTests {
 					return db.putFriendRequest(fri);
 				})
 				.compose(v -> {
-					Friend friend = new Friend(userId, Signature.KeyPair.random().privateKey().bytes(), "Alice", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
+					Friend friend = new Friend(userId, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Alice", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
 					return db.putContacts(2, List.of(friend));
 				})
 				.compose(v -> db.getContact(userId))
@@ -533,8 +533,8 @@ public class DatabaseTests {
 				.onComplete(context.succeeding(conv -> {
 					context.verify(() -> {
 						assertNotNull(conv);
-						assertTrue(conv.getParticipant() instanceof Channel);
-						assertEquals(channel.getName(), conv.getParticipant().getName());
+						assertTrue(conv.getContact() instanceof Channel);
+						assertEquals(channel.getName(), conv.getContact().getName());
 					});
 					context.completeNow();
 				}));
@@ -542,14 +542,14 @@ public class DatabaseTests {
 
 	// Helpers
 	static Friend randomFriend() {
-		return new Friend(Id.random(), Signature.KeyPair.random().privateKey().bytes(),
+		return new Friend(Id.random(), Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES),
 				faker.name().fullName(), faker.lorem().sentence(),
 				faker.internet().image(), faker.phoneNumber().phoneNumber(),
 				false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
 	}
 
 	static PhotonChannel randomChannel() {
-		return new PhotonChannel(Id.random(), Signature.KeyPair.random().privateKey().bytes(),
+		return new PhotonChannel(Id.random(), Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES),
 				Id.random(), Channel.Permission.PUBLIC,
 				faker.company().name(), faker.lorem().sentence(),
 				false, System.currentTimeMillis(), System.currentTimeMillis());

@@ -27,11 +27,11 @@ public class PhotonContactTests {
 
 		// Friend
 		contacts.add(Arguments.of("Friend",
-				new Friend(Id.random(), Random.randomBytes(64), "Friend Remark")));
+				new Friend(Id.random(), Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Friend Remark")));
 
 		// PhotonChannel
 		contacts.add(Arguments.of("Channel",
-				new PhotonChannel(Id.random(), Random.randomBytes(64), Id.random(),
+				new PhotonChannel(Id.random(), Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), Id.random(),
 						Channel.Permission.PUBLIC, "Group Name", "Group Notice",
 						true, System.currentTimeMillis(), 0)));
 
@@ -59,7 +59,7 @@ public class PhotonContactTests {
 	@Test
 	void testFriendPropertiesAndEditing() {
 		Id id = Id.random();
-		byte[] sk = Random.randomBytes(64);
+		byte[] sk = Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES);
 		String remark = "My Friend";
 		Friend friend = new Friend(id, sk, remark);
 
@@ -94,7 +94,7 @@ public class PhotonContactTests {
 	@Test
 	void testPhotonChannelPropertiesAndEditing() {
 		Id id = Id.random();
-		byte[] sk = Random.randomBytes(64);
+		byte[] sk = Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES);
 		Id owner = Id.random();
 		String name = "Test Channel";
 		String notice = "Test Notice";

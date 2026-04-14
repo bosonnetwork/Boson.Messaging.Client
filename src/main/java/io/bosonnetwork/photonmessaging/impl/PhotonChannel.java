@@ -26,7 +26,6 @@ import java.io.PrintStream;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,9 +36,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.vertx.core.Future;
 
-import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
-import io.bosonnetwork.crypto.CryptoException;
 import io.bosonnetwork.photonmessaging.Channel;
 import io.bosonnetwork.photonmessaging.Contact;
 
@@ -76,11 +73,6 @@ public class PhotonChannel extends PhotonContact implements Channel {
 	 */
 	private volatile Map<Id, ChannelMember> _members;
 	private Function<Id, Future<List<ChannelMember>>> membersLoader;
-
-	/**
-	 * Cached receiver crypto contexts for each member.
-	 */
-	private Map<Id, CryptoContext> memberRxCryptoContexts;
 
 	// Constructor for database OR mapping
 	protected PhotonChannel(Id id, byte[] sessionKey, Id ownerId, Permission permission, String name, String notice,
@@ -190,7 +182,6 @@ public class PhotonChannel extends PhotonContact implements Channel {
 
 	void invalidateMembers() {
 		_members = null;
-		memberRxCryptoContexts = null;
 	}
 
 	private Map<Id, ChannelMember> getMembersMap() {
@@ -198,25 +189,6 @@ public class PhotonChannel extends PhotonContact implements Channel {
 			throw new IllegalStateException("Members not loaded");
 
 		return _members;
-	}
-
-	protected CryptoContext getRxCryptoContext(Id memberId) {
-		Objects.requireNonNull(memberId, "memberId");
-
-		if (!hasSessionKey())
-			return null;
-
-		if (memberRxCryptoContexts == null)
-			memberRxCryptoContexts = new HashMap<>();
-
-		return memberRxCryptoContexts.computeIfAbsent(memberId, id -> {
-			try {
-				return createCryptoContext(id);
-			} catch (CryptoException e) {
-				// TODO: use sneaky throw?
-				throw new IllegalStateException("Failed to create crypto context", e);
-			}
-		});
 	}
 
 	@Override

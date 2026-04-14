@@ -23,6 +23,7 @@
 package io.bosonnetwork.photonmessaging.impl;
 
 import java.util.Objects;
+import java.util.function.Function;
 
 import io.bosonnetwork.photonmessaging.Contact;
 import io.bosonnetwork.photonmessaging.Conversation;
@@ -31,22 +32,31 @@ import io.bosonnetwork.photonmessaging.Message;
 public class PhotonConversation implements Conversation {
 	public static final int MAX_SNIPPET_LENGTH = 128;
 
-	private Contact participant;
+	private PhotonContact contact;
 	private Message lastMessage;
 	private transient String preview;
 
-	protected PhotonConversation(Contact participant, Message lastMessage) {
-		this.participant = participant;
+	private transient Function<PhotonContact, SessionContext> sessionContextFactory;
+	private transient SessionContext sessionContext;
+
+	protected PhotonConversation(PhotonContact contact, Message lastMessage) {
+		this.contact = contact;
 		update(lastMessage);
+		sessionContext = null;
 	}
 
-	protected PhotonConversation(Contact participant) {
-		this.participant = participant;
+	protected PhotonConversation(PhotonContact contact) {
+		this.contact = contact;
 	}
 
 	@Override
-	public Contact getParticipant() {
-		return participant;
+	public PhotonContact getContact() {
+		return contact;
+	}
+
+	@Override
+	public boolean isChannel() {
+		return contact.getType() == Contact.Type.CHANNEL;
 	}
 
 	@Override
@@ -80,21 +90,38 @@ public class PhotonConversation implements Conversation {
 		return lastMessage != null ? lastMessage.getReceivedAt() : 0;
 	}
 
-	protected void updateParticipant(Contact contact) {
+	protected void updateParticipant(PhotonContact contact) {
 		Objects.requireNonNull(contact, "contact");
-		if (!contact.getId().equals(participant.getId()))
+		if (!contact.getId().equals(this.contact.getId()))
 			throw new IllegalArgumentException("Contact does not match the conversation");
 
-		this.participant = contact;
+		this.contact = contact;
 	}
 
 	protected void update(Message message) {
 		Objects.requireNonNull(message, "message");
-		if (!message.getConversationId().equals(participant.getId()))
+		if (!message.getConversationId().equals(contact.getId()))
 			throw new IllegalArgumentException("Message does not match the conversation");
 
 		this.lastMessage = message;
 		this.preview = null;
+	}
+
+	void setSessionContextFactory(Function<PhotonContact, SessionContext> factory) {
+		this.sessionContextFactory = factory;
+	}
+
+	protected SessionContext getSessionContext() {
+		SessionContext ctx = sessionContext;
+		if (ctx == null) {
+			if (sessionContextFactory == null)
+				throw new IllegalStateException("INTERNAL ERROR: Session context factory not set");
+
+			ctx = sessionContextFactory.apply(contact);
+			sessionContext = ctx;
+		}
+
+		return sessionContext;
 	}
 
 	public boolean is(Conversation conversation) {

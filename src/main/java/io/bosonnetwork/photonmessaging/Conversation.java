@@ -34,7 +34,7 @@ public interface Conversation extends Comparable<Conversation> {
 	 * @return the conversation ID
 	 */
 	default Id getId() {
-		return getParticipant().getId();
+		return getContact().getId();
 	}
 
 	/**
@@ -43,7 +43,7 @@ public interface Conversation extends Comparable<Conversation> {
 	 * @return the conversation title
 	 */
 	default String getTitle() {
-		return getParticipant().getDisplayName();
+		return getContact().getDisplayName();
 	}
 
 	/**
@@ -52,7 +52,7 @@ public interface Conversation extends Comparable<Conversation> {
 	 * @return the avatar string
 	 */
 	default String getAvatar() {
-		return getParticipant().getAvatar();
+		return getContact().getAvatar();
 	}
 
 	/**
@@ -60,7 +60,14 @@ public interface Conversation extends Comparable<Conversation> {
 	 *
 	 * @return the contact representing the participant
 	 */
-	Contact getParticipant();
+	Contact getContact();
+
+	/**
+	 * Checks if the conversation is a channel-type conversation.
+	 *
+	 * @return {@code true} if the conversation is a channel; {@code false} otherwise
+	 */
+	boolean isChannel();
 
 	/**
 	 * Returns a short text preview of the most recent message or activity in the conversation.

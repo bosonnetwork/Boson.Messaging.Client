@@ -25,7 +25,7 @@ public class ContactMutationTests {
 		List<Arguments> mutations = new ArrayList<>();
 
 		// ADD
-		Friend friend = new Friend(Id.random(), Random.randomBytes(64), "John Doe");
+		Friend friend = new Friend(Id.random(), Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "John Doe");
 		mutations.add(Arguments.of(ContactMutation.Op.ADD, ContactMutation.add(1, friend)));
 
 		// UPDATE
