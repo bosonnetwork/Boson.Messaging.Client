@@ -127,7 +127,7 @@ public class Configuration {
 		Map<String, Object> subMap = new LinkedHashMap<>();
 		subMap.put("peerId", servicePeerId.toString());
 		if (serviceEndpoint != null)
-			subMap.put("endpoint", serviceEndpoint);
+			subMap.put("endpoint", serviceEndpoint.toString());
 		map.put("service", subMap);
 
 		subMap = new LinkedHashMap<>();
@@ -276,8 +276,40 @@ public class Configuration {
 			return deviceKey(sk);
 		}
 
+		public Builder database(String databaseUri, int databasePoolSize) {
+			databaseUri(databaseUri);
+			databasePoolSize(databasePoolSize);
+			return this;
+		}
+
+		public Builder databaseUri(String databaseUri) {
+			Objects.requireNonNull(databaseUri, "databaseUri");
+			config().databaseUri = databaseUri;
+			return this;
+		}
+
+		public Builder databasePoolSize(int databasePoolSize) {
+			if (databasePoolSize < 0)
+				throw new IllegalArgumentException("Invalid databasePoolSize");
+			config().databasePoolSize = databasePoolSize;
+			return this;
+		}
+
+		public Builder databaseSchemaName(String schema) {
+			if (schema != null && !schema.isEmpty()) {
+				if (!schema.matches("[a-z][a-z0-9_]{0,31}"))
+					throw new IllegalArgumentException("Invalid database schema name: " + schema);
+				config().databaseSchemaName = schema;
+			} else {
+				config().databaseSchemaName = null;
+			}
+
+			return this;
+		}
+
 		private boolean verify() {
-			return config().servicePeerId != null && config().userKey != null && config().deviceKey != null;
+			return config().servicePeerId != null && config().userKey != null && config().deviceKey != null
+					&& config().databaseUri != null;
 		}
 
 		public Configuration build() {

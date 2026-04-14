@@ -26,8 +26,12 @@ import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+import io.vertx.core.Vertx;
+
 import io.bosonnetwork.Id;
+import io.bosonnetwork.Node;
 import io.bosonnetwork.crypto.Signature;
+import io.bosonnetwork.photonmessaging.impl.PhotonMessagingClient;
 
 public interface MessagingClient {
 	static int DEFAULT_MESSAGES_LIMIT = 100;
@@ -189,4 +193,12 @@ public interface MessagingClient {
 	CompletableFuture<Boolean> removeContacts(List<Id> contactIds);
 
 	CompletableFuture<Void> clearContacts();
+
+	static MessagingClient create(Vertx vertx, Node node, Configuration config) {
+		return new PhotonMessagingClient(vertx, node, config);
+	}
+
+	static MessagingClient create(Node node, Configuration config) {
+		return new PhotonMessagingClient(null, node, config);
+	}
 }
