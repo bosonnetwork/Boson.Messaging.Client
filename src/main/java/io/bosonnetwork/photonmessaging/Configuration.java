@@ -23,6 +23,8 @@
 package io.bosonnetwork.photonmessaging;
 
 import java.net.URI;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -32,6 +34,7 @@ import io.bosonnetwork.crypto.Signature;
 import io.bosonnetwork.photonmessaging.impl.Database;
 import io.bosonnetwork.utils.Base58;
 import io.bosonnetwork.utils.ConfigMap;
+import io.bosonnetwork.utils.FileUtils;
 import io.bosonnetwork.utils.Hex;
 
 public class Configuration {
@@ -43,11 +46,15 @@ public class Configuration {
 	private Signature.KeyPair userKey;
 	private Signature.KeyPair deviceKey;
 
+	private Path dataDir;
+
 	private String databaseUri;
 	private int databasePoolSize;
 	private String databaseSchemaName;
 
 	private Configuration() {
+		dataDir = FileUtils.getUserDataDir().resolve( "boson/client/photon-messaging");
+		databaseUri = "jdbc:sqlite:photonmessaging.db";
 	}
 
 	public static Configuration fromMap(Map<String, Object> map) throws IllegalArgumentException {
@@ -96,6 +103,9 @@ public class Configuration {
 			throw new IllegalArgumentException("config error, invalid client devicePrivateKey", e);
 		}
 
+		// Data directory
+		config.dataDir = cm.getPath("dataDir", config.dataDir);
+
 		// Database
 		ConfigMap database = cm.getObject("database");
 		if (database == null || database.isEmpty())
@@ -135,6 +145,8 @@ public class Configuration {
 		subMap.put("devicePrivateKey", Base58.encode(deviceKey.privateKey().bytes()));
 		map.put("client", subMap);
 
+		map.put("dataDir", dataDir.toString());
+
 		Map<String, Object> database = new LinkedHashMap<>();
 		database.put("uri", databaseUri);
 		if (databasePoolSize != 0)
@@ -160,6 +172,10 @@ public class Configuration {
 
 	public Signature.KeyPair getDeviceKey() {
 		return deviceKey;
+	}
+
+	public Path getDataDir() {
+		return dataDir;
 	}
 
 	public String getDatabaseUri() {
@@ -274,6 +290,21 @@ public class Configuration {
 					Hex.decode(deviceKey, 2, deviceKey.length() - 2) :
 					Base58.decode(deviceKey);
 			return deviceKey(sk);
+		}
+
+		public Builder dataDir(Path dataDir) {
+			Objects.requireNonNull(dataDir, "dataDir");
+			config().dataDir = dataDir.normalize();
+			return this;
+		}
+
+		public Builder dataDir(String dataDir) {
+			Objects.requireNonNull(dataDir, "dataDir");
+			try {
+				return dataDir(Path.of(dataDir));
+			} catch (InvalidPathException e) {
+				throw new IllegalArgumentException("Invalid dataDir path", e);
+			}
 		}
 
 		public Builder database(String databaseUri, int databasePoolSize) {

@@ -80,11 +80,9 @@ public class ConfigurationTests {
 
 		assertThrows(IllegalStateException.class, () ->
 				Configuration.builder()
-						.servicePeerId(Id.random())
 						.serviceEndpoint("mqtts://10.0.0.1:8883")
 						.userKey(Base58.encode(Signature.KeyPair.random().privateKey().bytes()))
 						.deviceKey("0x" + Hex.encode(Signature.KeyPair.random().privateKey().bytes()))
-						.databasePoolSize(4)
 						.build()
 		);
 	}

@@ -38,6 +38,18 @@ client:
   # Keep this value secret.
   devicePrivateKey: 5W8GUHbjECnpdSaBJ1j5XzsuxBqSetEqtKRf42qhBxegsHx1i9jiEthD7nyc3uCTuEssAzNJevJDNNiLYvyzGnGd
 
+# Root directory for the messaging data storage.
+#
+# If omitted, defaults to the current working directory.
+#
+# Recommended locations for user deployments:
+#   - Unix-like: ~/.local/share/boson/client/photon-messaging
+#   - Windows:   %LOCALAPPDATA%\boson\client\photon-messaging
+#
+# Recommended locations for system-wide deployments:
+#   - Unix-like: /var/lib/boson/client/photon-messaging
+#   - Windows:   %ProgramData%\boson\client\photon-messaging
+dataDir: "~/.local/share/boson/client/photon-messaging"
 
 database:
   # Storage backend used by the messaging database.
