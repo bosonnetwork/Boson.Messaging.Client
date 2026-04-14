@@ -1,0 +1,13 @@
+service:
+  peerId: 7BXQciQfhFbJFjjxfJVU3gvNQG8se5ayM3xdZDix2bdK
+  endpoint: mqtts://192.168.8.80:8883
+
+
+client:
+  # id: GE9CuWp4pB24mtffSUcnQvMZLpsAfMA4z6WoqN9JucX1
+  userPrivateKey: 3LM4YnDDMVXh7jQiB3ZwdjF4bVspDzVaFNgU9Pxiht3FusXfCqAaBwxcd5i8CHWhB4Tyg1gcDrR8QCkiFXtwaaoq
+  # id: EExiSXacygrQ57VYvG5SxTrJXdTGXBSFkXKXF4xeNPSL
+  devicePrivateKey: 28oUMcuS1WAWyLaFxedVuexevu5HafJWycJno7eQP3iJNcqeNJY6Kx9S5LrN7Mw74o61a7FTwqWXMRdWzRzPZxFe
+
+database:
+  uri: jdbc:sqlite:photon-messaging-client.db
