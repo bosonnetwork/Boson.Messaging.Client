@@ -24,20 +24,65 @@ package io.bosonnetwork.photonmessaging;
 
 import io.bosonnetwork.Id;
 
+/**
+ * Represents a friend request in the messaging system.
+ * A friend request captures the negotiation between two users to establish
+ * a friendship, including the initiator, any greeting message, and its status.
+ */
 public interface FriendRequest {
+	/**
+	 * Returns the identifier of the user involved in the friend request (the other side).
+	 *
+	 * @return the user {@link Id}.
+	 */
 	Id getUserId();
 
+	/**
+	 * Returns the identifier of the user who initiated the friend request.
+	 *
+	 * @return the initiator's {@link Id}.
+	 */
 	Id getInitiatorId();
 
+	/**
+	 * Returns the greeting message (hello message) sent with the request.
+	 *
+	 * @return the greeting message, or {@code null} if none was provided.
+	 */
 	String getHello();
 
+	/**
+	 * Checks if the friend request has been accepted.
+	 *
+	 * @return {@code true} if the request was accepted; {@code false} otherwise.
+	 */
 	boolean isAccepted();
 
+	/**
+	 * Checks if the friend request has expired.
+	 *
+	 * @return {@code true} if the request is expired; {@code false} otherwise.
+	 */
 	boolean isExpired();
 
+	/**
+	 * Returns the timestamp when the friend request was created.
+	 *
+	 * @return the creation timestamp in milliseconds since the epoch.
+	 */
 	long getCreatedAt();
 
+	/**
+	 * Returns the timestamp when the friend request was accepted.
+	 *
+	 * @return the acceptance timestamp in milliseconds since the epoch, or 0 if not accepted.
+	 */
 	long getAcceptedAt();
 
+	/**
+	 * Returns the timestamp when the friend request was last updated.
+	 *
+	 * @return the update timestamp in milliseconds since the epoch.
+	 */
 	long getUpdatedAt();
 }

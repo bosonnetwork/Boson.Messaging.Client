@@ -27,32 +27,34 @@ import java.util.List;
 import io.bosonnetwork.Id;
 
 /**
- * Listener for contact-related events.
+ * A listener interface for receiving contact-related events.
+ * Implementations of this interface can be used to monitor when contacts
+ * are added, updated, removed, or when the entire contact list is cleared.
  */
 public interface ContactListener {
 	/**
-	 * Called when a new contact is added.
+	 * Called when a new contact has been added to the local contact list.
 	 *
-	 * @param contact the added contact
+	 * @param contact the {@link Contact} that was added.
 	 */
 	void onContactAdded(Contact contact);
 
 	/**
-	 * Called when existing contacts are updated.
+	 * Called when one or more existing contacts have been updated.
 	 *
-	 * @param contacts the list of updated contacts
+	 * @param contacts the list of updated {@link Contact} objects.
 	 */
 	void onContactsUpdated(List<Contact> contacts);
 
 	/**
-	 * Called when contacts are removed.
+	 * Called when one or more contacts have been removed from the local contact list.
 	 *
-	 * @param contactIds the identifiers of the removed contacts
+	 * @param contactIds the list of {@link Id}s of the removed contacts.
 	 */
 	void onContactRemoved(List<Id> contactIds);
 
 	/**
-	 * Called when all contacts are cleared.
+	 * Called when all contacts have been cleared from the local contact list.
 	 */
 	void onContactsCleared();
 }

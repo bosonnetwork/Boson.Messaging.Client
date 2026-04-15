@@ -54,8 +54,22 @@ public interface ChannelListener {
 	 */
 	void onChannelDeleted(Channel channel);
 
+	/**
+	 * Called when the ownership of a channel has been transferred from one user to another.
+	 *
+	 * @param channel  the channel where ownership was transferred
+	 * @param oldOwner the ID of the previous owner of the channel
+	 * @param newOwner the ID of the new owner of the channel
+	 */
 	void onChannelOwnershipTransferred(Channel channel, Id oldOwner, Id newOwner);
 
+	/**
+	 * Called when the session key for a channel has been rotated.
+	 * This indicates that a new session key has been established for the
+	 * specified channel, which could be due to security reasons or routine updates.
+	 *
+	 * @param channel the channel for which the session key was rotated
+	 */
 	void onChannelSessionKeyRotated(Channel channel);
 
 	/**

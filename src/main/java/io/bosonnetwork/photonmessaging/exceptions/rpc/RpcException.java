@@ -32,6 +32,9 @@ import io.bosonnetwork.photonmessaging.exceptions.MessagingException;
 public class RpcException extends MessagingException {
 	private static final long serialVersionUID = -1363876638838365212L;
 
+	/**
+	 * The error code associated with this exception.
+	 */
 	private final int code;
 
 	/**

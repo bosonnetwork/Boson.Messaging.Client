@@ -23,23 +23,26 @@
 package io.bosonnetwork.photonmessaging;
 
 /**
- * Listener for connection state changes.
+ * A listener interface for receiving connection state change events.
+ * Implementations of this interface can be used to monitor the lifecycle
+ * of a connection, including when it starts connecting, when it is
+ * successfully established, and when it is disconnected or lost.
  */
 public interface ConnectionListener {
 	/**
-	 * Called when the connection process starts.
+	 * Called when the connection process has initiated.
 	 */
 	default void connecting() {
 	}
 
 	/**
-	 * Called when the connection has been successfully established.
+	 * Called when the connection has been successfully established and is ready for communication.
 	 */
 	default void connected() {
 	}
 
 	/**
-	 * Called when the connection has been closed or lost.
+	 * Called when the connection has been closed or unexpectedly lost.
 	 */
 	default void disconnected() {
 	}

@@ -53,11 +53,23 @@ public interface Contact extends Comparable<Contact> {
 		 */
 		CHANNEL;
 
+		/**
+		 * Returns the numeric value associated with this type.
+		 *
+		 * @return the account type value.
+		 */
 		@JsonValue
 		public int value() {
 			return ordinal();
 		}
 
+		/**
+		 * Returns the {@code Type} corresponding to the specified numeric value.
+		 *
+		 * @param value the numeric value.
+		 * @return the corresponding {@code Type}.
+		 * @throws IllegalArgumentException if the value is invalid.
+		 */
 		@JsonCreator
 		public static Type of(int value) {
 			return switch (value) {
