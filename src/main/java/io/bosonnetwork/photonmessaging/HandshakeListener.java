@@ -25,20 +25,22 @@ package io.bosonnetwork.photonmessaging;
 import io.bosonnetwork.Id;
 
 /**
- * Listener for message-related events.
+ * An interface for handling events related to handshake actions, such as
+ * receiving and accepting friend requests.
  */
-public interface MessageListener {
+public interface HandshakeListener {
 	/**
-	 * Called when a new message is received.
+	 * Called when a new friend request incoming.
 	 *
-	 * @param message the received message
+	 * @param userId An identifier representing the user sending the friend request.
+	 * @param hello A message going with the friend request, possibly a greeting or introduction.
 	 */
-	void onMessage(Message message);
+	void onFriendRequest(Id userId, String hello);
 
 	/**
-	 * Called when a message has been successfully sent.
+	 * Called when a friend request has been accepted.
 	 *
-	 * @param message the sent message
+	 * @param userId An identifier representing the user who accepted the friend request.
 	 */
-	void onSent(Message message);
+	void onFriendRequestAccepted(Id userId);
 }

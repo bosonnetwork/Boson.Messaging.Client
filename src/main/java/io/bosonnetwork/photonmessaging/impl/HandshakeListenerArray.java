@@ -20,25 +20,31 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging;
+package io.bosonnetwork.photonmessaging.impl;
+
+import java.util.ArrayList;
 
 import io.bosonnetwork.Id;
+import io.bosonnetwork.photonmessaging.HandshakeListener;
 
-/**
- * Listener for message-related events.
- */
-public interface MessageListener {
-	/**
-	 * Called when a new message is received.
-	 *
-	 * @param message the received message
-	 */
-	void onMessage(Message message);
+public class HandshakeListenerArray extends ArrayList<HandshakeListener> implements HandshakeListener {
+	private static final long serialVersionUID = -3378257093435511382L;
 
-	/**
-	 * Called when a message has been successfully sent.
-	 *
-	 * @param message the sent message
-	 */
-	void onSent(Message message);
+	public HandshakeListenerArray(HandshakeListener existing, HandshakeListener newListener) {
+		super();
+		add(existing);
+		add(newListener);
+	}
+
+	@Override
+	public void onFriendRequest(Id userId, String hello) {
+		for (HandshakeListener listener : this)
+			listener.onFriendRequest(userId, hello);
+	}
+
+	@Override
+	public void onFriendRequestAccepted(Id userId) {
+		for (HandshakeListener listener : this)
+			listener.onFriendRequestAccepted(userId);
+	}
 }

@@ -24,7 +24,6 @@ package io.bosonnetwork.photonmessaging.impl;
 
 import java.util.ArrayList;
 
-import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Message;
 import io.bosonnetwork.photonmessaging.MessageListener;
 
@@ -47,17 +46,5 @@ public class MessageListenerArray extends ArrayList<MessageListener> implements 
 	public void onSent(Message message) {
 		for (MessageListener listener : this)
 			listener.onSent(message);
-	}
-
-	@Override
-	public void onFriendRequest(Id userId, String hello) {
-		for (MessageListener listener : this)
-			listener.onFriendRequest(userId, hello);
-	}
-
-	@Override
-	public void onFriendRequestAccepted(Id userId) {
-		for (MessageListener listener : this)
-			listener.onFriendRequestAccepted(userId);
 	}
 }
