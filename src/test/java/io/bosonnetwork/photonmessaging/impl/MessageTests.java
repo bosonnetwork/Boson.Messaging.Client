@@ -56,10 +56,10 @@ public class MessageTests {
 		PhotonMessage<MessageContent> textMsg = new PhotonMessage<>(id, recipient, Message.Type.CONTENT_MESSAGE, now, textContent);
 		assertArrayEquals(textContent.serialize(), textMsg.getPayloadAsBytes());
 
-		// 2. Notification (FriendRequest)
-		Notification notification = Notification.friendRequest(Id.random(), Id.random(), "Add me!");
-		PhotonMessage<Notification> notifyMsg = new PhotonMessage<>(id, recipient, Message.Type.STATE_MESSAGE, now, notification);
-		assertArrayEquals(notification.serialize(), notifyMsg.getPayloadAsBytes());
+		// 2. Handshake (FriendRequest)
+		Handshake handshake = Handshake.friendRequest("Add me!", System.currentTimeMillis());
+		PhotonMessage<Handshake> notifyMsg = new PhotonMessage<>(id, recipient, Message.Type.STATE_MESSAGE, now, handshake);
+		assertArrayEquals(handshake.serialize(), notifyMsg.getPayloadAsBytes());
 
 		// 3. RpcRequest
 		RpcRequest request = RpcRequest.listSessions(12345);

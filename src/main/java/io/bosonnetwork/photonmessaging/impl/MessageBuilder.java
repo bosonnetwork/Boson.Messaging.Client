@@ -119,7 +119,7 @@ public class MessageBuilder implements Message.Builder {
 			throw new IllegalStateException("Recipient not set");
 
 		long now = System.currentTimeMillis();
-		Id messageId = PhotonMessage.generateId(client.getDeviceId(), now);
+		Id messageId = DeviceOriginated.generateId(client.getDeviceId(), now);
 
 		if (content == null)
 			throw new IllegalStateException("content not set");

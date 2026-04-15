@@ -402,15 +402,15 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 		// friend request is a notification message to the target user
 		long now = System.currentTimeMillis();
-		Notification notif = Notification.friendRequest(getUserId(), getDeviceId(), hello);
-		PhotonFriendRequest request = new PhotonFriendRequest(userId, userIdentity.getId(), hello);
+		Handshake hs = Handshake.friendRequest(hello, now);
+		PhotonFriendRequest request = new PhotonFriendRequest(userId, userIdentity.getId(), hello, now, now);
 
 		Promise<Void> promise = Promise.promise();
 		runOnContext(v -> {
 			repository.putFriendRequest(request).compose(vv -> {
-				Id messageId = PhotonMessage.generateId(getDeviceId(), now);
-				PhotonMessage<Notification> message = new PhotonMessage<>(messageId,
-						userId, Message.Type.STATE_MESSAGE, now, notif);
+				Id messageId = DeviceOriginated.generateId(getDeviceId(), now);
+				PhotonMessage<Handshake> message = new PhotonMessage<>(messageId,
+						userId, Message.Type.HANDSHAKE_MESSAGE, now, hs);
 				return sendMessageInternal(message).compose(packetId -> Future.<Void>succeededFuture(),
 						error -> {
 							repository.removeFriendRequest(userId);
@@ -443,13 +443,13 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			Signature.KeyPair sessionKeypair = Signature.KeyPair.random();
 			byte[] sessionKey = sessionKeypair.privateKey().bytes();
 			long now = System.currentTimeMillis();
-			Notification notif = Notification.friendRequestAccept(getUserId(), getDeviceId(), sessionKey);
+			Handshake hs = Handshake.friendRequestAccept(sessionKey, now);
 
 			Promise<Void> promise = Promise.promise();
 			runOnContext(v -> {
-				Id messageId = PhotonMessage.generateId(getDeviceId(), now);
-				PhotonMessage<Notification> message = new PhotonMessage<>(messageId,
-							userId, Message.Type.STATE_MESSAGE, now, notif);
+				Id messageId = DeviceOriginated.generateId(getDeviceId(), now);
+				PhotonMessage<Handshake> message = new PhotonMessage<>(messageId,
+							userId, Message.Type.HANDSHAKE_MESSAGE, now, hs);
 				sendMessageInternal(message).compose(packetId -> {
 					request.accept();
 					return repository.putFriendRequest(request).compose(vv ->
@@ -1197,7 +1197,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private <R> Future<R> sendRpcCall(Id recipient, RpcCall<R> call) {
 		inflightRpcCalls.put(call.getId(), call);
 		long now = System.currentTimeMillis();
-		Id messageId = PhotonMessage.generateId(getDeviceId(), now);
+		Id messageId = DeviceOriginated.generateId(getDeviceId(), now);
 		PhotonMessage<RpcRequest> message = new PhotonMessage<>(messageId, recipient, Message.Type.CONTROL_MESSAGE, now, call.getRequest());
 		log.debug("Sending RPC call {}:{} to {} ...", call.getId(), call.getMethod(), recipient);
 		return sendMessageInternal(message).compose(packageId -> call.getFuture(), error -> {
@@ -1268,14 +1268,16 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				}
 			});
 
-			case CONTROL_MESSAGE -> {
+			case CONTROL_MESSAGE, HANDSHAKE_MESSAGE -> {
 				if (message.getRecipient().equals(homePeerId)) {
-					// no need to encrypt the control message send to the home peer
+					// Optimization: When sending to the home peer, the message body and envelope
+					// share the same CryptoContext. Explicit body encryption is skipped here
+					// because it would be redundant; the envelope encryption provides
+					// the necessary security for the entire payload.
 					yield Future.succeededFuture(BytesMessage.dup(message, payload));
 				} else {
 					try {
-						CryptoContext ctx = userIdentity.createCryptoContext(message.getRecipient());
-						byte[] encryptedPayload = ctx.encrypt(payload);
+						byte[] encryptedPayload = userIdentity.encrypt(message.getRecipient(), payload);
 						yield Future.succeededFuture(BytesMessage.dup(message, encryptedPayload));
 					} catch (CryptoException e) {
 						yield Future.failedFuture(e);
@@ -1284,8 +1286,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			}
 
 			case STATE_MESSAGE -> {
-				log.error("INTERNAL ERROR: trying to encrypt a STATE message");
-				yield Future.failedFuture("INTERNAL ERROR");
+				log.error("INTERNAL ERROR: messaging client is not supposed to send state messages");
+				yield Future.failedFuture(new IllegalStateException("INTERNAL ERROR: messaging client is not supposed to send state messages"));
 			}
 		};
 	}
@@ -1328,7 +1330,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					});
 				});
 
-			case CONTROL_MESSAGE, STATE_MESSAGE -> {
+			case CONTROL_MESSAGE, STATE_MESSAGE, HANDSHAKE_MESSAGE -> {
 				if (toMe) {
 					// from the home peer, the payload is not encrypted
 					if (from.equals(homePeerId))
@@ -1338,8 +1340,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 						yield Future.failedFuture("Received a CONTROL message from non-home peer to user");
 					} else {
 						try {
-							CryptoContext ctx = userIdentity.createCryptoContext(from);
-							byte[] decryptedPayload = ctx.decrypt(payload);
+							byte[] decryptedPayload = userIdentity.decrypt(from, payload);
 							yield Future.succeededFuture(BytesMessage.dup(message, decryptedPayload));
 						} catch (CryptoException e) {
 							log.error("Decrypt {} from {} failed", type, from, e);
@@ -1623,24 +1624,24 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			return;
 		}
 
-		checkAndDecryptMessage(received).onSuccess(message -> {
+		checkAndDecryptMessage(received).compose(message -> {
 			if (tt == Topics.Type.USER_INBOX)
-				processIncomingMessage(message);
+				return processIncomingMessage(message);
 			else if (tt == Topics.Type.USER_OUTBOX)
-				processingOutgoingMessage(message);
+				return processingOutgoingMessage(message);
 			else // if (tt == Topics.Type.DEVICE_INBOX)
-				processControlMessage(message);
+				return processControlMessage(message);
 		}).onFailure(e -> {
 			log.error("Failed to process message from topic: {}, sender: {}", topic, received.getFrom(), e);
 		});
 	}
 
-	private void processIncomingMessage(BytesMessage message) {
+	private Future<Void> processIncomingMessage(BytesMessage message) {
 		final Message.Type type = message.getType();
 		if (type == Message.Type.CONTENT_MESSAGE) {
 			MessageContent content = MessageContent.parse(message.getPayload());
 			PhotonMessage<MessageContent> contentMessage = message.dup(content);
-			repository.putMessage(contentMessage)
+			return repository.putMessage(contentMessage)
 					.compose(v -> getOrCreateConversation(contentMessage.getConversationId()))
 					.map(conv -> {
 						conv.update(contentMessage);
@@ -1649,39 +1650,23 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 						return null;
 					});
-
-			return;
 		}
 
 		if (type == Message.Type.STATE_MESSAGE) {
 			Notification notif = Notification.parse(message.getPayload());
-			if (notif.getSource().equals(userIdentity.getId()) && notif.isAssociated(getDeviceId())) {
+			if (notif.getSource().equals(userIdentity.getId()) && notif.isOriginated(getDeviceId())) {
 				// This notification was triggered by an RPC request from this device.
 				// Since the local state was already updated via the RPC response,
 				// this redundant notification can be safely ignored.
-				return;
+				return Future.succeededFuture();
 			}
 
-			if (message.getFrom().equals(homePeerId)) {
-				// Notification from home peer
-				processHomePeerNotification(notif);
-				return;
-			}
-
-			if (message.getRecipient().equals(getUserId())) {
-				// Notification from the other users.
-				// Ensure the notification source reflects the actual message sender.
-				if (!notif.getSource().equals(message.getFrom())) {
-					log.warn("Received a invalid notification from {} - source not matched the sender, ignored",
-							message.getFrom());
-					return;
-				}
-				processUserNotification(notif);
-				return;
-			}
+			// Notification from home peer?
+			if (message.getFrom().equals(homePeerId))
+				return processHomePeerNotification(notif);
 
 			// Notification from channel?
-			channel(message.getRecipient()).compose(channel -> {
+			return channel(message.getRecipient()).compose(channel -> {
 				if (channel == null) {
 					log.warn("Received a {} from unknown channel {}, ignored", type, message.getRecipient());
 					return Future.succeededFuture();
@@ -1690,34 +1675,41 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			});
 		}
 
-		log.warn("Received a {} message from user inbox, ignored", type);
+		if (type == Message.Type.HANDSHAKE_MESSAGE) {
+			Handshake hs = Handshake.parse(message.getPayload());
+			hs.setFrom(message.getFrom());
+			return processHandshake(hs);
+		}
+
+		log.warn("Received a CONTROL message from USER inbox, ignored");
+		return Future.succeededFuture();
 	}
 
-	private void processingOutgoingMessage(BytesMessage message) {
+	private Future<Void> processingOutgoingMessage(BytesMessage message) {
 		// message is sent by this device? then ignore
-		if (message.isAssociated(getDeviceId()))
-			return;
+		if (message.isOriginated(getDeviceId()))
+			return Future.succeededFuture();
 
 		message.setSentAt();
-		switch (message.getType()) {
+		return switch (message.getType()) {
 			case CONTENT_MESSAGE -> {
 				MessageContent content = MessageContent.parse(message.getPayload());
 				PhotonMessage<MessageContent> msg = message.dup(content);
-				repository.putMessage(msg).andThen(ar -> {
+				yield repository.putMessage(msg).andThen(ar -> {
 					if (messageListener != null) {
 						messageListener.onSent(msg);
 					}
 				});
 			}
 
-			case STATE_MESSAGE -> {
-				Notification notif = Notification.parse(message.getPayload());
-				switch (notif.getEvent()) {
+			case HANDSHAKE_MESSAGE -> {
+				Handshake handshake = Handshake.parse(message.getPayload());
+				yield switch (handshake.getType()) {
 					case FRIEND_REQUEST -> {
-						String hello = notif.getBody();
-						PhotonFriendRequest fr = new PhotonFriendRequest(message.getRecipient(), notif.getSource(), hello,
-								notif.getTimestamp(), System.currentTimeMillis());
-						repository.putFriendRequest(fr);
+						String hello = handshake.getBody();
+						PhotonFriendRequest fr = new PhotonFriendRequest(message.getRecipient(), getUserId(), hello,
+								handshake.getTimestamp(), System.currentTimeMillis());
+						yield repository.putFriendRequest(fr);
 					}
 
 					case FRIEND_REQUEST_ACCEPT -> repository.getFriendRequest(message.getRecipient()).compose(fr -> {
@@ -1730,23 +1722,29 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 						}
 
 						PhotonFriendRequest request = (PhotonFriendRequest) fr;
-						request.accept(notif.getTimestamp());
+						request.accept(handshake.getTimestamp());
 						return repository.putFriendRequest(request);
 					});
-
-					default -> log.warn("Received an unknown notification from user {}, ignored", notif.getSource());
 				};
 			}
 
-			case CONTROL_MESSAGE -> log.warn("Received a {} message from user outbox, ignored", message.getType());
-		}
+			case CONTROL_MESSAGE -> {
+				log.warn("Received a CONTROL message from USER outbox, ignored");
+				yield Future.succeededFuture();
+			}
+
+			case STATE_MESSAGE -> {
+				log.warn("Received a STATE message from USER outbox, ignored");
+				yield Future.succeededFuture();
+			}
+		};
 	}
 
-	private void processControlMessage(BytesMessage message) {
+	private Future<Void> processControlMessage(BytesMessage message) {
 		final Message.Type type = message.getType();
 		if (type != Message.Type.CONTROL_MESSAGE) {
-			log.warn("Received a {} message from device inbox, ignored", type);
-			return;
+			log.warn("Received a {} from DEVICE inbox, ignored", type);
+			return Future.succeededFuture();
 		}
 
 		final RpcResponse response;
@@ -1754,14 +1752,14 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			response = RpcResponse.parse(message.getPayload());
 		} catch (Exception e) {
 			log.error("Failed to parse RPC response from the message from device inbox", e);
-			return;
+			return Future.failedFuture(e);
 		}
 
 		@SuppressWarnings("unchecked")
 		final RpcCall<?> call = inflightRpcCalls.remove(response.getId());
 		if (call == null) {
 			log.warn("Received a RPC response but no matching call found, ignored");
-			return;
+			return Future.succeededFuture();
 		}
 
 		if (response.failed())
@@ -1770,29 +1768,32 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			log.debug("RPC call completed successfully");
 
 		call.setResponse(response);
+		return Future.succeededFuture();
 	}
 
-	private Future<Void> processUserNotification(Notification notif) {
-		return switch (notif.getEvent()) {
+	private Future<Void> processHandshake(Handshake handshake) {
+		final Id from = handshake.getFrom();
+
+		return switch (handshake.getType()) {
 			case FRIEND_REQUEST -> {
-				String hello = notif.getBody();
-				PhotonFriendRequest fr = new PhotonFriendRequest(notif.getSource(), notif.getSource(), hello,
-						notif.getTimestamp(), System.currentTimeMillis());
+				String hello = handshake.getBody();
+				PhotonFriendRequest fr = new PhotonFriendRequest(from, from, hello,
+						handshake.getTimestamp(), System.currentTimeMillis());
 				yield repository.putFriendRequest(fr).andThen(ar -> {
 					if (messageListener != null)
-						messageListener.onFriendRequest(fr.getUserId(), fr.getHello());
+						messageListener.onFriendRequest(from, hello);
 				});
 			}
 
-			case FRIEND_REQUEST_ACCEPT -> repository.getFriendRequest(notif.getSource()).compose(fr -> {
-				if (fr == null || !fr.getInitiatorId().equals(notif.getSource())) {
-					log.warn("Received a friend request accept notification without matched request from: {}, ignored", notif.getSource());
+			case FRIEND_REQUEST_ACCEPT -> repository.getFriendRequest(from).compose(fr -> {
+				if (fr == null || !fr.getInitiatorId().equals(from)) {
+					log.warn("Received a friend request accept notification without matched request from: {}, ignored", from);
 					return Future.succeededFuture();
 				}
 
-				byte[] sessionKey = notif.getBody();
+				byte[] sessionKey = handshake.getBody();
 				if (sessionKey == null || sessionKey.length != Signature.PrivateKey.BYTES) {
-					log.warn("Received a friend request accept notification with invalid session key: {}, ignored", notif.getSource());
+					log.warn("Received a friend request accept notification with invalid session key from: {}, ignored", from);
 					return Future.succeededFuture();
 				}
 
@@ -1805,9 +1806,9 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				// The contact synchronization service handles concurrency by ensuring only
 				// the first received update is applied and synchronized to all devices.
 				return repository.putFriendRequest(request).compose(v -> {
-					Friend friend = new Friend(notif.getSource(), sessionKey, null);
+					Friend friend = new Friend(from, selfContext.encrypt(sessionKey), null);
 					return repository.putContactLocally(friend).compose(vv ->
-							addFriendInternal(notif.getSource(), sessionKey, null).map(contact -> {
+							addFriendInternal(from, sessionKey, null).map(contact -> {
 								if (messageListener != null)
 									messageListener.onFriendRequestAccepted(contact.getId());
 								return null;
@@ -1815,11 +1816,6 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					);
 				});
 			});
-
-			default -> {
-				log.warn("Received an unknown notification from user {}, ignored", notif.getSource());
-				yield Future.succeededFuture();
-			}
 		};
 	}
 

@@ -23,8 +23,6 @@
 package io.bosonnetwork.photonmessaging.impl;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -35,14 +33,13 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 
 import io.bosonnetwork.Id;
-import io.bosonnetwork.crypto.Hash;
 import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.Message;
 import io.bosonnetwork.photonmessaging.impl.rpc.RpcRequest;
 import io.bosonnetwork.photonmessaging.impl.rpc.RpcResponse;
 
-@JsonPropertyOrder({"v", "r", "y", "f", "s", "c", "p"})
-public class PhotonMessage<P> implements Message {
+@JsonPropertyOrder({"v", "id", "r", "y", "f", "c", "p"})
+public class PhotonMessage<P> implements Message, DeviceOriginated {
 	private static final int VERSION = 2;
 
 	private static final AtomicInteger messageSerialNumber = new AtomicInteger(1);
@@ -83,6 +80,7 @@ public class PhotonMessage<P> implements Message {
 		this.version = version;
 		this.id = id;
 		this.recipient = recipient;
+		this.from = from;
 		this.type = type;
 		this.createdAt = createdAt;
 		this.payload = payload;
@@ -164,6 +162,11 @@ public class PhotonMessage<P> implements Message {
 		return receivedAt;
 	}
 
+	@Override
+	public long getTimestamp() {
+		return createdAt;
+	}
+
 	public long getSentAt() {
 		return sentAt;
 	}
@@ -195,17 +198,6 @@ public class PhotonMessage<P> implements Message {
 
 	protected void setRid(long rid) {
 		this.rid = rid;
-	}
-
-	protected boolean isAssociated(Id deviceId) {
-		byte[] seedBytes = ByteBuffer.allocate(Long.BYTES).putLong(createdAt).array();
-		byte[] hash = Hash.sha256(deviceId.bytes(), seedBytes);
-		return Arrays.equals(id.bytes(), hash);
-	}
-
-	protected static Id generateId(Id deviceId, long seed) {
-		byte[] seedBytes = ByteBuffer.allocate(Long.BYTES).putLong(seed).array();
-		return Id.of(Hash.sha256(deviceId.bytes(), seedBytes));
 	}
 
 	@Override
