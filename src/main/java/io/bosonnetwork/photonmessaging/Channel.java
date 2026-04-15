@@ -256,6 +256,11 @@ public interface Channel extends Contact {
 		}
 	}
 
+	/**
+	 * Retrieves the contact type for the channel.
+	 *
+	 * @return the {@code Contact.Type} representing a channel.
+	 */
 	@Override
 	default Contact.Type getType() {
 		return Contact.Type.CHANNEL;
@@ -284,6 +289,11 @@ public interface Channel extends Contact {
 	 */
 	String getNotice();
 
+	/**
+	 * Checks if the channel is configured to be announced to the network.
+	 *
+	 * @return {@code true} if the channel is announced; {@code false} otherwise.
+	 */
 	boolean isAnnounce();
 
 	/**

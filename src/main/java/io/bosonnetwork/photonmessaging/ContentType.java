@@ -38,21 +38,64 @@ public class ContentType {
 	 */
 	public static final String HEADER_NAME = "Content-Type";
 
+	/**
+	 * Content type for plain text.
+	 */
 	public static final String TEXT = "text/plain";
+
+	/**
+	 * Content type for JSON data.
+	 */
 	public static final String JSON = "application/json";
+
+	/**
+	 * Content type for CBOR encoded data.
+	 */
 	public static final String CBOR = "application/cbor";
 
+	/**
+	 * Content type for JPEG images.
+	 */
 	public static final String IMAGE_JPEG = "image/jpeg";
+
+	/**
+	 * Content type for PNG images.
+	 */
 	public static final String IMAGE_PNG = "image/png";
+
+	/**
+	 * Content type for WebP images.
+	 */
 	public static final String IMAGE_WEBP = "image/webp";
 
+	/**
+	 * Content type for AAC audio.
+	 */
 	public static final String AUDIO_AAC = "audio/aac";
+
+	/**
+	 * Content type for MP3 audio.
+	 */
 	public static final String AUDIO_MP3 = "audio/mpeg";
+
+	/**
+	 * Content type for WebM audio.
+	 */
 	public static final String AUDIO_WEBM = "audio/webm";
 
+	/**
+	 * Content type for MP4 video.
+	 */
 	public static final String VIDEO_MP4 = "video/mp4";
+
+	/**
+	 * Content type for WebM video.
+	 */
 	public static final String VIDEO_WEBM = "video/webm";
 
+	/**
+	 * Content type for generic binary data.
+	 */
 	public static final String BINARY = "application/octet-stream";
 
 	private ContentType() {}

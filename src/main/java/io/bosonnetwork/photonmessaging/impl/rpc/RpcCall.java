@@ -98,7 +98,6 @@ public class RpcCall<R> {
 		}
 	}
 
-	@SuppressWarnings("unchecked")
 	public Future<R> getFuture() {
 		return timeout <= 0 ? responsePromise.future() :
 				responsePromise.future().timeout(timeout, TimeUnit.MILLISECONDS)

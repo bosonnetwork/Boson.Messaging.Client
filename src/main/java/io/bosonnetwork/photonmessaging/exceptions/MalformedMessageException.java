@@ -22,6 +22,10 @@
  
 package io.bosonnetwork.photonmessaging.exceptions;
 
+/**
+ * Thrown to indicate that a message is malformed or contains invalid data
+ * that violates the expected format or structure.
+ */
 public class MalformedMessageException extends MessagingException {
 	private static final long serialVersionUID = -1049795628558375583L;
 

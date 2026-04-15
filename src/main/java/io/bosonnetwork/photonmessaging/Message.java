@@ -48,11 +48,23 @@ public interface Message {
 		/** User/Device status updates. */
 		STATE_MESSAGE;
 
+		/**
+		 * Returns the numeric value associated with this message type.
+		 *
+		 * @return the message type value.
+		 */
 		@JsonValue
 		public int value() {
 			return ordinal();
 		}
 
+		/**
+		 * Returns the {@code Type} corresponding to the specified numeric value.
+		 *
+		 * @param value the numeric value.
+		 * @return the corresponding {@code Type}.
+		 * @throws IllegalArgumentException if the value is invalid.
+		 */
 		@JsonCreator
 		public static Type valueOf(int value) {
 			return switch (value) {
@@ -178,6 +190,12 @@ public interface Message {
 				return null;
 		}
 
+		/**
+		 * Retrieves the body of the content.
+		 *
+		 * @param <T> the expected type of the body
+		 * @return the body of the content, cast to the specified type
+		 */
 		<T> T getBody();
 
 		/**
@@ -198,6 +216,7 @@ public interface Message {
 		 * Retrieves the body of the content.
 		 *
 		 * @param <T> the expected type of the body
+		 * @param type the class of the body's type
 		 * @return the body of the content, cast to the specified type
 		 */
 		<T> T asObject(Class<T> type);

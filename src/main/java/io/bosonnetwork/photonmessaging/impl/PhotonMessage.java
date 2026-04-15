@@ -23,7 +23,6 @@
 package io.bosonnetwork.photonmessaging.impl;
 
 import java.io.IOException;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -41,8 +40,6 @@ import io.bosonnetwork.photonmessaging.impl.rpc.RpcResponse;
 @JsonPropertyOrder({"v", "id", "r", "y", "f", "c", "p"})
 public class PhotonMessage<P> implements Message, DeviceOriginated {
 	private static final int VERSION = 2;
-
-	private static final AtomicInteger messageSerialNumber = new AtomicInteger(1);
 
 	@JsonProperty(value = "v" , required = true)
 	private final int version;
