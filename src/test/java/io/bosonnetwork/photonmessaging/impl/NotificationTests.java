@@ -1,11 +1,8 @@
 package io.bosonnetwork.photonmessaging.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -86,11 +83,6 @@ public class NotificationTests {
 		notifications.add(Arguments.of(Notification.Event.CHANNEL_MEMBER_LEAVE,
 				new Notification(Id.random(), Id.random(), System.currentTimeMillis(), Notification.Event.CHANNEL_MEMBER_LEAVE, Id.random())));
 
-		notifications.add(Arguments.of(Notification.Event.FRIEND_REQUEST,
-				new Notification(Id.random(), Id.random(), System.currentTimeMillis(), Notification.Event.FRIEND_REQUEST, "Hello from test")));
-		notifications.add(Arguments.of(Notification.Event.FRIEND_REQUEST_ACCEPT,
-				new Notification(Id.random(), Id.random(), System.currentTimeMillis(), Notification.Event.FRIEND_REQUEST_ACCEPT, Random.randomBytes(64))));
-
 		return notifications.stream();
 	}
 
@@ -113,43 +105,5 @@ public class NotificationTests {
 				.usingRecursiveComparison()
 				.withComparatorForType(Id::compare, Id.class)
 				.isEqualTo(body);
-	}
-
-	@Test
-	void testFriendRequest() {
-		Id userId = Id.random();
-		Id deviceId = Id.random();
-
-		String hello = "Hello from test";
-		Notification notif = Notification.friendRequest(userId, deviceId, hello);
-		assertTrue(notif.isAssociated(deviceId));
-		assertFalse(notif.isAssociated(Id.random()));
-
-		Notification parsed = Notification.parse(notif.serialize());
-
-		assertEquals(notif.getId(), parsed.getId());
-		assertEquals(notif.getSource(), parsed.getSource());
-		assertEquals(notif.getTimestamp(), parsed.getTimestamp());
-		assertEquals(Notification.Event.FRIEND_REQUEST, parsed.getEvent());
-		assertEquals(hello, parsed.getBody());
-	}
-
-	@Test
-	void testFriendRequestAccept() {
-		Id userId = Id.random();
-		Id deviceId = Id.random();
-
-		byte[] sessionKey = Random.randomBytes(64);
-		Notification notif = Notification.friendRequestAccept(userId, deviceId, sessionKey);
-		assertTrue(notif.isAssociated(deviceId));
-		assertFalse(notif.isAssociated(Id.random()));
-
-		Notification parsed = Notification.parse(notif.serialize());
-
-		assertEquals(notif.getId(), parsed.getId());
-		assertEquals(notif.getSource(), parsed.getSource());
-		assertEquals(notif.getTimestamp(), parsed.getTimestamp());
-		assertEquals(Notification.Event.FRIEND_REQUEST_ACCEPT, parsed.getEvent());
-		assertArrayEquals(sessionKey, parsed.getBody());
 	}
 }

@@ -39,6 +39,8 @@ public interface Message {
 	 * Defines the types of messages supported by the service.
 	 */
 	enum Type {
+		/** Handshake message */
+		HANDSHAKE_MESSAGE,
 		/** Standard user-to-user content. */
 		CONTENT_MESSAGE,
 		/** Internal RPC call or control instructions. */
@@ -54,9 +56,10 @@ public interface Message {
 		@JsonCreator
 		public static Type valueOf(int value) {
 			return switch (value) {
-				case 0 -> CONTENT_MESSAGE;
-				case 1 -> CONTROL_MESSAGE;
-				case 2 -> STATE_MESSAGE;
+				case 0 -> HANDSHAKE_MESSAGE;
+				case 1 -> CONTENT_MESSAGE;
+				case 2 -> CONTROL_MESSAGE;
+				case 3 -> STATE_MESSAGE;
 				default -> throw new IllegalArgumentException("Invalid message type: " + value);
 			};
 		}

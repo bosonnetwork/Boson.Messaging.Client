@@ -22,9 +22,6 @@
  
 package io.bosonnetwork.photonmessaging.impl;
 
-import java.nio.ByteBuffer;
-import java.util.Arrays;
-
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -35,7 +32,6 @@ import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.ObjectWriter;
 
 import io.bosonnetwork.Id;
-import io.bosonnetwork.crypto.Hash;
 import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.SessionInfo;
 import io.bosonnetwork.photonmessaging.impl.dto.ChannelInfo;
@@ -145,7 +141,7 @@ import io.bosonnetwork.photonmessaging.impl.dto.IdList;
  *   <li>Rust and Java share identical wire format for interoperability</li>
  * </ul>
  */
-public class Notification {
+public class Notification implements DeviceOriginated {
 	private static final ObjectReader READER = Json.cborMapper().readerFor(Notification.class);
 	private static final ObjectWriter WRITER = Json.cborMapper().writerFor(Notification.class);
 
@@ -180,9 +176,7 @@ public class Notification {
 			@JsonSubTypes.Type(value = IdList.class, name = "cmu"),
 			@JsonSubTypes.Type(value = IdList.class, name = "cmr"),
 			@JsonSubTypes.Type(value = ChannelMember.class, name = "cmj"),
-			@JsonSubTypes.Type(value = Id.class, name = "cml"),
-			@JsonSubTypes.Type(value = String.class, name = "fr"),
-			@JsonSubTypes.Type(value = byte[].class, name = "fra")
+			@JsonSubTypes.Type(value = Id.class, name = "cml")
 	})
 	private final Object body;
 
@@ -216,11 +210,7 @@ public class Notification {
 		@JsonProperty("cmj")
 		CHANNEL_MEMBER_JOIN(32),
 		@JsonProperty("cml")
-		CHANNEL_MEMBER_LEAVE(33),
-		@JsonProperty("fr")
-		FRIEND_REQUEST(61),
-		@JsonProperty("fra")
-		FRIEND_REQUEST_ACCEPT(62);
+		CHANNEL_MEMBER_LEAVE(33);
 
 		private final int value;
 
@@ -249,8 +239,6 @@ public class Notification {
 				case 31 -> CHANNEL_MEMBERS_REMOVE;
 				case 32 -> CHANNEL_MEMBER_JOIN;
 				case 33 -> CHANNEL_MEMBER_LEAVE;
-				case 61 -> FRIEND_REQUEST;
-				case 62 -> FRIEND_REQUEST_ACCEPT;
 				default -> throw new IllegalArgumentException("Invalid event value: " + value);
 			};
 		}
@@ -258,10 +246,10 @@ public class Notification {
 
 	@JsonCreator
 	protected Notification(@JsonProperty(value = "id", required = true) Id id,
-						 @JsonProperty(value = "s", required = true) Id source,
-						 @JsonProperty(value = "t", required = true) long timestamp,
-						 @JsonProperty(value = "e", required = true) Event event,
-	                     @JsonProperty(value = "b") Object body) {
+	                       @JsonProperty(value = "s", required = true) Id source,
+	                       @JsonProperty(value = "t", required = true) long timestamp,
+	                       @JsonProperty(value = "e", required = true) Event event,
+	                       @JsonProperty(value = "b") Object body) {
 		this.id = id;
 		this.source = source;
 		this.timestamp = timestamp;
@@ -269,6 +257,7 @@ public class Notification {
 		this.body = body;
 	}
 
+	@Override
 	public Id getId() {
 		return id;
 	}
@@ -281,6 +270,7 @@ public class Notification {
 		return source;
 	}
 
+	@Override
 	public long getTimestamp() {
 		return timestamp;
 	}
@@ -304,28 +294,5 @@ public class Notification {
 		} catch (Exception e) {
 			throw new IllegalStateException("INTERNAL ERROR: Notification parsing", e);
 		}
-	}
-
-	protected boolean isAssociated(Id deviceId) {
-		byte[] seedBytes = ByteBuffer.allocate(Long.BYTES).putLong(timestamp).array();
-		byte[] hash = Hash.sha256(deviceId.bytes(), seedBytes);
-		return Arrays.equals(id.bytes(), hash);
-	}
-
-	protected static Id generateId(Id deviceId, long seed) {
-		byte[] seedBytes = ByteBuffer.allocate(Long.BYTES).putLong(seed).array();
-		return Id.of(Hash.sha256(deviceId.bytes(), seedBytes));
-	}
-
-	public static Notification friendRequest(Id userId, Id deviceId, String hello) {
-		long now = System.currentTimeMillis();
-		Id id = generateId(deviceId, now);
-		return new Notification(id, userId, now, Event.FRIEND_REQUEST, hello);
-	}
-
-	public static Notification friendRequestAccept(Id userId, Id deviceId, byte[] sessionKey) {
-		long now = System.currentTimeMillis();
-		Id id = generateId(deviceId, now);
-		return new Notification(id, userId, now, Event.FRIEND_REQUEST_ACCEPT, sessionKey);
 	}
 }
