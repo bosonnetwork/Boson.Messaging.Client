@@ -66,6 +66,7 @@ import io.bosonnetwork.photonmessaging.Contact;
 import io.bosonnetwork.photonmessaging.ContactListener;
 import io.bosonnetwork.photonmessaging.Conversation;
 import io.bosonnetwork.photonmessaging.FriendRequest;
+import io.bosonnetwork.photonmessaging.HandshakeListener;
 import io.bosonnetwork.photonmessaging.InviteTicket;
 import io.bosonnetwork.photonmessaging.Message;
 import io.bosonnetwork.photonmessaging.MessageListener;
@@ -113,6 +114,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private MessageListener messageListener;
 	private ChannelListener channelListener;
 	private ContactListener contactListener;
+	private HandshakeListener handshakListener;
 
 	private final Database repository;
 
@@ -259,6 +261,28 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		if (current == listener)
 			this.contactListener = null;
 		else if (current instanceof ContactListenerArray listeners)
+			listeners.remove(listener);
+	}
+
+	@Override
+	public void addHandshakeListener(HandshakeListener listener) {
+		Objects.requireNonNull(listener, "listener");
+		if (this.handshakListener == null) {
+			this.handshakListener = listener;
+		} else {
+			if (this.handshakListener instanceof HandshakeListenerArray listeners)
+				listeners.add(listener);
+			else
+				this.handshakListener = new HandshakeListenerArray(this.handshakListener, listener);
+		}
+	}
+
+	@Override
+	public void removeHandshakeListener(HandshakeListener listener) {
+		HandshakeListener current = this.handshakListener;
+		if (current == listener)
+			this.handshakListener = null;
+		else if (current instanceof HandshakeListenerArray listeners)
 			listeners.remove(listener);
 	}
 
@@ -1780,8 +1804,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				PhotonFriendRequest fr = new PhotonFriendRequest(from, from, hello,
 						handshake.getTimestamp(), System.currentTimeMillis());
 				yield repository.putFriendRequest(fr).andThen(ar -> {
-					if (messageListener != null)
-						messageListener.onFriendRequest(from, hello);
+					if (handshakListener != null)
+						handshakListener.onFriendRequest(from, hello);
 				});
 			}
 
@@ -1809,8 +1833,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					Friend friend = new Friend(from, selfContext.encrypt(sessionKey), null);
 					return repository.putContactLocally(friend).compose(vv ->
 							addFriendInternal(from, sessionKey, null).map(contact -> {
-								if (messageListener != null)
-									messageListener.onFriendRequestAccepted(contact.getId());
+								if (handshakListener != null)
+									handshakListener.onFriendRequestAccepted(contact.getId());
 								return null;
 							})
 					);
