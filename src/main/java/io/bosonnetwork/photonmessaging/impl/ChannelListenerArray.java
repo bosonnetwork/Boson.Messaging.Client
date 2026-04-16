@@ -75,12 +75,6 @@ public class ChannelListenerArray extends ArrayList<ChannelListener> implements 
 	}
 
 	@Override
-	public void onChannelMembers(Channel channel, List<Channel.Member> members) {
-		for (ChannelListener listener : this)
-			listener.onChannelMembers(channel, members);
-	}
-
-	@Override
 	public void onChannelMemberJoined(Channel channel, Channel.Member member) {
 		for (ChannelListener listener : this)
 			listener.onChannelMemberJoined(channel, member);

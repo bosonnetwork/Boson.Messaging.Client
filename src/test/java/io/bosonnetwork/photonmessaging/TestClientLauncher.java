@@ -67,12 +67,12 @@ public class TestClientLauncher {
 			client = MessagingClient.create(vertx, null, config);
 			client.addConnectionListener(new ConnectionListener() {
 				@Override
-				public void connected() {
+				public void onConnected() {
 					System.out.println("Connected to the messaging service: " + config.getServicePeerId());
 				}
 
 				@Override
-				public void disconnected() {
+				public void onDisconnected() {
 					System.out.println("Disconnected from the messaging service: " + config.getServicePeerId());
 				}
 			});

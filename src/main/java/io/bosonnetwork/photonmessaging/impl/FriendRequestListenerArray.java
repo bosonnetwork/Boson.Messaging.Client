@@ -25,12 +25,12 @@ package io.bosonnetwork.photonmessaging.impl;
 import java.util.ArrayList;
 
 import io.bosonnetwork.Id;
-import io.bosonnetwork.photonmessaging.HandshakeListener;
+import io.bosonnetwork.photonmessaging.FriendRequestListener;
 
-public class HandshakeListenerArray extends ArrayList<HandshakeListener> implements HandshakeListener {
+public class FriendRequestListenerArray extends ArrayList<FriendRequestListener> implements FriendRequestListener {
 	private static final long serialVersionUID = -3378257093435511382L;
 
-	public HandshakeListenerArray(HandshakeListener existing, HandshakeListener newListener) {
+	public FriendRequestListenerArray(FriendRequestListener existing, FriendRequestListener newListener) {
 		super();
 		add(existing);
 		add(newListener);
@@ -38,13 +38,13 @@ public class HandshakeListenerArray extends ArrayList<HandshakeListener> impleme
 
 	@Override
 	public void onFriendRequest(Id userId, String hello) {
-		for (HandshakeListener listener : this)
+		for (FriendRequestListener listener : this)
 			listener.onFriendRequest(userId, hello);
 	}
 
 	@Override
 	public void onFriendRequestAccepted(Id userId) {
-		for (HandshakeListener listener : this)
+		for (FriendRequestListener listener : this)
 			listener.onFriendRequestAccepted(userId);
 	}
 }

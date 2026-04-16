@@ -53,9 +53,9 @@ import org.slf4j.LoggerFactory;
 import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.Node;
-import io.bosonnetwork.crypto.CryptoBox;
 import io.bosonnetwork.crypto.CryptoException;
 import io.bosonnetwork.crypto.CryptoIdentity;
+import io.bosonnetwork.crypto.Random;
 import io.bosonnetwork.crypto.Signature;
 import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.Channel;
@@ -66,7 +66,7 @@ import io.bosonnetwork.photonmessaging.Contact;
 import io.bosonnetwork.photonmessaging.ContactListener;
 import io.bosonnetwork.photonmessaging.Conversation;
 import io.bosonnetwork.photonmessaging.FriendRequest;
-import io.bosonnetwork.photonmessaging.HandshakeListener;
+import io.bosonnetwork.photonmessaging.FriendRequestListener;
 import io.bosonnetwork.photonmessaging.InviteTicket;
 import io.bosonnetwork.photonmessaging.Message;
 import io.bosonnetwork.photonmessaging.MessageListener;
@@ -114,7 +114,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private MessageListener messageListener;
 	private ChannelListener channelListener;
 	private ContactListener contactListener;
-	private HandshakeListener handshakListener;
+	private FriendRequestListener friendRequestListener;
 
 	private final Database repository;
 
@@ -265,24 +265,24 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	@Override
-	public void addHandshakeListener(HandshakeListener listener) {
+	public void addFriendRequestListener(FriendRequestListener listener) {
 		Objects.requireNonNull(listener, "listener");
-		if (this.handshakListener == null) {
-			this.handshakListener = listener;
+		if (this.friendRequestListener == null) {
+			this.friendRequestListener = listener;
 		} else {
-			if (this.handshakListener instanceof HandshakeListenerArray listeners)
+			if (this.friendRequestListener instanceof FriendRequestListenerArray listeners)
 				listeners.add(listener);
 			else
-				this.handshakListener = new HandshakeListenerArray(this.handshakListener, listener);
+				this.friendRequestListener = new FriendRequestListenerArray(this.friendRequestListener, listener);
 		}
 	}
 
 	@Override
-	public void removeHandshakeListener(HandshakeListener listener) {
-		HandshakeListener current = this.handshakListener;
+	public void removeFriendRequestListener(FriendRequestListener listener) {
+		FriendRequestListener current = this.friendRequestListener;
 		if (current == listener)
-			this.handshakListener = null;
-		else if (current instanceof HandshakeListenerArray listeners)
+			this.friendRequestListener = null;
+		else if (current instanceof FriendRequestListenerArray listeners)
 			listeners.remove(listener);
 	}
 
@@ -1433,7 +1433,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	private String getPassword() {
-		byte[] nonce = CryptoBox.Nonce.random().bytes();
+		byte[] nonce = Random.randomBytesSecure(16);
 		byte[] deviceSig = deviceIdentity.sign(nonce);
 
 		byte[] password = new byte[nonce.length + deviceSig.length];
@@ -1460,7 +1460,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		log.info("Connecting ...");
 
 		if (connectionListener != null)
-			connectionListener.connecting();
+			connectionListener.onConnecting();
 
 		return resolvePeer().compose(v -> repository.getContactsRevision()).compose(revision -> {
 			contactsRevision = revision;
@@ -1504,7 +1504,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 						this.topics.userInbox, MqttQoS.AT_LEAST_ONCE.value(),
 						this.topics.userOutbox, MqttQoS.AT_LEAST_ONCE.value(),
 						this.topics.deviceInbox, MqttQoS.AT_LEAST_ONCE.value());
-				return mqttClient.subscribe(topics).compose(pid -> {
+				return client.subscribe(topics).compose(pid -> {
 					log.info("Subscribing the messages...");
 					this.failures = 0;
 					this.mqttClient = client;
@@ -1550,7 +1550,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private void onClose() {
 		this.connected = false;
 		if (connectionListener != null)
-			connectionListener.disconnected();
+			connectionListener.onDisconnected();
 
 		if (!running) {
 			log.info("Disconnected");
@@ -1572,7 +1572,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		log.info("Subscribe topics success");
 		this.connected = true;
 		if (connectionListener != null)
-			connectionListener.connected();
+			connectionListener.onConnected();
 	}
 
 	private void onUnsubscribeCompletion(int packetId) {
@@ -1804,8 +1804,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				PhotonFriendRequest fr = new PhotonFriendRequest(from, from, hello,
 						handshake.getTimestamp(), System.currentTimeMillis());
 				yield repository.putFriendRequest(fr).andThen(ar -> {
-					if (handshakListener != null)
-						handshakListener.onFriendRequest(from, hello);
+					if (friendRequestListener != null)
+						friendRequestListener.onFriendRequest(from, hello);
 				});
 			}
 
@@ -1833,8 +1833,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					Friend friend = new Friend(from, selfContext.encrypt(sessionKey), null);
 					return repository.putContactLocally(friend).compose(vv ->
 							addFriendInternal(from, sessionKey, null).map(contact -> {
-								if (handshakListener != null)
-									handshakListener.onFriendRequestAccepted(contact.getId());
+								if (friendRequestListener != null)
+									friendRequestListener.onFriendRequestAccepted(contact.getId());
 								return null;
 							})
 					);

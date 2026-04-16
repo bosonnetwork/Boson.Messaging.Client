@@ -32,18 +32,18 @@ public interface ConnectionListener {
 	/**
 	 * Called when the connection process has initiated.
 	 */
-	default void connecting() {
+	default void onConnecting() {
 	}
 
 	/**
 	 * Called when the connection has been successfully established and is ready for communication.
 	 */
-	default void connected() {
+	default void onConnected() {
 	}
 
 	/**
 	 * Called when the connection has been closed or unexpectedly lost.
 	 */
-	default void disconnected() {
+	default void onDisconnected() {
 	}
 }
