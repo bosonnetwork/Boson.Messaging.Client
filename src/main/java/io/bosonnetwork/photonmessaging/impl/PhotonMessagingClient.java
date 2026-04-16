@@ -72,6 +72,7 @@ import io.bosonnetwork.photonmessaging.Message;
 import io.bosonnetwork.photonmessaging.MessageListener;
 import io.bosonnetwork.photonmessaging.MessagingClient;
 import io.bosonnetwork.photonmessaging.SessionInfo;
+import io.bosonnetwork.photonmessaging.SessionListener;
 import io.bosonnetwork.photonmessaging.exceptions.AlreadyMemberException;
 import io.bosonnetwork.photonmessaging.exceptions.ChannelNotExistsException;
 import io.bosonnetwork.photonmessaging.exceptions.ContactNotExistsException;
@@ -114,6 +115,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private MessageListener messageListener;
 	private ChannelListener channelListener;
 	private ContactListener contactListener;
+	private SessionListener sessionListener;
 	private FriendRequestListener friendRequestListener;
 
 	private final Database repository;
@@ -265,6 +267,28 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	@Override
+	public void addSessionListener(SessionListener listener) {
+		Objects.requireNonNull(listener, "listener");
+		if (this.sessionListener == null) {
+			this.sessionListener = listener;
+		} else {
+			if (this.sessionListener instanceof SessionListenerArray listeners)
+				listeners.add(listener);
+			else
+				this.sessionListener = new SessionListenerArray(this.sessionListener, listener);
+		}
+	}
+
+	@Override
+	public void removeSessionListener(SessionListener listener) {
+		SessionListener current = this.sessionListener;
+		if (current == listener)
+			this.sessionListener = null;
+		else if (current instanceof SessionListenerArray listeners)
+			listeners.remove(listener);
+	}
+
+	@Override
 	public void addFriendRequestListener(FriendRequestListener listener) {
 		Objects.requireNonNull(listener, "listener");
 		if (this.friendRequestListener == null) {
@@ -284,6 +308,16 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			this.friendRequestListener = null;
 		else if (current instanceof FriendRequestListenerArray listeners)
 			listeners.remove(listener);
+	}
+
+	@Override
+	public void removeAllListeners() {
+		this.connectionListener = null;
+		this.messageListener = null;
+		this.channelListener = null;
+		this.contactListener = null;
+		this.sessionListener = null;
+		this.friendRequestListener = null;
 	}
 
 	@Override
@@ -1570,6 +1604,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				topics.deviceInbox, grantedQoSLevels.get(2));
 
 		log.info("Subscribe topics success");
+		log.info("Client connected to the messaging server, ready to send and receive messages");
 		this.connected = true;
 		if (connectionListener != null)
 			connectionListener.onConnected();
@@ -1639,7 +1674,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				return;
 			}
 		} else if (tt == Topics.Type.DEVICE_INBOX) {
-			if (mt != Message.Type.CONTROL_MESSAGE) {
+			if (mt != Message.Type.CONTROL_MESSAGE && mt != Message.Type.STATE_MESSAGE) {
 				log.warn("Received a {} from device inbox, ignored", mt);
 				return;
 			}
@@ -1650,17 +1685,17 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 		checkAndDecryptMessage(received).compose(message -> {
 			if (tt == Topics.Type.USER_INBOX)
-				return processIncomingMessage(message);
+				return processInboxMessage(message);
 			else if (tt == Topics.Type.USER_OUTBOX)
-				return processingOutgoingMessage(message);
+				return processingOutboxMessage(message);
 			else // if (tt == Topics.Type.DEVICE_INBOX)
-				return processControlMessage(message);
+				return processDeviceInboxMessage(message);
 		}).onFailure(e -> {
 			log.error("Failed to process message from topic: {}, sender: {}", topic, received.getFrom(), e);
 		});
 	}
 
-	private Future<Void> processIncomingMessage(BytesMessage message) {
+	private Future<Void> processInboxMessage(BytesMessage message) {
 		final Message.Type type = message.getType();
 		if (type == Message.Type.CONTENT_MESSAGE) {
 			MessageContent content = MessageContent.parse(message.getPayload());
@@ -1709,7 +1744,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		return Future.succeededFuture();
 	}
 
-	private Future<Void> processingOutgoingMessage(BytesMessage message) {
+	private Future<Void> processingOutboxMessage(BytesMessage message) {
 		// message is sent by this device? then ignore
 		if (message.isOriginated(getDeviceId()))
 			return Future.succeededFuture();
@@ -1764,13 +1799,29 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		};
 	}
 
-	private Future<Void> processControlMessage(BytesMessage message) {
-		final Message.Type type = message.getType();
-		if (type != Message.Type.CONTROL_MESSAGE) {
-			log.warn("Received a {} from DEVICE inbox, ignored", type);
-			return Future.succeededFuture();
-		}
+	private Future<Void> processDeviceInboxMessage(BytesMessage message) {
+		return switch (message.getType()) {
+			case CONTROL_MESSAGE -> processControlMessage(message);
+			case STATE_MESSAGE -> {
+				// CONTACT_SYNC at startup only
+				Notification notif = Notification.parse(message.getPayload());
+				if (notif.getEvent() != Notification.Event.CONTACT_SYNC) {
+					log.warn("Received a unsupported STATE {} message from DEVICE inbox, ignored", notif.getEvent());
+					yield Future.succeededFuture();
+				}
 
+				ContactSync contactSync = notif.getBody();
+				yield applyContactSync(contactSync);
+			}
+
+			default -> {
+				log.warn("Received a {} from DEVICE inbox, ignored", message.getType());
+				yield Future.succeededFuture();
+			}
+		};
+	}
+
+	private Future<Void> processControlMessage(BytesMessage message) {
 		final RpcResponse response;
 		try {
 			response = RpcResponse.parse(message.getPayload());
@@ -1846,6 +1897,13 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private Future<Void> processHomePeerNotification(Notification notif) {
 		// notification from home peer
 		return switch (notif.getEvent()) {
+			case SESSION_NEW -> {
+				SessionInfo si = notif.getBody();
+				if (sessionListener != null)
+					sessionListener.onNewSession(si);
+				yield Future.succeededFuture();
+			}
+
 			case CONTACT_SYNC -> {
 				ContactSync contactSync = notif.getBody();
 				yield applyContactSync(contactSync);
@@ -2052,7 +2110,10 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 	private Future<Void> applyContactSync(ContactSync contactSync) {
 		return switch (contactSync.getType()) {
-			case UP_TO_DATE -> Future.succeededFuture();
+			case UP_TO_DATE -> {
+				log.info("Local contacts are up-to-date");
+				yield Future.succeededFuture();
+			}
 
 			case DELTA -> {
 				int revision = contactSync.getRevision();

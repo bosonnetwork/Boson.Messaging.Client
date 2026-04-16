@@ -25,7 +25,7 @@ import io.bosonnetwork.photonmessaging.impl.dto.ChannelInfo;
 public class RpcCallTests {
 	@Test
 	void testSucceededCall(Vertx vertx, VertxTestContext context) {
-		List<SessionInfo> sessions = List.of(new SessionInfo(Id.random(), false, System.currentTimeMillis()));
+		List<SessionInfo> sessions = List.of(new SessionInfo(Id.random(), false, System.currentTimeMillis(), "203.0.113.2"));
 
 		RpcCall<List<SessionInfo>> call = RpcCall.listSessions();
 		vertx.setTimer(500, id ->

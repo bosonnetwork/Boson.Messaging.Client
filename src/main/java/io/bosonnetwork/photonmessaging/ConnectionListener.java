@@ -28,6 +28,7 @@ package io.bosonnetwork.photonmessaging;
  * of a connection, including when it starts connecting, when it is
  * successfully established, and when it is disconnected or lost.
  */
+@FunctionalInterface
 public interface ConnectionListener {
 	/**
 	 * Called when the connection process has initiated.
@@ -38,8 +39,7 @@ public interface ConnectionListener {
 	/**
 	 * Called when the connection has been successfully established and is ready for communication.
 	 */
-	default void onConnected() {
-	}
+	void onConnected();
 
 	/**
 	 * Called when the connection has been closed or unexpectedly lost.

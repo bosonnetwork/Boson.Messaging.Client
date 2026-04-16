@@ -48,7 +48,7 @@ public class NotificationTests {
 
 		notifications.add(Arguments.of(Notification.Event.SESSION_NEW,
 				new Notification(Id.random(), Id.random(), System.currentTimeMillis(), Notification.Event.SESSION_NEW,
-						new SessionInfo(Id.random(), true, System.currentTimeMillis()))));
+						new SessionInfo(Id.random(), true, System.currentTimeMillis(), "203.0.113.8"))));
 
 		notifications.add(Arguments.of(Notification.Event.CONTACT_SYNC,
 				new Notification(Id.random(), Id.random(), System.currentTimeMillis(), Notification.Event.CONTACT_SYNC,
