@@ -22,22 +22,20 @@
 
 package io.bosonnetwork.photonmessaging;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
-
-import io.bosonnetwork.Id;
-
 /**
- * Represents session information for a device, including its identifier,
- * online status, and last activity timestamp.
- *
- * @param deviceId    The unique identifier of the device session.
- * @param online      Indicates whether the device is currently online.
- * @param lastActive  The timestamp of the last activity in milliseconds since epoch.
- * @param lastAddress The last known address of the device.
+ * A listener interface for monitoring the creation of new sessions.
+ * Classes that are interested in being notified about new sessions
+ * should implement this interface and register with a session management
+ * mechanism.
  */
-public record SessionInfo(@JsonProperty(value = "id", required = true) Id deviceId,
-                          @JsonProperty("o") boolean online,
-                          @JsonProperty("lt") long lastActive,
-                          @JsonProperty("la") @JsonInclude(JsonInclude.Include.NON_EMPTY) String lastAddress) {
+public interface SessionListener {
+	/**
+	 * Called when a new session is created.
+	 * This method notifies the implementing class of newly established sessions,
+	 * providing session details for further processing or tracking.
+	 *
+	 * @param sessionInfo An object representing the information related to the new session,
+	 *                    including its unique identifier, online status, and timestamp of the last activity.
+	 */
+	void onNewSession(SessionInfo sessionInfo);
 }

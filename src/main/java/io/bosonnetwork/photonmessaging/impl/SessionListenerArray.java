@@ -20,24 +20,25 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging;
+package io.bosonnetwork.photonmessaging.impl;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.ArrayList;
 
-import io.bosonnetwork.Id;
+import io.bosonnetwork.photonmessaging.SessionInfo;
+import io.bosonnetwork.photonmessaging.SessionListener;
 
-/**
- * Represents session information for a device, including its identifier,
- * online status, and last activity timestamp.
- *
- * @param deviceId    The unique identifier of the device session.
- * @param online      Indicates whether the device is currently online.
- * @param lastActive  The timestamp of the last activity in milliseconds since epoch.
- * @param lastAddress The last known address of the device.
- */
-public record SessionInfo(@JsonProperty(value = "id", required = true) Id deviceId,
-                          @JsonProperty("o") boolean online,
-                          @JsonProperty("lt") long lastActive,
-                          @JsonProperty("la") @JsonInclude(JsonInclude.Include.NON_EMPTY) String lastAddress) {
+public class SessionListenerArray extends ArrayList<SessionListener> implements SessionListener {
+	private static final long serialVersionUID = -7777075924791490548L;
+
+	public SessionListenerArray(SessionListener existing, SessionListener newListener) {
+		super();
+		add(existing);
+		add(newListener);
+	}
+
+	@Override
+	public void onNewSession(SessionInfo sessionInfo) {
+		for (SessionListener listener : this)
+			listener.onNewSession(sessionInfo);
+	}
 }

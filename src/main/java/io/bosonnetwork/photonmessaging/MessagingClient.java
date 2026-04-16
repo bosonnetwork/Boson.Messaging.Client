@@ -122,6 +122,20 @@ public interface MessagingClient {
 	void removeContactListener(ContactListener listener);
 
 	/**
+	 * Adds a session listener to receive session-related events.
+	 *
+	 * @param listener the session listener to be added; cannot be null
+	 */
+	void addSessionListener(SessionListener listener);
+
+	/**
+	 * Removes a session listener from the list of listeners.
+	 *
+	 * @param listener the session listener to be removed
+	 */
+	void removeSessionListener(SessionListener listener);
+
+	/**
 	 * Adds a listener for friend request events.
 	 *
 	 * @param listener the {@link FriendRequestListener} to add.
@@ -134,6 +148,15 @@ public interface MessagingClient {
 	 * @param listener the {@link FriendRequestListener} to remove.
 	 */
 	void removeFriendRequestListener(FriendRequestListener listener);
+
+	/**
+	 * Removes all listeners that have been previously registered with this instance.
+	 * This method clears the internal collection of listeners, effectively
+	 * detaching any observers or handlers that may have been added.
+	 * After calling this method, no further events or notifications will be sent
+	 * to the removed listeners.
+	 */
+	void removeAllListeners();
 
 	////////////////////////////////////////////////////////////////////////////
 	// Start and stop, status check

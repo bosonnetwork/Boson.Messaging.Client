@@ -31,7 +31,7 @@ public class RpcResponseTests {
 				System.currentTimeMillis(), System.currentTimeMillis(), null);
 
 		responses.add(Arguments.of(RpcMethod.SESSION_LIST,
-				RpcResponse.listSessions(nextId(), List.of(new SessionInfo(Id.random(), true, System.currentTimeMillis())))));
+				RpcResponse.listSessions(nextId(), List.of(new SessionInfo(Id.random(), true, System.currentTimeMillis(), "203.0.113.5")))));
 		responses.add(Arguments.of(RpcMethod.SESSION_REVOKE,
 				RpcResponse.revokeSession(nextId())));
 		responses.add(Arguments.of(RpcMethod.CONTACT_MUTATE,
