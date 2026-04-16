@@ -122,18 +122,18 @@ public interface MessagingClient {
 	void removeContactListener(ContactListener listener);
 
 	/**
-	 * Adds a listener for handshake (friend request) events.
+	 * Adds a listener for friend request events.
 	 *
-	 * @param listener the {@link HandshakeListener} to add.
+	 * @param listener the {@link FriendRequestListener} to add.
 	 */
-	void addHandshakeListener(HandshakeListener listener);
+	void addFriendRequestListener(FriendRequestListener listener);
 
 	/**
-	 * Removes a previously added handshake listener.
+	 * Removes a previously added friend request listener.
 	 *
-	 * @param listener the {@link HandshakeListener} to remove.
+	 * @param listener the {@link FriendRequestListener} to remove.
 	 */
-	void removeHandshakeListener(HandshakeListener listener);
+	void removeFriendRequestListener(FriendRequestListener listener);
 
 	////////////////////////////////////////////////////////////////////////////
 	// Start and stop, status check

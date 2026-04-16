@@ -36,20 +36,20 @@ public class ConnectionListenerArray extends ArrayList<ConnectionListener> imple
 	}
 
 	@Override
-	public void connecting() {
+	public void onConnecting() {
 		for (ConnectionListener listener : this)
-			listener.connecting();
+			listener.onConnecting();
 	}
 
 	@Override
-	public void connected() {
+	public void onConnected() {
 		for (ConnectionListener listener : this)
-			listener.connected();
+			listener.onConnected();
 	}
 
 	@Override
-	public void disconnected() {
+	public void onDisconnected() {
 		for (ConnectionListener listener : this)
-			listener.disconnected();
+			listener.onDisconnected();
 	}
 }

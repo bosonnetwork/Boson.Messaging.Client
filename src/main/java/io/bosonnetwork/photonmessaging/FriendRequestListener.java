@@ -25,10 +25,10 @@ package io.bosonnetwork.photonmessaging;
 import io.bosonnetwork.Id;
 
 /**
- * An interface for handling events related to handshake actions, such as
+ * An interface for handling events related to friend request actions, such as
  * receiving and accepting friend requests.
  */
-public interface HandshakeListener {
+public interface FriendRequestListener {
 	/**
 	 * Called when a new friend request incoming.
 	 *

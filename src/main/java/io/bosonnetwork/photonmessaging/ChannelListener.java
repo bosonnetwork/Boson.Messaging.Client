@@ -80,14 +80,6 @@ public interface ChannelListener {
 	void onChannelUpdated(Channel channel);
 
 	/**
-	 * Called when the full list of channel members has been updated.
-	 *
-	 * @param channel the channel whose members were updated
-	 * @param members the complete list of current members
-	 */
-	void onChannelMembers(Channel channel, List<Channel.Member> members);
-
-	/**
 	 * Called when a new member has joined the channel.
 	 *
 	 * @param channel the channel joined
