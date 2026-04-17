@@ -153,16 +153,19 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		this.inflightMessages = new HashMap<>();
 		this.inflightRpcCalls = new HashMap<>();
 
+		vertx.fileSystem().mkdirsBlocking(config.getDataDir().toString());
+
 		String databaseUri = config.getDatabaseUri();
 		// fix the sqlite database file location
 		if (databaseUri.startsWith(SqliteDatabase.CONNECTION_URI_PREFIX)) {
 			Path dbFile = Path.of(databaseUri.substring(SqliteDatabase.CONNECTION_URI_PREFIX.length()));
 			if (!dbFile.isAbsolute())
 				databaseUri = SqliteDatabase.CONNECTION_URI_PREFIX + config.getDataDir().resolve(dbFile).toAbsolutePath();
+			else
+				vertx.fileSystem().mkdirsBlocking(dbFile.getParent().toString());
 		}
 
-		this.repository = Database.create(config.getDatabaseUri(),
-				config.getDatabasePoolSize(), config.getDatabaseSchemaName());
+		this.repository = Database.create(databaseUri, config.getDatabasePoolSize(), config.getDatabaseSchemaName());
 
 		this.connected = false;
 		this.running = false;

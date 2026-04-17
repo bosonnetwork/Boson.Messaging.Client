@@ -37,6 +37,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.bosonnetwork.photonmessaging.impl.Database;
+import io.bosonnetwork.utils.FileUtils;
 
 /**
  * PostgreSQL implementation of PhotonMessaging Client database.
@@ -80,7 +81,11 @@ public class PostgresDatabase extends Database {
 		if (migrationResource == null || migrationResource.getPath() == null)
 			throw new IllegalStateException("Migration path not exists");
 
-		return Path.of(migrationResource.getPath());
+		try {
+			return FileUtils.pathOf(migrationResource);
+		} catch (Exception e) {
+			throw new IllegalStateException("Migration path error", e);
+		}
 	}
 
 	@Override
