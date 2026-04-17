@@ -35,6 +35,7 @@ import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteDataSource;
 
 import io.bosonnetwork.photonmessaging.impl.Database;
+import io.bosonnetwork.utils.FileUtils;
 
 /**
  * SQLite implementation of PhotonMessaging Client database.
@@ -79,7 +80,11 @@ public class SqliteDatabase extends Database {
 		if (migrationResource == null || migrationResource.getPath() == null)
 			throw new IllegalStateException("Migration path not exists");
 
-		return Path.of(migrationResource.getPath());
+		try {
+			return FileUtils.pathOf(migrationResource);
+		} catch (Exception e) {
+			throw new IllegalStateException("Migration path error", e);
+		}
 	}
 
 	@Override
