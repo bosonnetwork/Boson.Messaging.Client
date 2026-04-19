@@ -48,6 +48,12 @@ public class ConnectionListenerArray extends ArrayList<ConnectionListener> imple
 	}
 
 	@Override
+	public void onReady() {
+		for (ConnectionListener listener : this)
+			listener.onReady();
+	}
+
+	@Override
 	public void onDisconnected() {
 		for (ConnectionListener listener : this)
 			listener.onDisconnected();

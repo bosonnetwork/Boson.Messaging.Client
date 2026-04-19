@@ -127,6 +127,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private final Map<Long, RpcCall<?>> inflightRpcCalls;
 
 	private volatile boolean connected;
+	private volatile boolean initialContactSync;
 	private volatile boolean running;
 
 	private static final Logger log = LoggerFactory.getLogger(PhotonMessagingClient.class);
@@ -168,6 +169,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		this.repository = Database.create(databaseUri, config.getDatabasePoolSize(), config.getDatabaseSchemaName());
 
 		this.connected = false;
+		this.initialContactSync = false;
 		this.running = false;
 	}
 
@@ -1607,8 +1609,9 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				topics.deviceInbox, grantedQoSLevels.get(2));
 
 		log.info("Subscribe topics success");
-		log.info("Client connected to the messaging server, ready to send and receive messages");
+		log.info("Client connected to the messaging server");
 		this.connected = true;
+		this.initialContactSync = false;
 		if (connectionListener != null)
 			connectionListener.onConnected();
 	}
@@ -1803,25 +1806,12 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	private Future<Void> processDeviceInboxMessage(BytesMessage message) {
-		return switch (message.getType()) {
-			case CONTROL_MESSAGE -> processControlMessage(message);
-			case STATE_MESSAGE -> {
-				// CONTACT_SYNC at startup only
-				Notification notif = Notification.parse(message.getPayload());
-				if (notif.getEvent() != Notification.Event.CONTACT_SYNC) {
-					log.warn("Received a unsupported STATE {} message from DEVICE inbox, ignored", notif.getEvent());
-					yield Future.succeededFuture();
-				}
-
-				ContactSync contactSync = notif.getBody();
-				yield applyContactSync(contactSync);
-			}
-
-			default -> {
-				log.warn("Received a {} from DEVICE inbox, ignored", message.getType());
-				yield Future.succeededFuture();
-			}
-		};
+		if (message.getType() == Message.Type.CONTROL_MESSAGE) {
+			return processControlMessage(message);
+		} else {
+			log.warn("Received a {} from DEVICE inbox, ignored", message.getType());
+			return Future.succeededFuture();
+		}
 	}
 
 	private Future<Void> processControlMessage(BytesMessage message) {
@@ -1909,7 +1899,16 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 			case CONTACT_SYNC -> {
 				ContactSync contactSync = notif.getBody();
-				yield applyContactSync(contactSync);
+				yield applyContactSync(contactSync).andThen(ar -> {
+					if (ar.succeeded()) {
+						if (!initialContactSync) {
+							log.info("Contact synchronization completed on startup, client is ready");
+							initialContactSync = true;
+							if (connectionListener != null)
+								connectionListener.onReady();
+						}
+					}
+				});
 			}
 
 			case CHANNEL_CREATE -> {
@@ -2112,13 +2111,17 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	private Future<Void> applyContactSync(ContactSync contactSync) {
+		log.info("Applying contact sync: local revision {}, remote revision {} ...",
+				contactsRevision, contactSync.getRevision());
+
 		return switch (contactSync.getType()) {
 			case UP_TO_DATE -> {
-				log.info("Local contacts are up-to-date");
+				log.debug("Local contacts are up-to-date");
 				yield Future.succeededFuture();
 			}
 
 			case DELTA -> {
+				log.debug("Applying contact updates with delta");
 				int revision = contactSync.getRevision();
 				List<ContactMutation> mutations = contactSync.getMutations();
 				Future<Void> applyChain = Future.succeededFuture();
@@ -2137,6 +2140,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			}
 
 			case SNAPSHOT -> {
+				log.debug("Applying contact updates with snapshot");
 				int revision = contactSync.getRevision();
 				List<Contact> contacts = contactSync.getContacts();
 				yield repository.putContacts(revision, contacts).onSuccess(v -> {
