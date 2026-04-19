@@ -37,9 +37,15 @@ public interface ConnectionListener {
 	}
 
 	/**
-	 * Called when the connection has been successfully established and is ready for communication.
+	 * Called when the connection has been successfully established.
 	 */
-	void onConnected();
+	default void onConnected() {
+	}
+
+	/**
+	 * Called when the connection is fully initialized and is ready for communication.
+	 */
+	void onReady();
 
 	/**
 	 * Called when the connection has been closed or unexpectedly lost.
