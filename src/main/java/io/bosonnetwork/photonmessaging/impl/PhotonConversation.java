@@ -121,7 +121,7 @@ public class PhotonConversation implements Conversation {
 			sessionContext = ctx;
 		}
 
-		return sessionContext;
+		return ctx;
 	}
 
 	public boolean is(Conversation conversation) {

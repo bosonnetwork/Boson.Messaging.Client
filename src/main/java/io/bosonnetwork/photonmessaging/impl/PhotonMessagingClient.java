@@ -338,7 +338,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		if (!running)
 			return VertxFuture.succeededFuture();
 
-		return VertxFuture.of(vertx.undeploy(deploymentID()));
+		return VertxFuture.of(vertx.undeploy(deploymentID())
+				.andThen(ar -> selfContext.resetNonce()));
 	}
 
 	@Override
@@ -1205,7 +1206,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				.buildAsync((id, executor) ->
 						VertxFuture.of(repository.getConversation(id).map(c -> {
 							PhotonConversation conv = (PhotonConversation) c;
-							conv.setSessionContextFactory(this::sessionContextFactory);
+							if (conv != null)
+								conv.setSessionContextFactory(this::sessionContextFactory);
 							return conv;
 						})));
 
@@ -1227,10 +1229,18 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					if (contact == null)
 						return null;
 
-					PhotonConversation c = new PhotonConversation(contact);
-					c.setSessionContextFactory(this::sessionContextFactory);
-					conversationCache.synchronous().asMap().compute(id, (k, v) -> c);
-					return c;
+					// Prevents the race condition that could create duplicate Conversation instances for the same Contact.
+					// noinspection SynchronizationOnLocalVariableOrMethodParameter
+					synchronized (contact) { // contact object is **NOT** a local object
+						PhotonConversation cached = conversationCache.synchronous().getIfPresent(id);
+						if (cached != null)
+							return cached;
+
+						PhotonConversation c = new PhotonConversation(contact);
+						c.setSessionContextFactory(this::sessionContextFactory);
+						conversationCache.synchronous().asMap().compute(id, (k, v) -> c);
+						return c;
+					}
 				});
 		});
 	}
