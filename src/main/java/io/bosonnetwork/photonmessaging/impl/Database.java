@@ -344,16 +344,16 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	@Override
-	public Future<List<PhotonMessage<MessageContent>>> getMessages(Id conversationId, long since, int limit, int offset) {
+	public Future<List<PhotonMessage<MessageContent>>> getMessages(Id conversationId, long until, int limit, int offset) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectMessagesWithPagination())
 						.execute(Map.of("conversationId", conversationId.bytes(),
-								"since", since,
+								"until", until,
 								"limit", limit,
 								"offset", offset))
 						.map(rs -> findMany(rs, this::rowToMessage))
 		).recover(e -> {
-			getLogger().error("Failed to get messages for conversation {} since {}, limit={}, offset={}", conversationId, since, limit, offset, e);
+			getLogger().error("Failed to get messages for conversation {} until {}, limit={}, offset={}", conversationId, until, limit, offset, e);
 			return Future.failedFuture(new RepositoryException(e));
 		});
 	}

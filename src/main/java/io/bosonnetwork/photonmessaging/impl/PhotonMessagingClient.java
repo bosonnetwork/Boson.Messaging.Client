@@ -120,7 +120,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 	private final Database repository;
 
-	private int contactsRevision;
+	private volatile int contactsRevision;
 	private AsyncLoadingCache<Id, PhotonContact> contactCache;
 	private AsyncLoadingCache<Id, PhotonConversation> conversationCache;
 	private final Map<Integer, PhotonMessage<?>> inflightMessages;
@@ -403,12 +403,12 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	@Override
-	public VertxFuture<List<Message>> getMessages(Id conversationId, long since, int limit, int offset) {
+	public VertxFuture<List<Message>> getMessages(Id conversationId, long until, int limit, int offset) {
 		Objects.requireNonNull(conversationId, "conversationId");
 		if (limit <= 0 || offset < 0)
 			throw new IllegalArgumentException("limit and offset must be positive");
 		runningCheck();
-		return VertxFuture.of(repository.getMessages(conversationId, since, limit, offset).map(List::copyOf));
+		return VertxFuture.of(repository.getMessages(conversationId, until, limit, offset).map(List::copyOf));
 	}
 
 	@Override
@@ -515,9 +515,10 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 							userId, Message.Type.HANDSHAKE_MESSAGE, now, hs);
 				sendMessageInternal(message).compose(packetId -> {
 					request.accept();
-					return repository.putFriendRequest(request).compose(vv ->
-							addFriendInternal(userId, sessionKey, null).<Void>mapEmpty()
-					);
+					return repository.putFriendRequest(request).compose(vv -> {
+						byte[] sk = selfContext.encrypt(sessionKey);
+						return addFriendInternal(userId, sk, null).<Void>mapEmpty();
+					});
 				}).onComplete(promise);
 			});
 
@@ -584,9 +585,9 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		Objects.requireNonNull(remark, "remark");
 		runningCheck();
 
-
+		byte[] sk = selfContext.encrypt(sessionKey);
 		Promise<Contact> promise = Promise.promise();
-		runOnContext(v -> addFriendInternal(id, sessionKey, remark).onComplete(promise));
+		runOnContext(v -> addFriendInternal(id, sk, remark).onComplete(promise));
 		return VertxFuture.of(promise.future());
 	}
 
@@ -1089,11 +1090,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	@Override
-	public VertxFuture<Void> updateContact(Contact contact) {
+	public VertxFuture<Contact> updateContact(Contact contact) {
 		Objects.requireNonNull(contact, "contact");
 		runningCheck();
 
-		Promise<Void> promise = Promise.promise();
+		Promise<Contact> promise = Promise.promise();
 		runOnContext(v -> {
 			contact(contact.getId()).compose(origin -> {
 				if (origin == null)
@@ -1106,6 +1107,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					return Future.failedFuture(new RevisionNotMonotonicException("Contact revision is outdate"));
 
 				ObjectNode changes = Json.cborMapper().createObjectNode();
+				changes.put("id", contact.getId().bytes());
 				if (!Objects.equals(contact.getRemark(), origin.getRemark()))
 					changes.put("r", contact.getRemark());
 				if (!Objects.equals(contact.getTags(), origin.getTags()))
@@ -1119,11 +1121,12 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 				ContactMutation mutation = ContactMutation.update(contactsRevision, changes);
 				RpcCall<Integer> call = RpcCall.contactMutate(mutation);
-				return sendRpcCall(contact.getId(), call).compose(revision -> {
+				return sendRpcCall(homePeerId, call).compose(revision -> {
 					Contact updatedContact = ((ContactEditor) contact.edit()).setRevision(revision).build();
-					return repository.putContacts(revision, List.of(updatedContact)).onSuccess(vv ->
-						contactCache.synchronous().invalidate(contact.getId())
-					);
+					return repository.putContacts(revision, List.of(updatedContact)).map(vv -> {
+						contactCache.synchronous().invalidate(contact.getId());
+						return updatedContact;
+					});
 				});
 			}).onComplete(promise);
 		});
@@ -1274,19 +1277,20 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		@SuppressWarnings("unchecked")
 		PhotonMessage<MessageContent> msg = (PhotonMessage<MessageContent>)message;
 		msg.setConversationId(msg.getRecipient());
+		msg.setFrom(getUserId());
 
-		Promise<Void> promise = Promise.promise();
+		Promise<Message> promise = Promise.promise();
 		vertxContext.runOnContext(v ->
 				repository.putMessage(msg).compose(vv -> sendMessageInternal(msg))
 						.compose(packetId -> msg.getFuture())
 						.compose(vv -> repository.updateMessageSentTime(msg))
 						.compose(vv -> getOrCreateConversation(msg.getRecipient()).map(conv -> {
 							conv.update(msg);
-							return null;
-						}))
+							return msg;
+						})).onComplete(promise)
 		);
 
-		return promise.future().map(message);
+		return promise.future();
 	}
 
 	private Future<Integer> sendMessageInternal(PhotonMessage<?> message) {
@@ -1294,6 +1298,10 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 		// encrypt message payload for the recipient
 		return encryptMessage(message).compose(encrypted -> {
+			// Clear the sender ID; the server will inject the authoritative ID
+			// to ensure message integrity and prevent spoofing.
+			encrypted.setFrom(null);
+
 			// encrypt the whole message for transmission
 			byte[] mqttPayload = serviceContext.encrypt(encrypted.serialize());
 			Buffer buffer = Buffer.buffer(mqttPayload);
@@ -1358,10 +1366,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private Future<BytesMessage> checkAndDecryptMessage(BytesMessage message) {
 		final Id recipient = message.getRecipient();
 		final Id from = message.getFrom();
-		final boolean toMe = recipient.equals(getUserId());
-		final Id conversationId = toMe ? from : recipient;
-		message.setConversationId(conversationId);
-		message.received();
+		final Id conversationId = message.getConversationId();
 
 		final byte[] payload = message.getPayload();
 		if (payload == null || payload.length == 0)
@@ -1383,7 +1388,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					return getOrCreateConversation(conversationId).compose(conv -> {
 						try {
 							SessionContext sc = conv.getSessionContext();
-							CryptoContext ctx = sc.getRxCryptoContext(from);
+							CryptoContext ctx = from.equals(getUserId()) ? sc.getTxCryptoContext() : sc.getRxCryptoContext(from);
 							byte[] decryptedPayload = ctx.decrypt(payload);
 							return Future.succeededFuture(BytesMessage.dup(message, decryptedPayload));
 						} catch (CryptoException e) {
@@ -1394,7 +1399,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 
 			case CONTROL_MESSAGE, STATE_MESSAGE, HANDSHAKE_MESSAGE -> {
-				if (toMe) {
+				if (recipient.equals(getUserId())) {
 					// from the home peer, the payload is not encrypted
 					if (from.equals(homePeerId))
 						yield Future.succeededFuture(message);
@@ -1412,20 +1417,15 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					}
 				} else {
 					// from channel
-					yield contact(recipient).compose(contact -> {
-						if (contact == null) {
+					yield channel(recipient).compose(channel -> {
+						if (channel == null) {
 							log.error("Received a {} from unknown channel {}, ignored", type, recipient);
 							return Future.failedFuture("Received a message from unknown channel");
 						}
 
-						if (contact.isBlocked()) {
+						if (channel.isBlocked()) {
 							log.debug("Received a {} from blocked channel {}, ignored", type, recipient);
 							return Future.failedFuture("Received a message from blocked channel");
-						}
-
-						if (!(contact instanceof PhotonChannel channel)) {
-							log.error("Received a {} from non-channel contact {}, ignored", type, recipient);
-							return Future.failedFuture("Received a message send to non-channel contact");
 						}
 
 						return getOrCreateConversation(conversationId).compose(conv -> {
@@ -1666,7 +1666,10 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		}
 
 		log.trace("Got message from topic: {}, sender: {}", topic, received.getFrom());
+		received.received();
 
+		final Id recipient = received.getRecipient();
+		final Id from = received.getFrom();
 		final Message.Type mt = received.getType();
 		final Topics.Type tt = topics.typeOf(topic);
 		if (tt == Topics.Type.USER_INBOX) {
@@ -1674,16 +1677,21 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				log.warn("Received a {} from user inbox, ignored", mt);
 				return;
 			}
+
+			final Id conversationId = recipient.equals(getUserId()) ? from : recipient;
+			received.setConversationId(conversationId);
 		} else if (tt == Topics.Type.USER_OUTBOX) {
 			if (mt == Message.Type.CONTROL_MESSAGE) {
 				log.warn("Received a {} from user outbox, ignored", mt);
 				return;
 			}
+			received.setConversationId(recipient);
 		} else if (tt == Topics.Type.DEVICE_INBOX) {
 			if (mt != Message.Type.CONTROL_MESSAGE && mt != Message.Type.STATE_MESSAGE) {
 				log.warn("Received a {} from device inbox, ignored", mt);
 				return;
 			}
+			received.setConversationId(from);
 		} else {
 			log.warn("Received a {} message from unknown topic: {}, ignored", mt, topic);
 			return;
@@ -1751,23 +1759,30 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	private Future<Void> processingOutboxMessage(BytesMessage message) {
-		// message is sent by this device? then ignore
-		if (message.isOriginated(getDeviceId()))
-			return Future.succeededFuture();
 
 		message.setSentAt();
 		return switch (message.getType()) {
 			case CONTENT_MESSAGE -> {
 				MessageContent content = MessageContent.parse(message.getPayload());
 				PhotonMessage<MessageContent> msg = message.dup(content);
-				yield repository.putMessage(msg).andThen(ar -> {
-					if (messageListener != null) {
+				if (msg.isOriginated(getDeviceId())) {
+					// message is sent by this device
+					if (messageListener != null)
 						messageListener.onSent(msg);
-					}
-				});
+
+					yield Future.succeededFuture();
+				} else {
+					yield repository.putMessage(msg).andThen(ar -> {
+						if (messageListener != null)
+							messageListener.onSent(msg);
+					});
+				}
 			}
 
 			case HANDSHAKE_MESSAGE -> {
+				if (message.isOriginated(getDeviceId()))
+					yield Future.succeededFuture(); // initialized by this device, ignore
+
 				Handshake handshake = Handshake.parse(message.getPayload());
 				yield switch (handshake.getType()) {
 					case FRIEND_REQUEST -> {
@@ -1874,9 +1889,10 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				// The contact synchronization service handles concurrency by ensuring only
 				// the first received update is applied and synchronized to all devices.
 				return repository.putFriendRequest(request).compose(v -> {
-					Friend friend = new Friend(from, selfContext.encrypt(sessionKey), null);
+					byte[] sk = selfContext.encrypt(sessionKey);
+					Friend friend = new Friend(from, sk, null);
 					return repository.putContactLocally(friend).compose(vv ->
-							addFriendInternal(from, sessionKey, null).map(contact -> {
+							addFriendInternal(from, sk, null).map(contact -> {
 								if (friendRequestListener != null)
 									friendRequestListener.onFriendRequestAccepted(contact.getId());
 								return null;
@@ -2122,16 +2138,16 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 			case DELTA -> {
 				log.debug("Applying contact updates with delta");
-				int revision = contactSync.getRevision();
 				List<ContactMutation> mutations = contactSync.getMutations();
 				Future<Void> applyChain = Future.succeededFuture();
 				for (ContactMutation mutation : mutations) {
 					applyChain = applyChain.compose(v -> applyContactMutation(mutation));
 				}
 				yield applyChain.compose(v -> {
-					if (contactsRevision != revision) {
+					// contactsRevision = contactSync.getRevision();
+					if (contactsRevision != contactSync.getRevision()) {
 						log.error("the revision not up-to-data after applied the mutations, expected: {}, actual: {}",
-								revision, contactsRevision);
+								contactSync.getRevision(), contactsRevision);
 						return Future.failedFuture(new IllegalStateException("the revision not up-to-data after applied the mutations"));
 					}
 
@@ -2150,7 +2166,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		};
 	}
 	private Future<Void> applyContactMutation(ContactMutation mutation) {
-		final int revision = mutation.getRevision();
+		final int revision = mutation.getRevision() + 1;
 		return switch (mutation.getOp()) {
 			case ADD -> {
 				PhotonContact contact = mutation.getData();

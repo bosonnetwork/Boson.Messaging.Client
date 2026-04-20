@@ -222,7 +222,7 @@ public class SqlDialect {
 	public String selectMessagesWithPagination() {
 		return """
 				SELECT * FROM messages
-				WHERE conversation_id = #{conversationId} AND created_at >= #{since}
+				WHERE conversation_id = #{conversationId} AND created_at <= #{until}
 				ORDER BY rid ASC
 				LIMIT #{limit} OFFSET #{offset}
 				""";
