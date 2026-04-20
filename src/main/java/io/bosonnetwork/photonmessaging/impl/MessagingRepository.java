@@ -69,12 +69,12 @@ interface MessagingRepository {
 	 * Retrieves messages for a specific conversation with pagination.
 	 *
 	 * @param conversationId the ID of the conversation
-	 * @param since the timestamp to start from
+	 * @param until the timestamp (in milliseconds) indicating the upper bound for message retrieval (inclusive)
 	 * @param limit the maximum number of messages to return
 	 * @param offset the number of messages to skip
 	 * @return a Future with the list of messages found
 	 */
-	Future<List<PhotonMessage<MessageContent>>> getMessages(Id conversationId, long since, int limit, int offset);
+	Future<List<PhotonMessage<MessageContent>>> getMessages(Id conversationId, long until, int limit, int offset);
 
 	/**
 	 * Removes a single message from the repository by its ID.

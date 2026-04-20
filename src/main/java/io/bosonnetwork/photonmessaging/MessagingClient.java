@@ -257,12 +257,12 @@ public interface MessagingClient {
 	 * Retrieves a list of messages for a specific conversation with pagination support.
 	 *
 	 * @param conversationId the identifier of the conversation.
-	 * @param since the timestamp since which messages should be retrieved.
+	 * @param until A timestamp indicating the maximum message creation time (inclusive) for the retrieved messages.
 	 * @param limit the maximum number of messages to retrieve.
 	 * @param offset the number of messages to skip.
 	 * @return a {@link CompletableFuture} that will be completed with the list of {@link Message}s.
 	 */
-	CompletableFuture<List<Message>> getMessages(Id conversationId, long since, int limit, int offset);
+	CompletableFuture<List<Message>> getMessages(Id conversationId, long until, int limit, int offset);
 
 	/**
 	 * Retrieves a list of messages for a specific conversation within a time range.
@@ -570,9 +570,9 @@ public interface MessagingClient {
 	 * Updates the settings of a generic contact (e.g., remark, muted status).
 	 *
 	 * @param contact the {@link Contact} object containing updated information.
-	 * @return a {@link CompletableFuture} that completes when the update is finished.
+	 * @return a {@link CompletableFuture} that containing the updated contact object.
 	 */
-	CompletableFuture<Void> updateContact(Contact contact);
+	CompletableFuture<Contact> updateContact(Contact contact);
 
 	/**
 	 * Removes a specific contact.

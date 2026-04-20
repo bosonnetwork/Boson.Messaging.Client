@@ -72,6 +72,11 @@ public class TestClientLauncher {
 				}
 
 				@Override
+				public void onReady() {
+					System.out.println("Ready to send and receive messages");
+				}
+
+				@Override
 				public void onDisconnected() {
 					System.out.println("Disconnected from the messaging service: " + config.getServicePeerId());
 				}
