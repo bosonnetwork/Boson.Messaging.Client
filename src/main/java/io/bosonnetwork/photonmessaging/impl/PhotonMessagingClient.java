@@ -127,7 +127,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private final Map<Long, RpcCall<?>> inflightRpcCalls;
 
 	private volatile boolean connected;
-	private volatile boolean initialContactSync;
+	private volatile boolean ready;
 	private volatile boolean running;
 
 	private static final Logger log = LoggerFactory.getLogger(PhotonMessagingClient.class);
@@ -169,7 +169,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		this.repository = Database.create(databaseUri, config.getDatabasePoolSize(), config.getDatabaseSchemaName());
 
 		this.connected = false;
-		this.initialContactSync = false;
+		this.ready = false;
 		this.running = false;
 	}
 
@@ -350,6 +350,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	@Override
 	public boolean isConnected() {
 		return connected;
+	}
+
+	@Override
+	public boolean isReady() {
+		return ready;
 	}
 
 	private void runningCheck() {
@@ -1193,6 +1198,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	@Override
 	protected Future<Void> deploy() {
 		this.running = true;
+		this.connected = false;
+		this.ready = false;
 
 		this.contactCache = VertxCaffeine.newBuilder(vertx)
 				.maximumSize(512)
@@ -1593,11 +1600,14 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		if (mqttClient == null || !mqttClient.isConnected())
 				return Future.succeededFuture();
 
+
 		return mqttClient.disconnect();
 	}
 
 	private void onClose() {
 		this.connected = false;
+		this.ready = false;
+
 		if (connectionListener != null)
 			connectionListener.onDisconnected();
 
@@ -1621,7 +1631,6 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		log.info("Subscribe topics success");
 		log.info("Client connected to the messaging server");
 		this.connected = true;
-		this.initialContactSync = false;
 		if (connectionListener != null)
 			connectionListener.onConnected();
 	}
@@ -1670,53 +1679,53 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			// decrypt the message envelope
 			final byte[] mqttPayload = serviceContext.decrypt(mm.payload().getBytes());
 			received = BytesMessage.parse(mqttPayload);
+			received.received();
+
+			log.trace("Got message from topic: {}, packetId: {}, dup: {}, sender: {}, messageId: {}",
+					topic, mm.messageId(), mm.isDup(), received.getFrom(), received.getId());
+
+			final Id recipient = received.getRecipient();
+			final Id from = received.getFrom();
+			final Message.Type mt = received.getType();
+			final Topics.Type tt = topics.typeOf(topic);
+			if (tt == Topics.Type.USER_INBOX) {
+				if (mt == Message.Type.CONTROL_MESSAGE) {
+					log.warn("Received a {} from user inbox, ignored", mt);
+					return;
+				}
+
+				final Id conversationId = recipient.equals(getUserId()) ? from : recipient;
+				received.setConversationId(conversationId);
+			} else if (tt == Topics.Type.USER_OUTBOX) {
+				if (mt == Message.Type.CONTROL_MESSAGE) {
+					log.warn("Received a {} from user outbox, ignored", mt);
+					return;
+				}
+				received.setConversationId(recipient);
+			} else if (tt == Topics.Type.DEVICE_INBOX) {
+				if (mt != Message.Type.CONTROL_MESSAGE && mt != Message.Type.STATE_MESSAGE) {
+					log.warn("Received a {} from device inbox, ignored", mt);
+					return;
+				}
+				received.setConversationId(from);
+			} else {
+				log.warn("Received a {} message from unknown topic: {}, ignored", mt, topic);
+				return;
+			}
+
+			checkAndDecryptMessage(received).compose(message -> {
+				if (tt == Topics.Type.USER_INBOX)
+					return processInboxMessage(message);
+				else if (tt == Topics.Type.USER_OUTBOX)
+					return processingOutboxMessage(message);
+				else // if (tt == Topics.Type.DEVICE_INBOX)
+					return processDeviceInboxMessage(message);
+			}).onFailure(e -> {
+				log.error("Failed to process message from topic: {}, sender: {}", topic, received.getFrom(), e);
+			});
 		} catch (Exception e) {
 			log.error("Failed to process message from topic: {}", topic, e);
-			return;
 		}
-
-		log.trace("Got message from topic: {}, sender: {}", topic, received.getFrom());
-		received.received();
-
-		final Id recipient = received.getRecipient();
-		final Id from = received.getFrom();
-		final Message.Type mt = received.getType();
-		final Topics.Type tt = topics.typeOf(topic);
-		if (tt == Topics.Type.USER_INBOX) {
-			if (mt == Message.Type.CONTROL_MESSAGE) {
-				log.warn("Received a {} from user inbox, ignored", mt);
-				return;
-			}
-
-			final Id conversationId = recipient.equals(getUserId()) ? from : recipient;
-			received.setConversationId(conversationId);
-		} else if (tt == Topics.Type.USER_OUTBOX) {
-			if (mt == Message.Type.CONTROL_MESSAGE) {
-				log.warn("Received a {} from user outbox, ignored", mt);
-				return;
-			}
-			received.setConversationId(recipient);
-		} else if (tt == Topics.Type.DEVICE_INBOX) {
-			if (mt != Message.Type.CONTROL_MESSAGE && mt != Message.Type.STATE_MESSAGE) {
-				log.warn("Received a {} from device inbox, ignored", mt);
-				return;
-			}
-			received.setConversationId(from);
-		} else {
-			log.warn("Received a {} message from unknown topic: {}, ignored", mt, topic);
-			return;
-		}
-
-		checkAndDecryptMessage(received).compose(message -> {
-			if (tt == Topics.Type.USER_INBOX)
-				return processInboxMessage(message);
-			else if (tt == Topics.Type.USER_OUTBOX)
-				return processingOutboxMessage(message);
-			else // if (tt == Topics.Type.DEVICE_INBOX)
-				return processDeviceInboxMessage(message);
-		}).onFailure(e -> {
-			log.error("Failed to process message from topic: {}, sender: {}", topic, received.getFrom(), e);
-		});
 	}
 
 	private Future<Void> processInboxMessage(BytesMessage message) {
@@ -1769,7 +1778,6 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	private Future<Void> processingOutboxMessage(BytesMessage message) {
-
 		message.setSentAt();
 		return switch (message.getType()) {
 			case CONTENT_MESSAGE -> {
@@ -1927,9 +1935,9 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				ContactSync contactSync = notif.getBody();
 				yield applyContactSync(contactSync).andThen(ar -> {
 					if (ar.succeeded()) {
-						if (!initialContactSync) {
+						if (!ready) {
 							log.info("Contact synchronization completed on startup, client is ready");
-							initialContactSync = true;
+							ready = true;
 							if (connectionListener != null)
 								connectionListener.onReady();
 						}
