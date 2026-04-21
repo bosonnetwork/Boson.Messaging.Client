@@ -114,7 +114,7 @@ public class MessageBuilder implements Message.Builder {
 		return this;
 	}
 
-	protected Message build() {
+	private Message build() {
 		if (recipient == null)
 			throw new IllegalStateException("Recipient not set");
 

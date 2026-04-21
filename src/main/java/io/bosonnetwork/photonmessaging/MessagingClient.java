@@ -190,6 +190,13 @@ public interface MessagingClient {
 	 */
 	boolean isConnected();
 
+	/**
+	 * Checks if the messaging client is ready to send and receive messages.
+	 *
+	 * @return true if the messaging client is ready; false otherwise.
+	 */
+	boolean isReady();
+
 	////////////////////////////////////////////////////////////////////////////
 	// Message and conversation APIs
 	////////////////////////////////////////////////////////////////////////////
