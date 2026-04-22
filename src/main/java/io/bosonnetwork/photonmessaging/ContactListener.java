@@ -51,7 +51,7 @@ public interface ContactListener {
 	 *
 	 * @param contactIds the list of {@link Id}s of the removed contacts.
 	 */
-	void onContactRemoved(List<Id> contactIds);
+	void onContactsRemoved(List<Id> contactIds);
 
 	/**
 	 * Called when all contacts have been cleared from the local contact list.

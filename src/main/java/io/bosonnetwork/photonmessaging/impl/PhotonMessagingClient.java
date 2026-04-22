@@ -25,6 +25,7 @@ package io.bosonnetwork.photonmessaging.impl;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -1112,25 +1113,32 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				if (contact.getRevision() < origin.getRevision())
 					return Future.failedFuture(new RevisionNotMonotonicException("Contact revision is outdate"));
 
+				PhotonContact updated = (PhotonContact) contact;
+
 				ObjectNode changes = Json.cborMapper().createObjectNode();
-				changes.put("id", contact.getId().bytes());
-				if (!Objects.equals(contact.getRemark(), origin.getRemark()))
-					changes.put("r", contact.getRemark());
-				if (!Objects.equals(contact.getTags(), origin.getTags()))
-					changes.put("t", contact.getTags());
-				if (contact.isMuted() != origin.isMuted())
-					changes.put("m", contact.isMuted());
-				if (contact.isBlocked() != origin.isBlocked())
-					changes.put("b", contact.isBlocked());
-				if (contact.getUpdatedAt() != origin.getUpdatedAt())
-					changes.put("u", contact.getUpdatedAt());
+				changes.put("id", updated.getId().bytes());
+				if (!Arrays.equals(updated.getSessionKey(), origin.getSessionKey()))
+					changes.put("sk", updated.getSessionKey());
+				if (!Objects.equals(updated.getName(), origin.getName()))
+					changes.put("n", updated.getName());
+				if (!Objects.equals(updated.getRemark(), origin.getRemark()))
+					changes.put("r", updated.getRemark());
+				if (!Objects.equals(updated.getTags(), origin.getTags()))
+					changes.put("ts", updated.getTags());
+				if (updated.isMuted() != origin.isMuted())
+					changes.put("m", updated.isMuted());
+				if (updated.isBlocked() != origin.isBlocked())
+					changes.put("b", updated.isBlocked());
+				if (updated.getUpdatedAt() != origin.getUpdatedAt())
+					changes.put("u", updated.getUpdatedAt());
 
 				ContactMutation mutation = ContactMutation.update(contactsRevision, changes);
 				RpcCall<Integer> call = RpcCall.contactMutate(mutation);
 				return sendRpcCall(homePeerId, call).compose(revision -> {
-					Contact updatedContact = ((ContactEditor) contact.edit()).setRevision(revision).build();
+					Contact updatedContact = ((ContactEditor) updated.edit()).setRevision(revision).build();
 					return repository.putContacts(revision, List.of(updatedContact)).map(vv -> {
-						contactCache.synchronous().invalidate(contact.getId());
+						contactsRevision = revision;
+						contactCache.synchronous().invalidate(updated.getId());
 						return updatedContact;
 					});
 				});
@@ -1976,7 +1984,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				yield applyContactSync(contactSync).andThen(ar -> {
 					if (ar.succeeded()) {
 						if (!ready) {
-							log.info("Contact synchronization completed on startup, client is ready");
+							log.info("Contact synchronization completed on startup，revision {}, client is ready", contactsRevision);
 							ready = true;
 							if (connectionListener != null)
 								connectionListener.onReady();
@@ -2287,7 +2295,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 						return Future.failedFuture("Non-exists contact mutation");
 					}
 
-					PhotonContact updatedContact = contact.edit().patch(changes).build();
+					PhotonContact updatedContact = contact.edit().patch(changes).setRevision(revision).build();
 					return repository.putContacts(revision, List.of(updatedContact)).map(v -> {
 						contactsRevision = revision;
 						contactCache.synchronous().invalidate(contactId);
@@ -2304,7 +2312,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				yield repository.removeContacts(revision, contactIds).map(removed -> {
 					contactsRevision = revision;
 					if (removed && contactListener != null)
-						contactListener.onContactRemoved(contactIds);
+						contactListener.onContactsRemoved(contactIds);
 					return null;
 				});
 			}

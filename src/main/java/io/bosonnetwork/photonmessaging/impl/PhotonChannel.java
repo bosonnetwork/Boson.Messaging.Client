@@ -239,6 +239,7 @@ public class PhotonChannel extends PhotonContact implements Channel {
 
 		repr.append(", createdAt=").append(Instant.ofEpochMilli(getCreatedAt()))
 				.append(" updatedAt=").append(Instant.ofEpochMilli(getUpdatedAt()))
+				.append(" revision=").append(getRevision())
 				.append(']');
 
 		return repr.toString();
@@ -272,6 +273,8 @@ public class PhotonChannel extends PhotonContact implements Channel {
 
 		out.println("  created = " + Instant.ofEpochMilli(getCreatedAt()));
 		out.println("  updated = " + Instant.ofEpochMilli(getUpdatedAt()));
+		out.println("  revision = " + getRevision());
+
 		out.println("  members = " + size());
 
 		for (Member m : getMembersMap().values())
