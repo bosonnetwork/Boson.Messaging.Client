@@ -39,6 +39,12 @@ public class ChannelListenerArray extends ArrayList<ChannelListener> implements 
 	}
 
 	@Override
+	public void onChannelCreated(Channel channel) {
+		for (ChannelListener listener : this)
+			listener.onChannelCreated(channel);
+	}
+
+	@Override
 	public void onJoinedChannel(Channel channel) {
 		for (ChannelListener listener : this)
 			listener.onJoinedChannel(channel);

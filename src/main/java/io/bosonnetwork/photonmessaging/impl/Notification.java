@@ -280,6 +280,11 @@ public class Notification implements DeviceOriginated {
 		return (T) body;
 	}
 
+	@Override
+	public String toString() {
+		return event.name() + ": id=" + id + ", source=" + source;
+	}
+
 	public byte[] serialize() {
 		try {
 			return WRITER.writeValueAsBytes(this);

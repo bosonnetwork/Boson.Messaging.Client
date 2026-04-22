@@ -171,6 +171,11 @@ public class RpcResponse {
 		return Objects.hash(id, result, error);
 	}
 
+	@Override
+	public String toString() {
+		return id + ":" + method + (succeeded() ? " OK" : " FAIL");
+	}
+
 	public static RpcResponse listSessions(long id, List<SessionInfo> sessions) {
 		return new RpcResponse(id, RpcMethod.SESSION_LIST, sessions, null);
 	}

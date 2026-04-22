@@ -1285,7 +1285,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		log.debug("Sending RPC call {}:{} to {} ...", call.getId(), call.getMethod(), recipient);
 		return sendMessageInternal(message).compose(packageId -> call.getFuture(), error -> {
 			inflightRpcCalls.remove(call.getId());
-			log.error("Send RPC call {} failed", call.getId(), error);
+			log.error("Send RPC call {}:{} failed", call.getId(), call.getMethod(), error);
 			return Future.failedFuture(error);
 		});
 	}
@@ -1325,10 +1325,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			message.prepareForSending();
 			return mqttClient.publish(topics.deviceOutbox, buffer, MqttQoS.AT_LEAST_ONCE, false, false).andThen(ar -> {
 				if (ar.succeeded()) {
-					log.debug("Sending message to {} ...", message.getRecipient());
-					inflightMessages.put(ar.result(), message);
+					int packetId = ar.result();
+					log.debug("Sending message {} to {}, packetId {} ...", message.getId(), message.getRecipient(), packetId);
+					inflightMessages.put(packetId, message);
 				} else {
-					log.error("Send message to {} failed", message.getRecipient(), ar.cause());
+					log.error("Send message {} to {} failed", message.getId(), message.getRecipient(), ar.cause());
 				}
 			});
 		});
@@ -1519,6 +1520,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			connectionListener.onConnecting();
 
 		return resolvePeer().compose(v -> repository.getContactsRevision()).compose(revision -> {
+			log.info("Current client contacts revision: {}", revision);
+
 			contactsRevision = revision;
 
 			MqttClientOptions options = new MqttClientOptions()
@@ -1600,11 +1603,12 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		if (mqttClient == null || !mqttClient.isConnected())
 				return Future.succeededFuture();
 
-
 		return mqttClient.disconnect();
 	}
 
 	private void onClose() {
+		log.debug("Disconnected from the messaging server {} @ {}", homePeerId, serviceEndpoint);
+
 		this.connected = false;
 		this.ready = false;
 
@@ -1640,6 +1644,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	private void onPublishCompletion(int packetId) {
+		log.trace("Received publish completion for packetId {}", packetId);
+
 		PhotonMessage<?> message = inflightMessages.remove(packetId);
 		if (message == null) {
 			// noinspection LoggingSimilarMessage
@@ -1651,6 +1657,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	private void onPublishCompletionExpiration(int packetId) {
+		log.trace("Received publish completion expiration for packetId {}", packetId);
+
 		PhotonMessage<?> message = inflightMessages.remove(packetId);
 		if (message == null) {
 			// noinspection LoggingSimilarMessage
@@ -1675,14 +1683,16 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		final String topic = mm.topicName();
 		final BytesMessage received;
 
+		log.trace("Received message on topic {}, packetId {}, dup {}", topic, mm.messageId(), mm.isDup());
+
 		try {
 			// decrypt the message envelope
 			final byte[] mqttPayload = serviceContext.decrypt(mm.payload().getBytes());
 			received = BytesMessage.parse(mqttPayload);
 			received.received();
 
-			log.trace("Got message from topic: {}, packetId: {}, dup: {}, sender: {}, messageId: {}",
-					topic, mm.messageId(), mm.isDup(), received.getFrom(), received.getId());
+			log.debug("Got message {}:{} from {} to {} on topic {}, packetId: {}, dup: {}",
+					received.getId(), received.getType(), received.getFrom(), received.getRecipient(), topic, mm.messageId(), mm.isDup());
 
 			final Id recipient = received.getRecipient();
 			final Id from = received.getFrom();
@@ -1703,13 +1713,13 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				}
 				received.setConversationId(recipient);
 			} else if (tt == Topics.Type.DEVICE_INBOX) {
-				if (mt != Message.Type.CONTROL_MESSAGE && mt != Message.Type.STATE_MESSAGE) {
+				if (mt != Message.Type.CONTROL_MESSAGE) {
 					log.warn("Received a {} from device inbox, ignored", mt);
 					return;
 				}
 				received.setConversationId(from);
 			} else {
-				log.warn("Received a {} message from unknown topic: {}, ignored", mt, topic);
+				log.warn("Received a {} from unknown topic {}, ignored", mt, topic);
 				return;
 			}
 
@@ -1721,10 +1731,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				else // if (tt == Topics.Type.DEVICE_INBOX)
 					return processDeviceInboxMessage(message);
 			}).onFailure(e -> {
-				log.error("Failed to process message from topic: {}, sender: {}", topic, received.getFrom(), e);
+				log.error("Failed to process message {} from {} to {}",
+						received.getId(), received.getFrom(), received.getRecipient(), e);
 			});
 		} catch (Exception e) {
-			log.error("Failed to process message from topic: {}", topic, e);
+			log.error("Failed to process message on topic {}, packetId {}", topic, mm.messageId(), e);
 		}
 	}
 
@@ -1733,15 +1744,22 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		if (type == Message.Type.CONTENT_MESSAGE) {
 			MessageContent content = MessageContent.parse(message.getPayload());
 			PhotonMessage<MessageContent> contentMessage = message.dup(content);
-			return repository.putMessage(contentMessage)
-					.compose(v -> getOrCreateConversation(contentMessage.getConversationId()))
-					.map(conv -> {
-						conv.update(contentMessage);
-						if (messageListener != null)
-							messageListener.onMessage(contentMessage);
+			return repository.putMessage(contentMessage).andThen(rar -> {
+				if (rar.failed())
+					log.error("Failed to save the message {} to repository", contentMessage.getId(), rar.cause());
 
-						return null;
-					});
+				getOrCreateConversation(contentMessage.getConversationId()).andThen(ar -> {
+					if (ar.succeeded()) {
+						PhotonConversation conv = ar.result();
+						conv.update(contentMessage);
+					} else {
+						log.error("Failed to get conversation {}", contentMessage.getConversationId(), ar.cause());
+					}
+
+					if (messageListener != null)
+						messageListener.onMessage(contentMessage);
+				});
+			});
 		}
 
 		if (type == Message.Type.STATE_MESSAGE) {
@@ -1750,6 +1768,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				// This notification was triggered by an RPC request from this device.
 				// Since the local state was already updated via the RPC response,
 				// this redundant notification can be safely ignored.
+				log.trace("Ignoring redundant(originated from self) notification {}", notif);
 				return Future.succeededFuture();
 			}
 
@@ -1760,7 +1779,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			// Notification from channel?
 			return channel(message.getRecipient()).compose(channel -> {
 				if (channel == null) {
-					log.warn("Received a {} from unknown channel {}, ignored", type, message.getRecipient());
+					log.warn("Received a notification from unknown channel {}, ignored - {}", message.getRecipient(), notif);
 					return Future.succeededFuture();
 				}
 				return processChannelNotification(channel, notif);
@@ -1784,12 +1803,14 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				MessageContent content = MessageContent.parse(message.getPayload());
 				PhotonMessage<MessageContent> msg = message.dup(content);
 				if (msg.isOriginated(getDeviceId())) {
+					log.trace("Message {} sent to {}", msg.getId(), msg.getRecipient());
 					// message is sent by this device
 					if (messageListener != null)
 						messageListener.onSent(msg);
 
 					yield Future.succeededFuture();
 				} else {
+					log.trace("Message {} sent to {} from the other device", msg.getId(), msg.getRecipient());
 					yield repository.putMessage(msg).andThen(ar -> {
 						if (messageListener != null)
 							messageListener.onSent(msg);
@@ -1798,31 +1819,37 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			}
 
 			case HANDSHAKE_MESSAGE -> {
-				if (message.isOriginated(getDeviceId()))
+				if (message.isOriginated(getDeviceId())) {
+					log.trace("Ignoring redundant(originated from self) handshake {} to {}", message.getId(), message.getRecipient());
 					yield Future.succeededFuture(); // initialized by this device, ignore
+				}
 
 				Handshake handshake = Handshake.parse(message.getPayload());
 				yield switch (handshake.getType()) {
 					case FRIEND_REQUEST -> {
 						String hello = handshake.getBody();
+						log.trace("Friend request sent to {}", message.getRecipient());
 						PhotonFriendRequest fr = new PhotonFriendRequest(message.getRecipient(), getUserId(), hello,
 								handshake.getTimestamp(), System.currentTimeMillis());
 						yield repository.putFriendRequest(fr);
 					}
 
-					case FRIEND_REQUEST_ACCEPT -> repository.getFriendRequest(message.getRecipient()).compose(fr -> {
-						// Trying to update the existing friend request status.
-						// **DO NOT** add the contact here; the accepting device is responsible for adding
-						// the new contact and broadcasting the change via a CONTACT_MUTATE notification.
-						if (fr == null) {
-							log.warn("No friend request to {}, ignored", message.getRecipient());
-							return Future.succeededFuture();
-						}
+					case FRIEND_REQUEST_ACCEPT -> {
+						log.trace("Accept friend request accepted from {}", message.getRecipient());
+						yield repository.getFriendRequest(message.getRecipient()).compose(fr -> {
+							// Trying to update the existing friend request status.
+							// **DO NOT** add the contact here; the accepting device is responsible for adding
+							// the new contact and broadcasting the change via a CONTACT_MUTATE notification.
+							if (fr == null) {
+								log.warn("No friend request to {}, ignored", message.getRecipient());
+								return Future.succeededFuture();
+							}
 
-						PhotonFriendRequest request = (PhotonFriendRequest) fr;
-						request.accept(handshake.getTimestamp());
-						return repository.putFriendRequest(request);
-					});
+							PhotonFriendRequest request = (PhotonFriendRequest) fr;
+							request.accept(handshake.getTimestamp());
+							return repository.putFriendRequest(request);
+						});
+					}
 				};
 			}
 
@@ -1856,6 +1883,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			return Future.failedFuture(e);
 		}
 
+		log.trace("Received RPC response {}", response);
+
 		@SuppressWarnings("unchecked")
 		final RpcCall<?> call = inflightRpcCalls.remove(response.getId());
 		if (call == null) {
@@ -1878,6 +1907,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		return switch (handshake.getType()) {
 			case FRIEND_REQUEST -> {
 				String hello = handshake.getBody();
+				log.trace("Received a friend request from {}: {}", from, hello);
 				PhotonFriendRequest fr = new PhotonFriendRequest(from, from, hello,
 						handshake.getTimestamp(), System.currentTimeMillis());
 				yield repository.putFriendRequest(fr).andThen(ar -> {
@@ -1886,38 +1916,48 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}
 
-			case FRIEND_REQUEST_ACCEPT -> repository.getFriendRequest(from).compose(fr -> {
-				if (fr == null || !fr.getInitiatorId().equals(from)) {
-					log.warn("Received a friend request accept notification without matched request from: {}, ignored", from);
-					return Future.succeededFuture();
-				}
+			case FRIEND_REQUEST_ACCEPT -> {
+				log.trace("Received a friend request accept from {}", from);
+				yield repository.getFriendRequest(from).compose(fr -> {
+					if (fr == null || !fr.getInitiatorId().equals(from)) {
+						log.warn("Received a friend request accept without matched request from: {}, ignored", from);
+						return Future.succeededFuture();
+					}
 
-				byte[] sessionKey = handshake.getBody();
-				if (sessionKey == null || sessionKey.length != Signature.PrivateKey.BYTES) {
-					log.warn("Received a friend request accept notification with invalid session key from: {}, ignored", from);
-					return Future.succeededFuture();
-				}
+					byte[] sessionKey = handshake.getBody();
+					if (sessionKey == null || sessionKey.length != Signature.PrivateKey.BYTES) {
+						log.warn("Received a friend request accept with invalid session key from: {}, ignored", from);
+						return Future.succeededFuture();
+					}
 
-				PhotonFriendRequest request = (PhotonFriendRequest) fr;
-				request.accept();
+					PhotonFriendRequest request = (PhotonFriendRequest) fr;
+					request.accept();
 
-				// All user devices receive the 'accept' notification.
-				// Since we are lacking a leader-election mechanism between devices, all devices attempt
-				// to add the new contact upon receiving the 'accept' notification.
-				// The contact synchronization service handles concurrency by ensuring only
-				// the first received update is applied and synchronized to all devices.
-				return repository.putFriendRequest(request).compose(v -> {
-					byte[] sk = selfContext.encrypt(sessionKey);
-					Friend friend = new Friend(from, sk, null);
-					return repository.putContactLocally(friend).compose(vv ->
-							addFriendInternal(from, sk, null).map(contact -> {
-								if (friendRequestListener != null)
-									friendRequestListener.onFriendRequestAccepted(contact.getId());
-								return null;
-							})
-					);
+					return repository.putFriendRequest(request).andThen(rar -> {
+						if (rar.failed())
+							log.error("Failed to update the friend request status", rar.cause());
+
+						byte[] sk = selfContext.encrypt(sessionKey);
+						Friend friend = new Friend(from, sk, null);
+						repository.putContactLocally(friend).andThen(ar -> {
+							// All user devices receive the 'accept' notification.
+							// Since we are lacking a leader-election mechanism between devices, all devices attempt
+							// to add the new contact upon receiving the 'accept' notification.
+							// The contact synchronization service handles concurrency by ensuring only
+							// the first received update is applied and synchronized to all devices.
+							addFriendInternal(from, sk, null).andThen(rr -> {
+								if (rr.succeeded())
+									log.trace("Sync new friend {} cross devices", friend.getId());
+								else
+									log.trace("Failed to sync new friend {} cross devices", friend.getId(), rr.cause());
+							});
+
+							if (friendRequestListener != null)
+								friendRequestListener.onFriendRequestAccepted(friend.getId());
+						});
+					});
 				});
-			});
+			}
 		};
 	}
 
@@ -1947,6 +1987,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 			case CHANNEL_CREATE -> {
 				ChannelInfo ci = notif.getBody();
+				log.trace("Channel {} created", ci.channelId());
+
 				// The session key is encrypted with the user's own key; no external decryption needed.
 				PhotonChannel channel = new PhotonChannel(ci.channelId(), ci.sessionKey(), ci.ownerId(),
 						ci.permission(), ci.name(), ci.notice(), ci.announce(), ci.createdAt(), ci.updateAt());
@@ -1961,11 +2003,17 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 						return repository.putChannelMembers(channel.getId(), ci.members());
 					else
 						return Future.succeededFuture();
+				}).andThen(ar -> {
+					if (ar.failed())
+						log.error("Failed to save channel {} to repository", ci.channelId(), ar.cause());
+
+					if (channelListener != null)
+						channelListener.onChannelCreated(channel);
 				});
 			}
 
 			default -> {
-				log.warn("Received an unknown notification from home peer, ignored");
+				log.warn("Received an unknown notification from home peer, ignored - {}", notif);
 				yield Future.succeededFuture();
 			}
 		};
@@ -1973,7 +2021,9 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 	private Future<Void> processChannelNotification(PhotonChannel channel, Notification notif) {
 		return switch (notif.getEvent()) {
-			case CHANNEL_DELETE -> repository.removeContactLocally(channel.getId()).andThen(ar -> {
+			case CHANNEL_DELETE -> {
+				log.trace("Channel {} deleted", channel.getId());
+				yield repository.removeContactLocally(channel.getId()).andThen(ar -> {
 					contactCache.synchronous().invalidate(channel.getId());
 
 					if (ar.succeeded() && !ar.result()) // no local channel removed
@@ -1982,9 +2032,12 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					if (channelListener != null)
 						channelListener.onChannelDeleted(channel);
 				}).mapEmpty();
+			}
 
 			case CHANNEL_JOIN -> {
 				ChannelInfo ci = notif.getBody();
+				log.trace("Channel {} joined", ci.channelId());
+
 				// The session key is encrypted with the user's own key; no external decryption needed.
 				PhotonChannel ch = new PhotonChannel(ci.channelId(), ci.sessionKey(), ci.ownerId(),
 						ci.permission(), ci.name(), ci.notice(), ci.announce(), ci.createdAt(), ci.updateAt());
@@ -2006,6 +2059,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			}
 
 			case CHANNEL_LEAVE -> {
+				log.trace("Channel {} left", channel.getId());
 				yield repository.removeContactLocally(channel.getId()).andThen(ar -> {
 					contactCache.synchronous().invalidate(channel.getId());
 
@@ -2019,27 +2073,36 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 			case CHANNEL_OWNERSHIP_TRANSFER -> {
 				Id newOwnerId = notif.getBody();
+				log.trace("Channel {} ownership transfer to {}", channel.getId(), newOwnerId);
+
 				Id oldOwnerId = channel.getOwnerId();
 				ChannelMember oldOwner = channel.getMember(channel.getOwnerId());
 				ChannelMember newOwner = channel.getMember(newOwnerId);
+				Future<Void> future;
 				if (oldOwner == null || newOwner == null) {
 					// not up-to-date?
-					yield refreshChannel(channel);
+					log.warn("Looks like channel {} is outdated, try to refresh", channel.getId());
+					future = refreshChannel(channel);
 				} else {
-					yield repository.updateChannelOwnership(channel.getId(), channel.getOwnerId(), newOwnerId).compose(v -> {
+					future = repository.updateChannelOwnership(channel.getId(), channel.getOwnerId(), newOwnerId).compose(v -> {
 						PhotonChannel updatedChannel = channel.editChannel().setOwnerId(newOwnerId).build();
 						repository.putContactLocally(updatedChannel);
 						channel.invalidateMembers();
 						contactCache.synchronous().invalidate(channel.getId());
 						return Future.succeededFuture();
-					}, error -> refreshChannel(channel)).andThen(ar -> {
-						if (channelListener != null)
-							channelListener.onChannelOwnershipTransferred(channel, oldOwnerId, newOwnerId);
+					}, error -> {
+						log.warn("Update channel ownership failed, looks like channel {} is outdated, try to refresh", channel.getId());
+						return refreshChannel(channel);
 					});
 				}
+				yield future.andThen(ar -> {
+					if (channelListener != null)
+						channelListener.onChannelOwnershipTransferred(channel, oldOwnerId, newOwnerId);
+				});
 			}
 
 			case CHANNEL_SESSION_KEY_ROTATE -> {
+				log.trace("Channel {} session key rotated", channel.getId());
 				byte[] sessionKey = notif.getBody();
 				PhotonContact updatedChannel = channel.edit().setSessionKey(sessionKey).build();
 				yield repository.putContactLocally(updatedChannel).andThen(ar -> {
@@ -2050,6 +2113,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			}
 
 			case CHANNEL_INFO_UPDATE -> {
+				log.trace("Channel {} info updated: {}", channel.getId(), notif.getBody());
 				PhotonChannel updatedChannel = channel.editChannel().patch(notif.getBody()).build();
 				yield repository.putContactLocally(updatedChannel).andThen(ar -> {
 					contactCache.synchronous().invalidate(channel.getId());
@@ -2060,6 +2124,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 			case CHANNEL_MEMBERS_ROLE_UPDATE -> {
 				ChannelMembersRole content = notif.getBody();
+				log.trace("Channel {} members role updated: {} - {}", channel.getId(), content.role(), content.memberIds());
 				yield repository.updateChannelMembersRole(channel.getId(), content.memberIds(), content.role()).andThen(ar -> {
 					channel.invalidateMembers();
 					if (channelListener != null) {
@@ -2073,6 +2138,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 			case CHANNEL_MEMBERS_BAN -> {
 				List<Id> memberIds = notif.getBody();
+				log.trace("Channel {} members banned: {}", channel.getId(), memberIds);
 				yield repository.updateChannelMembersRole(channel.getId(), memberIds, Channel.Role.BANNED).andThen(ar -> {
 					channel.invalidateMembers();
 					if (channelListener != null) {
@@ -2086,6 +2152,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 			case CHANNEL_MEMBERS_UNBAN -> {
 				List<Id> memberIds = notif.getBody();
+				log.trace("Channel {} members unbanned: {}", channel.getId(), memberIds);
 				yield repository.updateChannelMembersRole(channel.getId(), memberIds, Channel.Role.MEMBER).andThen(ar -> {
 					channel.invalidateMembers();
 					if (channelListener != null) {
@@ -2099,6 +2166,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 			case CHANNEL_MEMBERS_REMOVE -> {
 				List<Id> memberIds = notif.getBody();
+				log.trace("Channel {} members removed: {}", channel.getId(), memberIds);
 				yield repository.getChannelMembers(channel.getId(), memberIds).compose(members -> {
 					if (members.isEmpty())
 						return Future.succeededFuture();
@@ -2113,6 +2181,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 			case CHANNEL_MEMBER_JOIN -> {
 				ChannelMember member = notif.getBody();
+				log.trace("Channel {} member joined: {}", channel.getId(), member);
 				yield repository.putChannelMember(channel.getId(), member).andThen(ar -> {
 					channel.invalidateMembers();
 					if (channelListener != null)
@@ -2122,6 +2191,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 			case CHANNEL_MEMBER_LEAVE -> {
 				Id memberId = notif.getBody();
+				log.trace("Channel {} member left: {}", channel.getId(), memberId);
 				yield repository.getChannelMember(channel.getId(), memberId).compose(member -> {
 					if (member == null)
 						return Future.succeededFuture(new ChannelMember(memberId, Channel.Role.MEMBER, 0));
@@ -2188,6 +2258,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		return switch (mutation.getOp()) {
 			case ADD -> {
 				PhotonContact contact = mutation.getData();
+				log.trace("Applying contact mutation(base rev {}): add {}", mutation.getRevision(), contact.getId());
 				yield repository.putContacts(revision, List.of(contact)).map(v -> {
 					contactsRevision = revision;
 					if (contactListener != null)
@@ -2206,6 +2277,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					log.warn("Received an invalid contact mutation, ignored");
 					yield Future.failedFuture("Invalid contact mutation");
 				}
+
+				log.trace("Applying contact mutation(base rev {}): update {}", mutation.getRevision(), contactId);
 
 				yield contact(contactId).compose(contact -> {
 					if (contact == null) {
@@ -2227,6 +2300,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 			case REMOVE -> {
 				List<Id> contactIds = mutation.getData();
+				log.trace("Applying contact mutation(base rev {}): remove {}", mutation.getRevision(), contactIds);
 				yield repository.removeContacts(revision, contactIds).map(removed -> {
 					contactsRevision = revision;
 					if (removed && contactListener != null)
@@ -2236,6 +2310,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			}
 
 			case CLEAR -> repository.clearContacts(revision).map(v -> {
+				log.trace("Applying contact mutation(base rev {}): clear", mutation.getRevision());
 				contactsRevision = revision;
 				if (contactListener != null)
 						contactListener.onContactsCleared();
