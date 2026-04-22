@@ -33,6 +33,14 @@ import io.bosonnetwork.Id;
  */
 public interface ChannelListener {
 	/**
+	 * Called when a channel is created.
+	 * This method is triggered to notify about the creation of a new channel.
+	 *
+	 * @param channel the channel that was created
+	 */
+	void onChannelCreated(Channel channel);
+
+	/**
 	 * Called when the current user has joined a new channel.
 	 * The channel object already includes the member's private key.
 	 *
