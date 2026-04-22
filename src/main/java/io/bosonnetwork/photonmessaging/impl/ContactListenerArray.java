@@ -51,9 +51,9 @@ public class ContactListenerArray extends ArrayList<ContactListener> implements 
 	}
 
 	@Override
-	public void onContactRemoved(List<Id> contactIds) {
+	public void onContactsRemoved(List<Id> contactIds) {
 		for (ContactListener listener : this)
-			listener.onContactRemoved(contactIds);
+			listener.onContactsRemoved(contactIds);
 	}
 
 	@Override

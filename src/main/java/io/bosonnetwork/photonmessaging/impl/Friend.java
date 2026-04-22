@@ -81,6 +81,7 @@ public class Friend extends PhotonContact {
 
 		repr.append(", createdAt=").append(Instant.ofEpochMilli(getCreatedAt()))
 				.append(" updatedAt=").append(Instant.ofEpochMilli(getUpdatedAt()))
+				.append(" revision=").append(getRevision())
 				.append(']');
 
 		return repr.toString();
