@@ -9,31 +9,32 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
-import com.fasterxml.jackson.databind.JsonNode;
-
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
+import io.bosonnetwork.crypto.CryptoIdentity;
 import io.bosonnetwork.crypto.Random;
 import io.bosonnetwork.json.Json;
-import io.bosonnetwork.photonmessaging.Contact;
+import io.bosonnetwork.photonmessaging.impl.dto.OpaqueContact;
 
 public class ContactMutationTests {
-	private static Stream<Arguments> mutationProvider() {
+	private static final CryptoIdentity identity = new CryptoIdentity();
+
+	private static Stream<Arguments> mutationProvider() throws Exception {
 		List<Arguments> mutations = new ArrayList<>();
 
+		CryptoContext ctx = identity.createCryptoContext(identity.getId());
+
 		// ADD
-		Friend friend = new Friend(Id.random(), Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "John Doe");
-		mutations.add(Arguments.of(ContactMutation.Op.ADD, ContactMutation.add(1, friend)));
+		Friend john = new Friend(Id.random(), Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "John Doe");
+		mutations.add(Arguments.of(ContactMutation.Op.ADD, ContactMutation.add(1, john.toOpaque(ctx))));
 
 		// UPDATE
-		JsonNode update = Json.objectMapper().createObjectNode()
-				.put("id", Id.random().bytes())
-				.put("n", "Jane Doe")
-				.put("r", "Updated Remark");
-		mutations.add(Arguments.of(ContactMutation.Op.UPDATE, ContactMutation.update(2, update)));
+		Friend updatedJohn = new Friend(john.getId(), john.getSessionKey(), "Updated John Doe");
+		mutations.add(Arguments.of(ContactMutation.Op.UPDATE, ContactMutation.update(2, updatedJohn.toOpaque(ctx))));
 
 		// REMOVE
 		List<Id> ids = List.of(Id.random(), Id.random());
@@ -61,8 +62,8 @@ public class ContactMutationTests {
 		Object actualData = parsed.getData();
 
 		switch (mutation.getOp()) {
-			case ADD -> assertInstanceOf(Contact.class, actualData);
-			case UPDATE -> assertInstanceOf(JsonNode.class, actualData);
+			case ADD -> assertInstanceOf(OpaqueContact.class, actualData);
+			case UPDATE -> assertInstanceOf(OpaqueContact.class, actualData);
 			case REMOVE -> assertInstanceOf(List.class, actualData);
 			case CLEAR -> assertNull(actualData);
 		}

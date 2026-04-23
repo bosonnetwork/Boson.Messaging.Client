@@ -29,14 +29,14 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonValue;
 
-import io.bosonnetwork.photonmessaging.Contact;
+import io.bosonnetwork.photonmessaging.impl.dto.OpaqueContact;
 
 /**
  * Represents a contact sync notification or response.
  */
 public class ContactSync {
 	// last revision of the server
-	@JsonProperty(value = "r", required = true)
+	@JsonProperty(value = "v", required = true)
 	private final int revision;
 
 	@JsonProperty(value = "t", required = true)
@@ -48,7 +48,7 @@ public class ContactSync {
 
 	@JsonProperty("s")
 	@JsonInclude(JsonInclude.Include.NON_EMPTY)
-	private final List<Contact> contacts;
+	private final List<OpaqueContact> contacts;
 
 	public enum Type {
 		UP_TO_DATE(0),
@@ -78,10 +78,10 @@ public class ContactSync {
 	}
 
 	@JsonCreator
-	protected ContactSync(@JsonProperty(value = "r", required = true) int revision,
+	protected ContactSync(@JsonProperty(value = "v", required = true) int revision,
 	                      @JsonProperty(value = "t", required = true) Type type,
 	                      @JsonProperty("d") List<ContactMutation> mutations,
-	                      @JsonProperty("s") List<Contact> contacts) {
+	                      @JsonProperty("s") List<OpaqueContact> contacts) {
 		if ((mutations != null && !mutations.isEmpty()) && (contacts != null && !contacts.isEmpty()))
 			throw new IllegalArgumentException("Mutations and contacts can not be both present");
 
@@ -108,7 +108,7 @@ public class ContactSync {
 		return new ContactSync(revision, Type.DELTA, mutations, null);
 	}
 
-	public static ContactSync snapshot(int revision, List<Contact> contacts) {
+	public static ContactSync snapshot(int revision, List<OpaqueContact> contacts) {
 		return new ContactSync(revision, Type.SNAPSHOT, null, contacts);
 	}
 
@@ -124,7 +124,7 @@ public class ContactSync {
 		return mutations;
 	}
 
-	public List<Contact> getContacts() {
+	public List<OpaqueContact> getContacts() {
 		return contacts;
 	}
 }

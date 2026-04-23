@@ -29,12 +29,11 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import com.fasterxml.jackson.databind.JsonNode;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.json.Json;
-import io.bosonnetwork.photonmessaging.Contact;
 import io.bosonnetwork.photonmessaging.impl.dto.IdList;
+import io.bosonnetwork.photonmessaging.impl.dto.OpaqueContact;
 
 /**
  * Represents a compact contact mutation operation used in the messaging system.
@@ -76,7 +75,7 @@ import io.bosonnetwork.photonmessaging.impl.dto.IdList;
  *
  * <pre>
  * a → ADD    (PhotonContact)
- * u → UPDATE (JsonNode / partial update)
+ * u → UPDATE (PhotonContact)
  * r → REMOVE (List&lt;Id&gt;)
  * c → CLEAR  (no payload)
  * </pre>
@@ -105,7 +104,7 @@ import io.bosonnetwork.photonmessaging.impl.dto.IdList;
  *     #[serde(rename = "a")]
  *     Add(PhotonContact),
  *     #[serde(rename = "u")]
- *     Update(serde_json::Value),
+ *     Update(PhotonContact),
  *     #[serde(rename = "r")]
  *     Remove(Vec<Id>),
  *     #[serde(rename = "c")]
@@ -133,7 +132,7 @@ import io.bosonnetwork.photonmessaging.impl.dto.IdList;
  */
 public class ContactMutation {
 	// current client revision, make sure the client makes the change based on the latest revision
-	@JsonProperty(value = "r", required = true)
+	@JsonProperty(value = "v", required = true)
 	private final int revision;
 	@JsonProperty(value = "op", required = true)
 	private final Op op;
@@ -146,8 +145,8 @@ public class ContactMutation {
 			defaultImpl = Void.class
 	)
 	@JsonSubTypes({
-			@JsonSubTypes.Type(value = PhotonContact.class, name = "a"),
-			@JsonSubTypes.Type(value = JsonNode.class, name = "u"),
+			@JsonSubTypes.Type(value = OpaqueContact.class, name = "a"),
+			@JsonSubTypes.Type(value = OpaqueContact.class, name = "u"),
 			@JsonSubTypes.Type(value = IdList.class, name = "r"),
 			@JsonSubTypes.Type(value = Void.class, name = "c")
 	})
@@ -179,7 +178,7 @@ public class ContactMutation {
 	}
 
 	@JsonCreator
-	private ContactMutation(@JsonProperty(value = "r", required = true) int revision,
+	private ContactMutation(@JsonProperty(value = "v", required = true) int revision,
 	                        @JsonProperty(value = "op", required = true) Op op,
 	                        @JsonProperty(value = "d") Object data) {
 		this.revision = revision;
@@ -211,11 +210,11 @@ public class ContactMutation {
 		}
 	}
 
-	public static ContactMutation add(int revision, Contact contact) {
+	public static ContactMutation add(int revision, OpaqueContact contact) {
 		return new ContactMutation(revision, Op.ADD, contact);
 	}
 
-	public static ContactMutation update(int revision, JsonNode data) {
+	public static ContactMutation update(int revision, OpaqueContact data) {
 		return new ContactMutation(revision, Op.UPDATE, data);
 	}
 

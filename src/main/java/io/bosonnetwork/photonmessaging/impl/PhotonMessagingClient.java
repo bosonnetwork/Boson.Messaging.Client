@@ -25,7 +25,6 @@ package io.bosonnetwork.photonmessaging.impl;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -35,7 +34,6 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import io.netty.handler.codec.mqtt.MqttQoS;
@@ -579,7 +577,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 	private Future<Contact> addFriendInternal(Id id, byte[] sessionKey, String remark) {
 		Friend friend = new Friend(id, sessionKey, remark);
-		ContactMutation mutation = ContactMutation.add(contactsRevision, friend);
+		ContactMutation mutation = ContactMutation.add(contactsRevision, friend.toOpaque(selfContext));
 		RpcCall<Integer> call = RpcCall.contactMutate(mutation);
 		return sendRpcCall(homePeerId, call).compose(revision -> {
 			Contact contact = friend.edit().setRevision(revision).build();
@@ -631,7 +629,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).compose(ch -> {
 				// 3. Add the channel as a new contact (sync cross all devices)
-				ContactMutation mutation = ContactMutation.add(contactsRevision, ch);
+				ContactMutation mutation = ContactMutation.add(contactsRevision, ch.toOpaque(selfContext));
 				RpcCall<Integer> addContactCall = RpcCall.contactMutate(mutation);
 				return sendRpcCall(homePeerId, addContactCall).compose(revision -> {
 					PhotonChannel channel = (PhotonChannel) ch.edit().setRevision(revision).build();
@@ -724,7 +722,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					});
 				}).compose(ch -> {
 					// 4. add the channel as a new contact (sync cross all devices)
-					ContactMutation mutation = ContactMutation.add(contactsRevision, ch);
+					ContactMutation mutation = ContactMutation.add(contactsRevision, ch.toOpaque(selfContext));
 					RpcCall<Integer> addContactCall = RpcCall.contactMutate(mutation);
 					return sendRpcCall(homePeerId, addContactCall).compose(revision -> {
 						PhotonChannel channel = (PhotonChannel) ch.edit().setRevision(revision).build();
@@ -1119,25 +1117,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					return Future.failedFuture(new RevisionNotMonotonicException("Contact revision is outdate"));
 
 				PhotonContact updated = (PhotonContact) contact;
-
-				ObjectNode changes = Json.cborMapper().createObjectNode();
-				changes.put("id", updated.getId().bytes());
-				if (!Arrays.equals(updated.getSessionKey(), origin.getSessionKey()))
-					changes.put("sk", updated.getSessionKey());
-				if (!Objects.equals(updated.getName(), origin.getName()))
-					changes.put("n", updated.getName());
-				if (!Objects.equals(updated.getRemark(), origin.getRemark()))
-					changes.put("r", updated.getRemark());
-				if (!Objects.equals(updated.getTags(), origin.getTags()))
-					changes.put("ts", updated.getTags());
-				if (updated.isMuted() != origin.isMuted())
-					changes.put("m", updated.isMuted());
-				if (updated.isBlocked() != origin.isBlocked())
-					changes.put("b", updated.isBlocked());
-				if (updated.getUpdatedAt() != origin.getUpdatedAt())
-					changes.put("u", updated.getUpdatedAt());
-
-				ContactMutation mutation = ContactMutation.update(contactsRevision, changes);
+				ContactMutation mutation = ContactMutation.update(contactsRevision, updated.toOpaque(selfContext));
 				RpcCall<Integer> call = RpcCall.contactMutate(mutation);
 				return sendRpcCall(homePeerId, call).compose(revision -> {
 					Contact updatedContact = ((ContactEditor) updated.edit()).setRevision(revision).build();
@@ -2062,7 +2042,13 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				// optimistic insert. The server will later broadcast a CONTACT_MUTATE notification
 				// triggered by the device that initiated the original CHANNEL_CREATE request,
 				// which will perform the formal, synchronized update of the contact list and revision state.
-				yield repository.putContactLocally(channel).compose(v -> {
+				yield channel(channel.getId()).compose(existing -> {
+					if (existing != null) {
+						log.trace("Channel already exists(synced as contact), skip save channel");
+						return Future.succeededFuture();
+					}
+					return repository.putContactLocally(channel);
+				}).compose(v -> {
 					if (!ci.members().isEmpty())
 						return repository.putChannelMembers(channel.getId(), ci.members());
 					else
@@ -2310,7 +2296,16 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			case SNAPSHOT -> {
 				log.debug("Applying contact updates with snapshot");
 				int revision = contactSync.getRevision();
-				List<Contact> contacts = contactSync.getContacts();
+				List<Contact> contacts;
+				try {
+					contacts = contactSync.getContacts().stream()
+							.map(opaque -> (Contact) PhotonContact.fromOpaque(opaque, selfContext))
+							.toList();
+				} catch (IllegalArgumentException e) {
+					// PhotonContact.fromOpaque will throw exception
+					log.error("Failed to parse opaque contact from snapshot", e);
+					yield Future.failedFuture(e);
+				}
 				yield repository.putContacts(revision, contacts).onSuccess(v -> {
 					contactsRevision = revision;
 				});
@@ -2321,62 +2316,40 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		final int revision = mutation.getRevision() + 1;
 		return switch (mutation.getOp()) {
 			case ADD -> {
-				PhotonContact contact = mutation.getData();
-				log.trace("Applying contact mutation(base rev {}): add {}", mutation.getRevision(), contact.getId());
-				Future<PhotonContact> mergeFuture;
-				if (contact.getType() == Contact.Type.CHANNEL) {
-					// should merge the channel info into the new contact
-					mergeFuture = channel(contact.getId()).map(channel -> {
-						if (channel == null) {
-							log.warn("Channel {} not found, can not merge the channel info to the updated contact", contact.getId());
-							return contact;
-						}
-
-						PhotonChannel updatedChannelContact = (PhotonChannel) contact;
-						return updatedChannelContact.editChannel().applyChannelInfo(channel).build();
-					});
-				} else {
-					mergeFuture = Future.succeededFuture(contact);
+				PhotonContact contact;
+				try {
+					contact = PhotonContact.fromOpaque(mutation.getData(), selfContext);
+				} catch (IllegalArgumentException e) {
+					log.error("Failed to parse opaque contact from mutation", e);
+					yield Future.failedFuture(e);
 				}
-				yield mergeFuture.compose(updated ->
-						repository.putContacts(revision, List.of(updated)).map(v -> {
-							contactsRevision = revision;
-							if (contactListener != null)
-								contactListener.onContactAdded(updated);
-							return null;
-						})
-				);
+
+				log.trace("Applying contact mutation(base rev {}): add {}", mutation.getRevision(), contact.getId());
+				yield repository.putContacts(revision, List.of(contact)).map(v -> {
+					contactsRevision = revision;
+					if (contactListener != null)
+						contactListener.onContactAdded(contact);
+					return null;
+				});
 			}
 
 			case UPDATE -> {
-				final JsonNode changes = mutation.getData();
-				final Id contactId;
+				PhotonContact contact;
 				try {
-					contactId = Id.of(changes.get("id").binaryValue());
-				} catch (Exception e) {
-					// TODO: how to handle this case?
-					log.warn("Received an invalid contact mutation, ignored");
-					yield Future.failedFuture("Invalid contact mutation");
+					contact = PhotonContact.fromOpaque(mutation.getData(), selfContext);
+				} catch (IllegalArgumentException e) {
+					log.error("Failed to parse opaque contact from mutation", e);
+					yield Future.failedFuture(e);
 				}
 
-				log.trace("Applying contact mutation(base rev {}): update {}", mutation.getRevision(), contactId);
-
-				yield contact(contactId).compose(contact -> {
-					if (contact == null) {
-						// TODO: how to handle this case?
-						log.warn("Received a non-exists contact mutation, ignored");
-						return Future.failedFuture("Non-exists contact mutation");
-					}
-
-					PhotonContact updatedContact = contact.edit().patch(changes).setRevision(revision).build();
-					return repository.putContacts(revision, List.of(updatedContact)).map(v -> {
-						contactsRevision = revision;
-						contactCache.synchronous().invalidate(contactId);
-						if(contactListener != null)
-							contactListener.onContactsUpdated(List.of(contact));
-						return null;
-					});
-				}).mapEmpty();
+				log.trace("Applying contact mutation(base rev {}): update {}", mutation.getRevision(), contact.getId());
+				yield repository.putContacts(revision, List.of(contact)).map(v -> {
+					contactsRevision = revision;
+					contactCache.synchronous().invalidate(contact.getId());
+					if (contactListener != null)
+						contactListener.onContactsUpdated(List.of(contact));
+					return null;
+				});
 			}
 
 			case REMOVE -> {
