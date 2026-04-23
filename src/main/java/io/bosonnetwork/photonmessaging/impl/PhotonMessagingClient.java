@@ -481,8 +481,10 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				Id messageId = DeviceOriginated.generateId(getDeviceId(), now);
 				PhotonMessage<Handshake> message = new PhotonMessage<>(messageId,
 						userId, Message.Type.HANDSHAKE_MESSAGE, now, hs);
+				log.trace("Sending friend request to {}", userId);
 				return sendMessageInternal(message).compose(packetId -> Future.<Void>succeededFuture(),
 						error -> {
+							log.error("Failed to send friend request to {}", userId, error);
 							repository.removeFriendRequest(userId);
 							return Future.failedFuture(error);
 						});
@@ -520,9 +522,12 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				Id messageId = DeviceOriginated.generateId(getDeviceId(), now);
 				PhotonMessage<Handshake> message = new PhotonMessage<>(messageId,
 							userId, Message.Type.HANDSHAKE_MESSAGE, now, hs);
+				log.trace("Sending friend request accept to {}", userId);
 				sendMessageInternal(message).compose(packetId -> {
 					request.accept();
+					log.trace("Friend request accept sent to {}", userId);
 					return repository.putFriendRequest(request).compose(vv -> {
+						log.trace("Friend request accepted, adding to contacts");
 						byte[] sk = selfContext.encrypt(sessionKey);
 						return addFriendInternal(userId, sk, null).<Void>mapEmpty();
 					});
@@ -1365,7 +1370,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				}
 			});
 
-			case CONTROL_MESSAGE, HANDSHAKE_MESSAGE -> {
+			case CONTROL_MESSAGE -> {
 				if (message.getRecipient().equals(homePeerId)) {
 					// Optimization: When sending to the home peer, the message body and envelope
 					// share the same CryptoContext. Explicit body encryption is skipped here
@@ -1385,6 +1390,15 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			case STATE_MESSAGE -> {
 				log.error("INTERNAL ERROR: messaging client is not supposed to send state messages");
 				yield Future.failedFuture(new IllegalStateException("INTERNAL ERROR: messaging client is not supposed to send state messages"));
+			}
+
+			case HANDSHAKE_MESSAGE -> {
+				try {
+					byte[] encryptedPayload = userIdentity.encrypt(message.getRecipient(), payload);
+					yield Future.succeededFuture(BytesMessage.dup(message, encryptedPayload));
+				} catch (CryptoException e) {
+					yield Future.failedFuture(e);
+				}
 			}
 		};
 	}
@@ -1424,7 +1438,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					});
 				});
 
-			case CONTROL_MESSAGE, STATE_MESSAGE, HANDSHAKE_MESSAGE -> {
+			case CONTROL_MESSAGE, STATE_MESSAGE -> {
 				if (recipient.equals(getUserId())) {
 					// from the home peer, the payload is not encrypted
 					if (from.equals(homePeerId))
@@ -1466,6 +1480,17 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 							}
 						});
 					});
+				}
+			}
+
+			case HANDSHAKE_MESSAGE -> {
+				try {
+					Id id = from.equals(getUserId()) ? recipient : from;
+					byte[] decryptedPayload = userIdentity.decrypt(id, payload);
+					yield Future.succeededFuture(BytesMessage.dup(message, decryptedPayload));
+				} catch (CryptoException e) {
+					log.error("Decrypt {} from {} failed", type, from, e);
+					yield Future.failedFuture(e);
 				}
 			}
 		};
@@ -1916,52 +1941,83 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			case FRIEND_REQUEST -> {
 				String hello = handshake.getBody();
 				log.trace("Received a friend request from {}: {}", from, hello);
-				PhotonFriendRequest fr = new PhotonFriendRequest(from, from, hello,
-						handshake.getTimestamp(), System.currentTimeMillis());
-				yield repository.putFriendRequest(fr).andThen(ar -> {
-					if (friendRequestListener != null)
-						friendRequestListener.onFriendRequest(from, hello);
+				yield contact(from).compose(contact -> {
+					if (contact != null) {
+						if (contact.getType() == Contact.Type.FRIEND) {
+							log.warn("Received a friend request from a friend {}, ignored", contact.getId());
+							return Future.succeededFuture();
+						}
+
+						if (contact.getType() == Contact.Type.CHANNEL) {
+							log.error("INTERNAL ERROR!!! Received a friend request from a channel {}, ignored", contact.getId());
+							return Future.succeededFuture();
+						}
+					}
+
+					PhotonFriendRequest fr = new PhotonFriendRequest(from, from, hello,
+							handshake.getTimestamp(), System.currentTimeMillis());
+					return repository.putFriendRequest(fr).andThen(ar -> {
+						if (friendRequestListener != null)
+							friendRequestListener.onFriendRequest(from, hello);
+					});
 				});
 			}
 
 			case FRIEND_REQUEST_ACCEPT -> {
 				log.trace("Received a friend request accept from {}", from);
-				yield repository.getFriendRequest(from).compose(fr -> {
-					if (fr == null || !fr.getInitiatorId().equals(from)) {
-						log.warn("Received a friend request accept without matched request from: {}, ignored", from);
-						return Future.succeededFuture();
+				yield contact(from).compose(contact -> {
+					if (contact != null) {
+						if (contact.getType() == Contact.Type.FRIEND) {
+							log.warn("Received a friend request accept from a friend {}, ignored", contact.getId());
+							return Future.succeededFuture();
+						}
+
+						if (contact.getType() == Contact.Type.CHANNEL) {
+							log.error("INTERNAL ERROR!!! Received a friend request accept from a channel {}, ignored", contact.getId());
+							return Future.succeededFuture();
+						}
 					}
 
-					byte[] sessionKey = handshake.getBody();
-					if (sessionKey == null || sessionKey.length != Signature.PrivateKey.BYTES) {
-						log.warn("Received a friend request accept with invalid session key from: {}, ignored", from);
-						return Future.succeededFuture();
-					}
+					return repository.getFriendRequest(from).compose(fr -> {
+						if (fr == null || fr.getInitiatorId().equals(from)) {
+							log.warn("Received a friend request accept without matched request from: {}, ignored", from);
+							return Future.succeededFuture();
+						}
 
-					PhotonFriendRequest request = (PhotonFriendRequest) fr;
-					request.accept();
+						byte[] sessionKey = handshake.getBody();
+						if (sessionKey == null || sessionKey.length != Signature.PrivateKey.BYTES) {
+							log.warn("Received a friend request accept with invalid session key from: {}, ignored", from);
+							return Future.succeededFuture();
+						}
 
-					return repository.putFriendRequest(request).andThen(rar -> {
-						if (rar.failed())
-							log.error("Failed to update the friend request status", rar.cause());
+						PhotonFriendRequest request = (PhotonFriendRequest) fr;
+						request.accept();
 
-						byte[] sk = selfContext.encrypt(sessionKey);
-						Friend friend = new Friend(from, sk, null);
-						repository.putContactLocally(friend).andThen(ar -> {
-							// All user devices receive the 'accept' notification.
-							// Since we are lacking a leader-election mechanism between devices, all devices attempt
-							// to add the new contact upon receiving the 'accept' notification.
-							// The contact synchronization service handles concurrency by ensuring only
-							// the first received update is applied and synchronized to all devices.
-							addFriendInternal(from, sk, null).andThen(rr -> {
-								if (rr.succeeded())
-									log.trace("Sync new friend {} cross devices", friend.getId());
-								else
-									log.trace("Failed to sync new friend {} cross devices", friend.getId(), rr.cause());
+						log.trace("Updating friend request status to accepted: {}", from);
+						return repository.putFriendRequest(request).andThen(rar -> {
+							if (rar.failed())
+								log.error("Failed to update the friend request status", rar.cause());
+
+							byte[] sk = selfContext.encrypt(sessionKey);
+							Friend friend = new Friend(from, sk, null);
+							log.trace("Saving friend {} locally first...", from);
+							repository.putContactLocally(friend).andThen(ar -> {
+								// All user devices receive the 'accept' notification.
+								// Since we are lacking a leader-election mechanism between devices, all devices attempt
+								// to add the new contact upon receiving the 'accept' notification.
+								// The contact synchronization service handles concurrency by ensuring only
+								// the first received update is applied and synchronized to all devices.
+								log.trace("trying to add the contact {} ...", from);
+								addFriendInternal(from, sk, null).andThen(rr -> {
+									if (rr.succeeded())
+										log.trace("Synced new friend {} cross devices", friend.getId());
+									else
+										log.trace("Failed to sync new friend {} cross devices", friend.getId(), rr.cause());
+								});
+
+								if (friendRequestListener != null)
+									friendRequestListener.onFriendRequestAccepted(friend.getId());
 							});
-
-							if (friendRequestListener != null)
-								friendRequestListener.onFriendRequestAccepted(friend.getId());
 						});
 					});
 				});

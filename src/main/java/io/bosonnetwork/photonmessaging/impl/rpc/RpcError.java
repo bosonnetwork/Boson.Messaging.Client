@@ -115,4 +115,13 @@ public class RpcError {
 	public int hashCode() {
 		return Objects.hash(code, message, data);
 	}
+
+	@Override
+	public String toString() {
+		return "RpcError{" +
+				"code=" + code +
+				", message='" + message + '\'' +
+				(data != null ? ", data='" + data + '\'' : "") +
+				'}';
+	}
 }
