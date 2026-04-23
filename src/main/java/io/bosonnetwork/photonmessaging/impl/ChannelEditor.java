@@ -112,6 +112,16 @@ public class ChannelEditor implements Channel.Editor {
 		return this;
 	}
 
+	protected ChannelEditor applyChannelInfo(PhotonChannel channel) {
+		this.ownerId = channel.getOwnerId();
+		this.permission = channel.getPermission();
+		// this.name = channel.getName();
+		this.notice = channel.getNotice();
+		this.announce = channel.isAnnounce();
+		this.modified = true;
+		return this;
+	}
+
 	@Override
 	public PhotonChannel build() {
 		if (!modified)

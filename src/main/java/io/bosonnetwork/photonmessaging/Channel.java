@@ -26,8 +26,10 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
 import io.bosonnetwork.Id;
+import io.bosonnetwork.photonmessaging.impl.ChannelMember;
 
 /**
  * Represents a communication channel, which can be owned and managed by a specific user.
@@ -174,6 +176,7 @@ public interface Channel extends Contact {
 	 * A channel member is identified by a unique ID and is assigned a specific role
 	 * within the channel, such as OWNER, MODERATOR, MEMBER, or BANNED.
 	 */
+	@JsonDeserialize(as = ChannelMember.class)
 	interface Member {
 		/**
 		 * Retrieves the unique identifier associated with this member.
