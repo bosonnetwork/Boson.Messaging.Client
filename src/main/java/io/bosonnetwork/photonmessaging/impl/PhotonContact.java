@@ -29,10 +29,13 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 
+import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.crypto.CryptoBox;
 import io.bosonnetwork.crypto.Signature;
+import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.Contact;
+import io.bosonnetwork.photonmessaging.impl.dto.OpaqueContact;
 
 /**
  * Represents a contact entry within the photon messaging.
@@ -298,5 +301,23 @@ public abstract class PhotonContact implements Contact {
 	@Override
 	public ContactEditor edit() {
 		return new ContactEditor(this);
+	}
+
+	protected OpaqueContact toOpaque(CryptoContext cryptoContext) {
+		return new OpaqueContact(id, revision, cryptoContext.encrypt(Json.toBytes(this)));
+	}
+
+	protected static PhotonContact fromOpaque(OpaqueContact opaque, CryptoContext cryptoContext) throws IllegalArgumentException {
+		PhotonContact contact;
+		try {
+			byte[] data = cryptoContext.decrypt(opaque.data());
+			contact = (PhotonContact) Json.parse(data, Contact.class);
+		} catch (Exception e) {
+			throw new IllegalArgumentException("Invalid contact data", e);
+		}
+
+		if (!contact.getId().equals(opaque.id()))
+			throw new IllegalArgumentException("Contact ID mismatch");
+		return contact.edit().setRevision(opaque.revision()).build();
 	}
 }

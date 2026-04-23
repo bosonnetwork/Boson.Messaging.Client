@@ -34,12 +34,14 @@ import java.util.function.Function;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import io.vertx.core.Future;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Channel;
 import io.bosonnetwork.photonmessaging.Contact;
 
+@JsonPropertyOrder({"id", "t", "sk", "o", "p", "n", "nt", "a", "r", "ts", "m", "b", "c", "u", "v"})
 public class PhotonChannel extends PhotonContact implements Channel {
 	/**
 	 * The unique identifier of the channel's owner (the creator or current administrator).

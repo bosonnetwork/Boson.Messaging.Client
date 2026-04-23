@@ -12,13 +12,17 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
+import io.bosonnetwork.crypto.CryptoIdentity;
 import io.bosonnetwork.crypto.Random;
 import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.Channel;
 
 public class ContactSyncTests {
-	private static Stream<Arguments> syncProvider() {
+	private static final CryptoIdentity identity = new CryptoIdentity();
+
+	private static Stream<Arguments> syncProvider() throws Exception {
 		List<Arguments> syncs = new ArrayList<>();
 
 		// UP_TO_DATE
@@ -34,13 +38,18 @@ public class ContactSyncTests {
 				new ContactSync(11, ContactSync.Type.DELTA, mutations, null)));
 
 		// SNAPSHOT
+		CryptoContext ctx = identity.createCryptoContext(identity.getId());
 		Friend friend = new Friend(Id.random(), Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Friend Remark");
 		PhotonChannel channel = new PhotonChannel(Id.random(), Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), Id.random(),
 				Channel.Permission.PUBLIC, "Group Name", "Group Notice", true, System.currentTimeMillis(), 0);
 		AutoContact auto = new AutoContact(Id.random(), "Auto Name", null, null, null, false, false, System.currentTimeMillis(), 0);
 
 		syncs.add(Arguments.of(ContactSync.Type.SNAPSHOT,
-				new ContactSync(12, ContactSync.Type.SNAPSHOT, null, List.of(friend, channel, auto))));
+				new ContactSync(12, ContactSync.Type.SNAPSHOT, null, List.of(
+						friend.toOpaque(ctx),
+						channel.toOpaque(ctx),
+						auto.toOpaque(ctx)))
+		));
 
 		return syncs.stream();
 	}

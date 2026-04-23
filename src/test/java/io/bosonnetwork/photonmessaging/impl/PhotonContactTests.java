@@ -15,11 +15,15 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
+import io.bosonnetwork.Identity;
+import io.bosonnetwork.crypto.CryptoIdentity;
 import io.bosonnetwork.crypto.Random;
 import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.Channel;
 import io.bosonnetwork.photonmessaging.Contact;
+import io.bosonnetwork.photonmessaging.impl.dto.OpaqueContact;
 
 public class PhotonContactTests {
 	private static Stream<Arguments> contactProvider() {
@@ -165,5 +169,42 @@ public class PhotonContactTests {
 		assertEquals(newName, modified.getName());
 		assertEquals(newRemark, modified.getRemark());
 		assertTrue(modified.isBlocked());
+	}
+
+	@Test
+	void testFriendToOpaque() throws Exception {
+		Identity identity = new CryptoIdentity();
+		CryptoContext ctx = identity.createCryptoContext(identity.getId());
+
+		byte[] sk = Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES);
+		Friend friend = new Friend(Id.random(), sk, "Alice", null, "Alice's remark", null,
+				false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
+
+		OpaqueContact opaque = friend.toOpaque(ctx);
+		System.out.println(Json.toString(opaque));
+		PhotonContact parsed = PhotonContact.fromOpaque(opaque, ctx);
+		assertThat(parsed)
+				.usingRecursiveComparison()
+				.withComparatorForType(Id::compare, Id.class)
+				.isEqualTo(friend);
+	}
+
+	@Test
+	void testChannelToOpaque() throws Exception {
+		Identity identity = new CryptoIdentity();
+		CryptoContext ctx = identity.createCryptoContext(identity.getId());
+
+		byte[] sk = Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES);
+		PhotonChannel channel = new PhotonChannel(Id.random(), sk, Id.random(), Channel.Permission.PUBLIC,
+				"Test channel", "Channel notice",
+				true, System.currentTimeMillis(), 0);
+
+		OpaqueContact opaque = channel.toOpaque(ctx);
+		System.out.println(Json.toString(opaque));
+		PhotonContact parsed = PhotonContact.fromOpaque(opaque, ctx);
+		assertThat(parsed)
+				.usingRecursiveComparison()
+				.withComparatorForType(Id::compare, Id.class)
+				.isEqualTo(channel);
 	}
 }
