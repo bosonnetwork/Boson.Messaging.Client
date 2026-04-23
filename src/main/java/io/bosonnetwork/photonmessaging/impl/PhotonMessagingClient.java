@@ -2323,12 +2323,29 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			case ADD -> {
 				PhotonContact contact = mutation.getData();
 				log.trace("Applying contact mutation(base rev {}): add {}", mutation.getRevision(), contact.getId());
-				yield repository.putContacts(revision, List.of(contact)).map(v -> {
-					contactsRevision = revision;
-					if (contactListener != null)
-						contactListener.onContactAdded(contact);
-					return null;
-				});
+				Future<PhotonContact> mergeFuture;
+				if (contact.getType() == Contact.Type.CHANNEL) {
+					// should merge the channel info into the new contact
+					mergeFuture = channel(contact.getId()).map(channel -> {
+						if (channel == null) {
+							log.warn("Channel {} not found, can not merge the channel info to the updated contact", contact.getId());
+							return contact;
+						}
+
+						PhotonChannel updatedChannelContact = (PhotonChannel) contact;
+						return updatedChannelContact.editChannel().applyChannelInfo(channel).build();
+					});
+				} else {
+					mergeFuture = Future.succeededFuture(contact);
+				}
+				yield mergeFuture.compose(updated ->
+						repository.putContacts(revision, List.of(updated)).map(v -> {
+							contactsRevision = revision;
+							if (contactListener != null)
+								contactListener.onContactAdded(updated);
+							return null;
+						})
+				);
 			}
 
 			case UPDATE -> {
