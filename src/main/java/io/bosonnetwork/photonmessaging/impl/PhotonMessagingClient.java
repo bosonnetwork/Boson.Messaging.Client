@@ -782,7 +782,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				if (channel == null)
 					return Future.failedFuture(new ChannelNotExistsException(channelId.toString()));
 
-				return channel.loadMembers().compose(vv -> {
+				return channel.tryLoadMembers().compose(vv -> {
 					ChannelMember member = channel.getMember(getUserId());
 					Channel.Permission permission = channel.getPermission();
 					switch (permission) {
@@ -840,7 +840,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				if (!channel.getOwnerId().equals(getUserId()))
 					return Future.failedFuture(new InsufficientPermissionException("not owner"));
 
-				return channel.loadMembers().compose(vv -> {
+				return channel.tryLoadMembers().compose(vv -> {
 					ChannelMember member = channel.getMember(newOwner);
 					if (member == null)
 						return Future.failedFuture(new NotChannelMemberException("newOwner is not the member of channel"));
@@ -850,7 +850,9 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					RpcCall<Void> call = RpcCall.transferChannelOwnership(newOwner);
 					return sendRpcCall(channelId, call).compose(vvv -> {
 						Contact updatedChannel = channel.editChannel().setOwnerId(newOwner).build();
-						return repository.putContactLocally(updatedChannel);
+						return repository.putContactLocally(updatedChannel).andThen(ar -> {
+							contactCache.synchronous().invalidate(channelId);
+						});
 					});
 				});
 			}).onComplete(promise);
@@ -929,7 +931,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					contactCache.synchronous().invalidate(channel.getId());
 					return repository.putContactLocally(channel);
 				});
-			});
+			}).onComplete(promise);
 		});
 		return VertxFuture.of(promise.future());
 	}
@@ -951,7 +953,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				if (channel == null)
 					return Future.failedFuture(new ChannelNotExistsException(channelId.toString()));
 
-				return channel.loadMembers().compose(na -> {
+				return channel.tryLoadMembers().compose(na -> {
 					ChannelMember member = channel.getMember(getUserId());
 					if (member == null)
 						return Future.failedFuture(new InsufficientPermissionException("Not a member of the channel"));
@@ -984,7 +986,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				if (channel == null)
 					return Future.failedFuture(new ChannelNotExistsException(channelId.toString()));
 
-				return channel.loadMembers().compose(na -> {
+				return channel.tryLoadMembers().compose(na -> {
 					ChannelMember member = channel.getMember(getUserId());
 					if (member == null)
 						return Future.failedFuture(new InsufficientPermissionException("Not a member of the channel"));
@@ -1020,7 +1022,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				if (channel == null)
 					return Future.failedFuture(new ChannelNotExistsException(channelId.toString()));
 
-				return channel.loadMembers().compose(na -> {
+				return channel.tryLoadMembers().compose(na -> {
 					ChannelMember member = channel.getMember(getUserId());
 					if (member == null)
 						return Future.failedFuture(new InsufficientPermissionException("Not a member of the channel"));
@@ -1056,7 +1058,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				if (channel == null)
 					return Future.failedFuture(new ChannelNotExistsException(channelId.toString()));
 
-				return channel.loadMembers().compose(na -> {
+				return channel.tryLoadMembers().compose(na -> {
 					ChannelMember member = channel.getMember(getUserId());
 					if (member == null)
 						return Future.failedFuture(new InsufficientPermissionException("Not a member of the channel"));
@@ -2138,29 +2140,31 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				Id newOwnerId = notif.getBody();
 				log.trace("Channel {} ownership transfer to {}", channel.getId(), newOwnerId);
 
-				Id oldOwnerId = channel.getOwnerId();
-				ChannelMember oldOwner = channel.getMember(channel.getOwnerId());
-				ChannelMember newOwner = channel.getMember(newOwnerId);
-				Future<Void> future;
-				if (oldOwner == null || newOwner == null) {
-					// not up-to-date?
-					log.warn("Looks like channel {} is outdated, try to refresh", channel.getId());
-					future = refreshChannel(channel);
-				} else {
-					future = repository.updateChannelOwnership(channel.getId(), channel.getOwnerId(), newOwnerId).compose(v -> {
-						PhotonChannel updatedChannel = channel.editChannel().setOwnerId(newOwnerId).build();
-						repository.putContactLocally(updatedChannel);
-						channel.invalidateMembers();
-						contactCache.synchronous().invalidate(channel.getId());
-						return Future.succeededFuture();
-					}, error -> {
-						log.warn("Update channel ownership failed, looks like channel {} is outdated, try to refresh", channel.getId());
-						return refreshChannel(channel);
+				yield channel.tryLoadMembers().compose(v -> {
+					Id oldOwnerId = channel.getOwnerId();
+					ChannelMember oldOwner = channel.getMember(channel.getOwnerId());
+					ChannelMember newOwner = channel.getMember(newOwnerId);
+					Future<Void> future;
+					if (oldOwner == null || newOwner == null) {
+						// not up-to-date?
+						log.warn("Looks like channel {} is outdated, try to refresh", channel.getId());
+						future = refreshChannel(channel);
+					} else {
+						future = repository.updateChannelOwnership(channel.getId(), channel.getOwnerId(), newOwnerId).compose(vv -> {
+							PhotonChannel updatedChannel = channel.editChannel().setOwnerId(newOwnerId).build();
+							repository.putContactLocally(updatedChannel);
+							updatedChannel.invalidateMembers();
+							contactCache.synchronous().invalidate(channel.getId());
+							return Future.succeededFuture();
+						}, error -> {
+							log.warn("Update channel ownership failed, looks like channel {} is outdated, try to refresh", channel.getId());
+							return refreshChannel(channel);
+						});
+					}
+					return future.andThen(ar -> {
+						if (channelListener != null)
+							channelListener.onChannelOwnershipTransferred(channel, oldOwnerId, newOwnerId);
 					});
-				}
-				yield future.andThen(ar -> {
-					if (channelListener != null)
-						channelListener.onChannelOwnershipTransferred(channel, oldOwnerId, newOwnerId);
 				});
 			}
 
@@ -2181,7 +2185,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				yield repository.putContactLocally(updatedChannel).andThen(ar -> {
 					contactCache.synchronous().invalidate(channel.getId());
 					if (channelListener != null)
-						channelListener.onChannelUpdated(channel);
+						channelListener.onChannelUpdated(updatedChannel);
 				});
 			}
 
