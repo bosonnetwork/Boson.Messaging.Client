@@ -30,6 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -40,6 +41,7 @@ import io.vertx.core.Future;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Channel;
 import io.bosonnetwork.photonmessaging.Contact;
+import io.bosonnetwork.vertx.VertxFuture;
 
 @JsonPropertyOrder({"id", "t", "sk", "o", "p", "n", "nt", "a", "r", "ts", "m", "b", "c", "u", "v"})
 public class PhotonChannel extends PhotonContact implements Channel {
@@ -152,7 +154,12 @@ public class PhotonChannel extends PhotonContact implements Channel {
 		this.membersLoader = membersLoader;
 	}
 
-	protected Future<Void> loadMembers() {
+	@Override
+	public CompletableFuture<Void> loadMembers() {
+		return VertxFuture.of(tryLoadMembers());
+	}
+
+	protected Future<Void> tryLoadMembers() {
 		if (_members != null)
 			return Future.succeededFuture();
 

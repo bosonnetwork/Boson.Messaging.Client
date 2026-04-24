@@ -23,6 +23,7 @@
 package io.bosonnetwork.photonmessaging;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
@@ -298,6 +299,16 @@ public interface Channel extends Contact {
 	 * @return {@code true} if the channel is announced; {@code false} otherwise.
 	 */
 	boolean isAnnounce();
+
+	/**
+	 * Loads the members of the channel asynchronously. This method initiates the process
+	 * of retrieving and populating the member data for the channel. The members may include
+	 * regular users, moderators, and the channel owner, and will be updated based on the
+	 * most recent state of the channel.
+	 *
+	 * @return a {@code Future<Void>} that completes once the member-loading process is finished.
+	 */
+	public CompletableFuture<Void> loadMembers();
 
 	/**
 	 * Retrieves the total number of members in the channel.
