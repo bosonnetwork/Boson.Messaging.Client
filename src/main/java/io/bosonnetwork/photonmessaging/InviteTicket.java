@@ -170,7 +170,7 @@ public class InviteTicket {
 	 *
 	 * @return {@code true} if the signature is valid; otherwise {@code false}
 	 */
-	public boolean isValid() {
+	public boolean isGenuine() {
 		MessageDigest sha256 = Hash.sha256();
 		sha256.reset();
 		sha256.update(channelId.bytes());
