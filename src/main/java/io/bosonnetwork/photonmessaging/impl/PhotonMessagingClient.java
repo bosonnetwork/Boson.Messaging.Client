@@ -690,7 +690,9 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		// 1. check the session key is valid and re-encrypt with self-encryption context
 		final InviteTicket revisedTicket;
 		try {
-			byte[] sk = userIdentity.decrypt(ticket.getInviter(), ticket.getSessionKey());
+			byte[] sk = ticket.isNamedTicket() ?
+					userIdentity.decrypt(ticket.getInviter(), ticket.getSessionKey()) :
+					ticket.getSessionKey();
 			Signature.KeyPair sessionKeypair = Signature.KeyPair.fromPrivateKey(sk);
 			Id sessionId = Id.of(sessionKeypair.publicKey().bytes());
 			if (!ticket.getSessionId().equals(sessionId))
