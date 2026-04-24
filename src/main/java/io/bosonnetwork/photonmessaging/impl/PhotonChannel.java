@@ -216,7 +216,12 @@ public class PhotonChannel extends PhotonContact implements Channel {
 		repr.append("Channel: ").append(getId().toBase58String())
 				.append("[owner=").append(ownerId.toBase58String())
 				.append(", permission=").append(permission.toString())
-				.append(", members=").append(size());
+				.append(", members=");
+
+		if (_members != null)
+			repr.append(size());
+		else
+			repr.append('?');
 
 		if (getName() != null)
 			repr.append(", name=").append(getName());

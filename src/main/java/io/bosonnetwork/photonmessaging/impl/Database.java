@@ -139,7 +139,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 
 			if (contact instanceof Channel ch) {
 				future = future.compose(v -> forUpdate(c, getDialect().upsertChannel())
-							.execute(paramsFromChannel(ch)));
+						.execute(paramsFromChannel(ch)));
 			}
 
 			return future.compose(na ->
@@ -195,14 +195,18 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		});
 	}
 
+	// TODO: should remove the channel extra and channel members info when remove the channel contact
+
 	@Override
 	public Future<Boolean> removeContactLocally(Id contactId) {
 		return withTransaction(c ->
 				forUpdate(c, getDialect().deleteContact())
 						.execute(Map.of("id", contactId.bytes()))
-						.compose(v -> forUpdate(c, getDialect().deleteMessagesByConversation())
-								.execute(Map.of("conversationId", contactId.bytes())))
 						.map(this::hasAffectedRows)
+						.compose(removed -> forUpdate(c, getDialect().deleteMessagesByConversation())
+								.execute(Map.of("conversationId", contactId.bytes()))
+								.map(removed)
+						)
 		).recover(e -> {
 			getLogger().error("Failed to remove contact locally {}", contactId, e);
 			return Future.failedFuture(new RepositoryException(e));
@@ -225,11 +229,13 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 						contactIds.stream().map(Id::bytes).toList());
 				future = forUpdate(c, getDialect().deleteContacts(idsParam))
 						.execute(idsParam.getParams())
-						.compose(v -> {
+						.map(this::hasAffectedRows)
+						.compose(removed -> {
 							CollectionParameter<byte[]> cidsParam = new CollectionParameter<>("cid",
 									contactIds.stream().map(Id::bytes).toList());
 							return forUpdate(c, getDialect().deleteMessagesByConversations(cidsParam))
-									.execute(cidsParam.getParams());
+									.execute(cidsParam.getParams())
+									.map(removed);
 						});
 			}
 
@@ -629,6 +635,17 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		});
 	}
 
+	public Future<List<ChannelMember>> _getAllChannelMembers(Id channelId) {
+		return withConnection(c ->
+				forQuery(c, getDialect().selectAllChannelMembers())
+						.execute(Map.of("channelId", channelId.bytes()))
+						.map(rs -> findMany(rs, r -> (ChannelMember) rowToChannelMember(r)))
+		).recover(e -> {
+			getLogger().error("Failed to get all channel members for channel {}", channelId, e);
+			return Future.failedFuture(new RepositoryException(e));
+		});
+	}
+
 	@Override
 	public Future<List<Channel.Member>> getAllChannelMembers(Id channelId) {
 		return withConnection(c ->
@@ -784,20 +801,26 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 				int permission = row.getInteger("permission");
 				String notice = row.getString("notice");
 				boolean announce = getBoolean(row, "announce");
-				yield new PhotonChannel(id, sessionKey, owner, Channel.Permission.valueOf(permission),
+				PhotonChannel channel = new PhotonChannel(id, sessionKey, owner, Channel.Permission.valueOf(permission),
 						name, notice, announce, remark, tags, muted, blocked, createdAt, updatedAt, revision);
+				channel.setMembersLoader(this::_getAllChannelMembers);
+				yield channel;
 			}
 			case AUTO -> new AutoContact(id, name, avatar, remark, tags, muted, blocked, createdAt, updatedAt);
 		};
 	}
 
-	private Map<String, Object> paramsFromChannel(Channel ci) {
+	private Map<String, Object> paramsFromChannel(Channel channel) {
 		Map<String, Object> params = new HashMap<>();
-		params.put("id", ci.getId().bytes());
-		params.put("owner", ci.getOwnerId().bytes());
-		params.put("permission", ci.getPermission().value());
-		params.put("notice", ci.getNotice());
-		params.put("announce", ci.isAnnounce());
+		params.put("id", channel.getId().bytes());
+		params.put("owner", channel.getOwnerId().bytes());
+		params.put("permission", channel.getPermission().value());
+		params.put("notice", channel.getNotice());
+		params.put("announce", channel.isAnnounce());
+
+		if (channel instanceof PhotonChannel pc)
+			pc.setMembersLoader(this::_getAllChannelMembers);
+
 		return params;
 	}
 

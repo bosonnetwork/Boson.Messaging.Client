@@ -22,12 +22,12 @@ public class InviteTicketTests {
 
 		// InviteTicket ticket = new InviteTicket(channelId, sessionId, inviterId, inviteeId, expiration, sig, sessionKey);
 		InviteTicket ticket = InviteTicket.create(inviterIdentity, channelId, sessionId, inviteeId, expiration, sessionKey);
-		assertTrue(ticket.isValid());
+		assertTrue(ticket.isGenuine());
 		assertFalse(ticket.isExpired());
 
 		// Wrong signature
 		InviteTicket invalidTicket = new InviteTicket(channelId, sessionId, inviterId, inviteeId, expiration, new byte[64], sessionKey);
-		assertFalse(invalidTicket.isValid());
+		assertFalse(invalidTicket.isGenuine());
 	}
 
 	@Test
@@ -42,7 +42,7 @@ public class InviteTicketTests {
 
 		InviteTicket ticket = InviteTicket.create(inviterIdentity, channelId, sessionId, null, expiration, sessionKey);
 		assertTrue(ticket.isBearerTicket());
-		assertTrue(ticket.isValid());
+		assertTrue(ticket.isGenuine());
 	}
 
 	@Test
