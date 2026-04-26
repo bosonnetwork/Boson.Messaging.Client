@@ -806,6 +806,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 						return Future.failedFuture(new AlreadyMemberException("The invitee is already a member of the channel"));
 
 					try {
+						// TODO: why nonce is duplicated sometimes?
+						selfContext.resetNonce();
 						byte[] sk = selfContext.decrypt(channel.getSessionKey());
 						Signature.KeyPair sessionKeypair = Signature.KeyPair.fromPrivateKey(sk);
 						Id sessionId = Id.of(sessionKeypair.publicKey().bytes());
@@ -817,7 +819,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 								System.currentTimeMillis() + InviteTicket.DEFAULT_EXPIRATION, sk);
 						return Future.succeededFuture(ticket);
 					} catch (CryptoException e) {
-						return Future.failedFuture("Invalid session key");
+						return Future.failedFuture("Invalid process session key: " + e.getMessage());
 					}
 				});
 			}).onComplete(promise);
@@ -1084,7 +1086,12 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	public VertxFuture<Contact> getContact(Id contactId) {
 		Objects.requireNonNull(contactId, "contactId");
 		runningCheck();
-		return VertxFuture.of(contactCache.get(contactId).thenApply(c -> c));
+		return VertxFuture.of(contactCache.get(contactId).thenCompose(c -> {
+			if (c instanceof PhotonChannel ch)
+				return ch.loadMembers().thenApply(v -> ch);
+
+			return VertxFuture.succeededFuture(c);
+		}));
 	}
 
 	@Override
