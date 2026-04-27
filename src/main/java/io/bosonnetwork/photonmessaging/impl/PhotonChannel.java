@@ -223,6 +223,7 @@ public class PhotonChannel extends PhotonContact implements Channel {
 		repr.append("Channel: ").append(getId().toBase58String())
 				.append("[owner=").append(ownerId.toBase58String())
 				.append(", permission=").append(permission.toString())
+				.append(", sessionKey=").append(hasSessionKey() ? "*" : "none")
 				.append(", members=");
 
 		if (_members != null)
@@ -263,6 +264,7 @@ public class PhotonChannel extends PhotonContact implements Channel {
 		out.println("Channel: " + getId().toBase58String());
 		out.println("  owner = " + ownerId.toBase58String());
 		out.println("  permission = " + permission.toString());
+		out.println(", sessionKey=" + (hasSessionKey() ? "*" : "none"));
 
 		if (getName() != null)
 			out.println("  name = " + getName());
