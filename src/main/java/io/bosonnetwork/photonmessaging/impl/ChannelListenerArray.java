@@ -45,6 +45,12 @@ public class ChannelListenerArray extends ArrayList<ChannelListener> implements 
 	}
 
 	@Override
+	public void onChannelDeleted(Channel channel) {
+		for (ChannelListener listener : this)
+			listener.onChannelDeleted(channel);
+	}
+
+	@Override
 	public void onJoinedChannel(Channel channel) {
 		for (ChannelListener listener : this)
 			listener.onJoinedChannel(channel);
@@ -54,12 +60,6 @@ public class ChannelListenerArray extends ArrayList<ChannelListener> implements 
 	public void onLeftChannel(Channel channel) {
 		for (ChannelListener listener : this)
 			listener.onLeftChannel(channel);
-	}
-
-	@Override
-	public void onChannelDeleted(Channel channel) {
-		for (ChannelListener listener : this)
-			listener.onChannelDeleted(channel);
 	}
 
 	@Override

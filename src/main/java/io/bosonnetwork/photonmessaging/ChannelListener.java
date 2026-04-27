@@ -41,6 +41,13 @@ public interface ChannelListener {
 	void onChannelCreated(Channel channel);
 
 	/**
+	 * Called when a channel was deleted by its owner.
+	 *
+	 * @param channel the channel that was deleted
+	 */
+	void onChannelDeleted(Channel channel);
+
+	/**
 	 * Called when the current user has joined a new channel.
 	 * The channel object already includes the member's private key.
 	 *
@@ -54,13 +61,6 @@ public interface ChannelListener {
 	 * @param channel the channel that was left
 	 */
 	void onLeftChannel(Channel channel);
-
-	/**
-	 * Called when a channel was deleted by its owner.
-	 *
-	 * @param channel the channel that was deleted
-	 */
-	void onChannelDeleted(Channel channel);
 
 	/**
 	 * Called when the ownership of a channel has been transferred from one user to another.
