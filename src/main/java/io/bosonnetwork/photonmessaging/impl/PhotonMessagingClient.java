@@ -1462,7 +1462,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					// channel broadcast notifications
 					yield channel(recipient).compose(channel -> {
 						if (channel == null) {
-							log.error("Received a {} from unknown channel {}, ignored", type, recipient);
+							log.warn("Received a {} from unknown channel {}, ignored", type, recipient);
 							return Future.failedFuture("Received a message from unknown channel");
 						}
 
@@ -2104,14 +2104,17 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		return switch (notif.getEvent()) {
 			case CHANNEL_DELETE -> {
 				log.trace("Channel {} deleted", channel.getId());
-				yield repository.removeContactLocally(channel.getId()).andThen(ar -> {
+				yield repository.removeContactLocally(channel.getId()).compose(removed -> {
 					contactCache.synchronous().invalidate(channel.getId());
+					return removeContactsInternal(List.of(channel.getId())).andThen(sar -> {
+						if (sar.succeeded())
+							log.debug("Synced channel {} remove on CHANNEL_DELETE cross devices", channel.getId());
+						else
+							log.debug("Failed to sync channel {} remove on CHANNEL_DELETE cross devices", channel.getId());
 
-					if (ar.succeeded() && !ar.result()) // no local channel removed
-						return;
-
-					if (channelListener != null)
-						channelListener.onChannelDeleted(channel);
+						if (channelListener != null)
+							channelListener.onChannelDeleted(channel);
+					});
 				}).mapEmpty();
 			}
 
