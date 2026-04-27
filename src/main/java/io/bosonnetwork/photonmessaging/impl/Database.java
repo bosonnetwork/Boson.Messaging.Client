@@ -195,8 +195,6 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		});
 	}
 
-	// TODO: should remove the channel extra and channel members info when remove the channel contact
-
 	@Override
 	public Future<Boolean> removeContactLocally(Id contactId) {
 		return withTransaction(c ->

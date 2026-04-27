@@ -666,6 +666,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					return sendRpcCall(homePeerId, removeContactCall).compose(revision ->
 							repository.removeContacts(revision, List.of(channelId)).map(ignored -> {
 								contactsRevision = revision;
+								contactCache.synchronous().invalidate(channelId);
 								return true;
 							})
 					);
@@ -708,9 +709,16 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		runOnContext(v -> {
 			// 2. check if joined the channel already
 			channel(ticket.getChannelId()).compose(existing -> {
-				if (existing != null)
-					return Future.succeededFuture(existing);
+				if (existing == null || !existing.hasSessionKey())
+					return Future.succeededFuture(null);
 
+				return existing.tryLoadMembers().compose(vv -> {
+					if (existing.getMember(getUserId()) != null)
+						return Future.failedFuture(new AlreadyMemberException("Already joined the channel"));
+
+					return Future.succeededFuture(null);
+				});
+			}).compose(existing -> {
 				// 3. request to join the channel
 				RpcCall<ChannelInfo> joinChannelCall = RpcCall.joinChannel(revisedTicket);
 				return sendRpcCall(ticket.getChannelId(), joinChannelCall).compose(ci -> {
@@ -1154,16 +1162,19 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 		Promise<Boolean> promise = Promise.promise();
 		runOnContext(v -> {
-			ContactMutation mutation = ContactMutation.remove(contactsRevision, contactIds);
-			RpcCall<Integer> call = RpcCall.contactMutate(mutation);
-			sendRpcCall(homePeerId, call).compose(revision ->
-					repository.removeContacts(revision, contactIds).map(ignored -> {
-						contactsRevision = revision;
-						return true;
-					})
-			).onComplete(promise);
+			removeContactsInternal(contactIds).map(true).onComplete(promise);
 		});
 		return VertxFuture.of(promise.future());
+	}
+
+	private Future<Void> removeContactsInternal(List<Id> contactIds) {
+		ContactMutation mutation = ContactMutation.remove(contactsRevision, contactIds);
+		RpcCall<Integer> call = RpcCall.contactMutate(mutation);
+		return sendRpcCall(homePeerId, call).compose(revision ->
+				repository.removeContacts(revision, contactIds).<Void>map(ignored -> {
+					contactsRevision = revision;
+					return null;
+				}));
 	}
 
 	@Override
@@ -2013,10 +2024,10 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 										log.trace("Synced new friend {} cross devices", friend.getId());
 									else
 										log.trace("Failed to sync new friend {} cross devices", friend.getId(), rr.cause());
-								});
 
-								if (friendRequestListener != null)
-									friendRequestListener.onFriendRequestAccepted(friend.getId());
+									if (friendRequestListener != null)
+										friendRequestListener.onFriendRequestAccepted(friend.getId());
+								}).otherwiseEmpty();
 							});
 						});
 					});
@@ -2245,11 +2256,31 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					if (members.isEmpty())
 						return Future.succeededFuture();
 
-					return repository.removeChannelMembers(channel.getId(), memberIds).andThen(ar -> {
-						channel.invalidateMembers();
-						if (channelListener != null)
-							channelListener.onChannelMembersRemoved(channel, members);
-					}).mapEmpty();
+					if (members.stream().anyMatch(m -> m.getId().equals(getUserId()))) {
+						return repository.removeContactLocally(channel.getId()).compose(removed -> {
+							contactCache.synchronous().invalidate(channel.getId());
+							// All user devices receive the 'CHANNEL_MEMBERS_REMOVE' notification.
+							// Since we are lacking a leader-election mechanism between devices, all devices attempt
+							// to remove the channel contact upon receiving the notification.
+							// The contact synchronization service handles concurrency by ensuring only
+							// the first received update is applied and synchronized to all devices.
+							return removeContactsInternal(List.of(channel.getId())).andThen(sar -> {
+								if (sar.succeeded())
+									log.debug("Synced channel {} remove cross devices", channel.getId());
+								else
+									log.debug("Failed to sync channel {} remove cross devices", channel.getId());
+
+								if (channelListener != null)
+									channelListener.onChannelMembersRemoved(channel, members);
+							}).otherwiseEmpty();
+						});
+					} else {
+						return repository.removeChannelMembers(channel.getId(), memberIds).andThen(ar -> {
+							channel.invalidateMembers();
+							if (channelListener != null)
+								channelListener.onChannelMembersRemoved(channel, members);
+						}).mapEmpty();
+					}
 				});
 			}
 
