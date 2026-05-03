@@ -22,6 +22,7 @@
 
 package io.bosonnetwork.photonmessaging;
 
+import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -61,6 +62,27 @@ public interface MessagingClient {
 	 * @return the device's {@link Id}.
 	 */
 	Id getDeviceId();
+
+	/**
+	 * Retrieves the identifier of the messaging service peer.
+	 *
+	 * @return the service's {@link Id}.
+	 */
+	Id getServicePeerId();
+
+	/**
+	 * Retrieves the endpoint of the messaging service.
+	 *
+	 * @return the service endpoint URI.
+	 */
+	String getServiceEndpoint();
+
+	/**
+	 * Retrieves the data directory used by the client.
+	 *
+	 * @return the {@link Path} to the data directory.
+	 */
+	Path getDataDir();
 
 	////////////////////////////////////////////////////////////////////////////
 	// Listeners
@@ -414,7 +436,7 @@ public interface MessagingClient {
 	 * @return a {@link CompletableFuture} that will be completed with the created {@link Channel}.
 	 */
 	default CompletableFuture<Channel> createChannel(String name) {
-		return createChannel(Channel.Permission.OWNER_INVITE, name, null, false);
+		return createChannel(Channel.Permission.OWNER_INVITE, name, null, true);
 	}
 
 	/**
@@ -425,7 +447,7 @@ public interface MessagingClient {
 	 * @return a {@link CompletableFuture} that will be completed with the created {@link Channel}.
 	 */
 	default CompletableFuture<Channel> createChannel(String name, String notice) {
-		return createChannel(Channel.Permission.OWNER_INVITE, name, notice, false);
+		return createChannel(Channel.Permission.OWNER_INVITE, name, notice, true);
 	}
 
 	/**

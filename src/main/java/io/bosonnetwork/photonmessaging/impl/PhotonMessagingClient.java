@@ -153,7 +153,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		this.inflightMessages = new HashMap<>();
 		this.inflightRpcCalls = new HashMap<>();
 
-		vertx.fileSystem().mkdirsBlocking(config.getDataDir().toString());
+		providedVertx.fileSystem().mkdirsBlocking(config.getDataDir().toString());
 
 		String databaseUri = config.getDatabaseUri();
 		// fix the sqlite database file location
@@ -162,7 +162,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			if (!dbFile.isAbsolute())
 				databaseUri = SqliteDatabase.CONNECTION_URI_PREFIX + config.getDataDir().resolve(dbFile).toAbsolutePath();
 			else
-				vertx.fileSystem().mkdirsBlocking(dbFile.getParent().toString());
+				providedVertx.fileSystem().mkdirsBlocking(dbFile.getParent().toString());
 		}
 
 		this.repository = Database.create(databaseUri, config.getDatabasePoolSize(), config.getDatabaseSchemaName());
@@ -180,6 +180,21 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	@Override
 	public Id getDeviceId() {
 		return deviceIdentity.getId();
+	}
+
+	@Override
+	public Id getServicePeerId() {
+		return homePeerId;
+	}
+
+	@Override
+	public String getServiceEndpoint() {
+		return config.getServiceEndpoint().toString();
+	}
+
+	@Override
+	public java.nio.file.Path getDataDir() {
+		return config.getDataDir();
 	}
 
 	@Override
