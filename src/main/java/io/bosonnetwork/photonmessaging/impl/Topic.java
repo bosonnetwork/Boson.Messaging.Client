@@ -22,38 +22,34 @@
 
 package io.bosonnetwork.photonmessaging.impl;
 
-import io.bosonnetwork.Id;
+public enum Topic {
+	USER_INBOX("u/i"),
+	USER_OUTBOX("u/o"),
+	DEVICE_INBOX("d/i"),
+	DEVICE_OUTBOX("d/o");
 
-public class Topics {
-	public final String userInbox;
-	public final String userOutbox;
-	public final String deviceInbox;
-	public final String deviceOutbox;
+	private final String value;
 
-	public enum Type {
-		UNKNOWN, USER_INBOX, USER_OUTBOX, DEVICE_INBOX, DEVICE_OUTBOX
+	Topic(String value) {
+		this.value = value;
 	}
 
-	public Topics(Id userId, Id deviceId) {
-		this.userInbox = userId.toBase58String() + "/inbox";
-		this.userOutbox = userId.toBase58String() + "/outbox";
-		this.deviceInbox = userId.toBase58String() + "/" + deviceId.toBase58String() + "/inbox";
-		this.deviceOutbox = userId.toBase58String() + "/" + deviceId.toBase58String() + "/outbox";
+	public String value() {
+		return value;
 	}
 
-	public Type typeOf(String topic) {
-		if (topic.equals(userInbox))
-			return Type.USER_INBOX;
+	public static Topic of(String topicName) {
+		return switch (topicName) {
+			case "u/i" -> USER_INBOX;
+			case "u/o" -> USER_OUTBOX;
+			case "d/i" -> DEVICE_INBOX;
+			case "d/o" -> DEVICE_OUTBOX;
+			default -> throw new IllegalArgumentException("Invalid topic name: " + topicName);
+		};
+	}
 
-		if (topic.equals(userOutbox))
-			return Type.USER_OUTBOX;
-
-		 if (topic.equals(deviceInbox))
-			return Type.DEVICE_INBOX;
-
-		 if (topic.equals(deviceOutbox))
-			return Type.DEVICE_OUTBOX;
-
-		 return Type.UNKNOWN;
+	@Override
+	public String toString() {
+		return value;
 	}
 }
