@@ -103,8 +103,6 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private final CryptoContext serviceContext;
 	private final CryptoContext selfContext;
 
-	private final Topics topics;
-
 	private URI serviceEndpoint;
 	private String sslCert;
 	private MqttClient mqttClient;
@@ -145,8 +143,6 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		} catch (CryptoException e) {
 			throw new IllegalStateException("Failed to create service encryption context", e);
 		}
-
-		this.topics = new Topics(userIdentity.getId(), deviceIdentity.getId());
 
 		this.failures = 0;
 
@@ -1357,7 +1353,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			byte[] mqttPayload = serviceContext.encrypt(encrypted.serialize());
 			Buffer buffer = Buffer.buffer(mqttPayload);
 			message.prepareForSending();
-			return mqttClient.publish(topics.deviceOutbox, buffer, MqttQoS.AT_LEAST_ONCE, false, false).andThen(ar -> {
+			return mqttClient.publish(Topic.DEVICE_OUTBOX.toString(), buffer, MqttQoS.AT_LEAST_ONCE, false, false).andThen(ar -> {
 				if (ar.succeeded()) {
 					int packetId = ar.result();
 					log.debug("Sending message {} to {}, packetId {} ...", message.getId(), message.getRecipient(), packetId);
@@ -1611,9 +1607,9 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			return client.connect(serviceEndpoint.getPort(), serviceEndpoint.getHost()).compose(ack -> {
 				log.info("Connected to the messaging server {} @ {}", homePeerId, serviceEndpoint);
 				Map<String, Integer> topics = Map.of(
-						this.topics.userInbox, MqttQoS.AT_LEAST_ONCE.value(),
-						this.topics.userOutbox, MqttQoS.AT_LEAST_ONCE.value(),
-						this.topics.deviceInbox, MqttQoS.AT_LEAST_ONCE.value());
+						Topic.USER_INBOX.toString(), MqttQoS.AT_LEAST_ONCE.value(),
+						Topic.USER_OUTBOX.toString(), MqttQoS.AT_LEAST_ONCE.value(),
+						Topic.DEVICE_INBOX.toString(), MqttQoS.AT_LEAST_ONCE.value());
 				return client.subscribe(topics).compose(pid -> {
 					log.info("Subscribing the messages...");
 					this.failures = 0;
@@ -1679,9 +1675,9 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private void onSubscribeCompletion(MqttSubAckMessage m) {
 		List<Integer> grantedQoSLevels = m.grantedQoSLevels();
 		log.debug("Subscription complete:\n\t{} - {}\n\t{} - {}\n\t{} - {}",
-				topics.userInbox, grantedQoSLevels.get(0),
-				topics.userOutbox, grantedQoSLevels.get(1),
-				topics.deviceInbox, grantedQoSLevels.get(2));
+				Topic.USER_INBOX, grantedQoSLevels.get(0),
+				Topic.USER_OUTBOX, grantedQoSLevels.get(1),
+				Topic.DEVICE_INBOX, grantedQoSLevels.get(2));
 
 		log.info("Subscribe topics success");
 		log.info("Client connected to the messaging server");
@@ -1731,10 +1727,10 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	private void onPublish(MqttPublishMessage mm) {
-		final String topic = mm.topicName();
+		final String topicName = mm.topicName();
 		final BytesMessage received;
 
-		log.trace("Received message on topic {}, packetId {}, dup {}", topic, mm.messageId(), mm.isDup());
+		log.trace("Received message on topic {}, packetId {}, dup {}", topicName, mm.messageId(), mm.isDup());
 
 		try {
 			// decrypt the message envelope
@@ -1743,50 +1739,58 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			received.received();
 
 			log.debug("Got message {}:{} from {} to {} on topic {}, packetId: {}, dup: {}",
-					received.getId(), received.getType(), received.getFrom(), received.getRecipient(), topic, mm.messageId(), mm.isDup());
+					received.getId(), received.getType(), received.getFrom(), received.getRecipient(), topicName, mm.messageId(), mm.isDup());
 
 			final Id recipient = received.getRecipient();
 			final Id from = received.getFrom();
 			final Message.Type mt = received.getType();
-			final Topics.Type tt = topics.typeOf(topic);
-			if (tt == Topics.Type.USER_INBOX) {
-				if (mt == Message.Type.CONTROL_MESSAGE) {
-					log.warn("Received a {} from user inbox, ignored", mt);
-					return;
-				}
+			final Topic topic = Topic.of(topicName);
+			switch (topic) {
+				case USER_INBOX -> {
+					if (mt == Message.Type.CONTROL_MESSAGE) {
+						log.warn("Received a {} from user inbox, ignored", mt);
+						return;
+					}
 
-				final Id conversationId = recipient.equals(getUserId()) ? from : recipient;
-				received.setConversationId(conversationId);
-			} else if (tt == Topics.Type.USER_OUTBOX) {
-				if (mt == Message.Type.CONTROL_MESSAGE) {
-					log.warn("Received a {} from user outbox, ignored", mt);
+					final Id conversationId = recipient.equals(getUserId()) ? from : recipient;
+					received.setConversationId(conversationId);
+				}
+				case USER_OUTBOX -> {
+					if (mt == Message.Type.CONTROL_MESSAGE) {
+						log.warn("Received a {} from user outbox, ignored", mt);
+						return;
+					}
+					received.setConversationId(recipient);
+				}
+				case DEVICE_INBOX -> {
+					if (mt != Message.Type.CONTROL_MESSAGE) {
+						log.warn("Received a {} from device inbox, ignored", mt);
+						return;
+					}
+					received.setConversationId(from);
+				}
+				default -> {
+					log.warn("Received a {} from unknown topic {}, ignored", mt, topic);
 					return;
 				}
-				received.setConversationId(recipient);
-			} else if (tt == Topics.Type.DEVICE_INBOX) {
-				if (mt != Message.Type.CONTROL_MESSAGE) {
-					log.warn("Received a {} from device inbox, ignored", mt);
-					return;
-				}
-				received.setConversationId(from);
-			} else {
-				log.warn("Received a {} from unknown topic {}, ignored", mt, topic);
-				return;
 			}
 
-			checkAndDecryptMessage(received).compose(message -> {
-				if (tt == Topics.Type.USER_INBOX)
-					return processInboxMessage(message);
-				else if (tt == Topics.Type.USER_OUTBOX)
-					return processingOutboxMessage(message);
-				else // if (tt == Topics.Type.DEVICE_INBOX)
-					return processDeviceInboxMessage(message);
-			}).onFailure(e -> {
+			checkAndDecryptMessage(received).compose(message ->
+					switch (topic) {
+						case USER_INBOX -> processInboxMessage(message);
+						case USER_OUTBOX -> processingOutboxMessage(message);
+						case DEVICE_INBOX -> processDeviceInboxMessage(message);
+						default -> {
+							log.warn("Received a {} from DEVICE OUTBOX, ignored", mt);
+							yield Future.succeededFuture();
+						}
+					}
+			).onFailure(e -> {
 				log.error("Failed to process message {} from {} to {}",
 						received.getId(), received.getFrom(), received.getRecipient(), e);
 			});
 		} catch (Exception e) {
-			log.error("Failed to process message on topic {}, packetId {}", topic, mm.messageId(), e);
+			log.error("Failed to process message on topic {}, packetId {}", topicName, mm.messageId(), e);
 		}
 	}
 
