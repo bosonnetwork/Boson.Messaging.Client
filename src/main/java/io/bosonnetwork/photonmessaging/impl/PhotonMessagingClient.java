@@ -31,6 +31,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -41,7 +42,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.net.PemTrustOptions;
+import io.vertx.core.net.TrustOptions;
 import io.vertx.mqtt.MqttClient;
 import io.vertx.mqtt.MqttClientOptions;
 import io.vertx.mqtt.messages.MqttPublishMessage;
@@ -54,6 +55,7 @@ import io.bosonnetwork.Id;
 import io.bosonnetwork.Node;
 import io.bosonnetwork.crypto.CryptoException;
 import io.bosonnetwork.crypto.CryptoIdentity;
+import io.bosonnetwork.crypto.HybridTrustManager;
 import io.bosonnetwork.crypto.Random;
 import io.bosonnetwork.crypto.Signature;
 import io.bosonnetwork.json.Json;
@@ -104,7 +106,6 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private final CryptoContext selfContext;
 
 	private URI serviceEndpoint;
-	private String sslCert;
 	private MqttClient mqttClient;
 	private int failures;
 
@@ -1583,15 +1584,9 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					.setCleanSession(false);
 
 			if (serviceEndpoint.getScheme().equals("mqtts")) {
-				options.setSsl(true);
-				if (sslCert != null) {
-					options.setTrustOptions(new PemTrustOptions().addCertValue(Buffer.buffer(sslCert)));
-					options.setTrustAll(false);
-				} else {
-					options.setTrustAll(true);
-				}
-			} else {
-				options.setSsl(false);
+				options.setSsl(true)
+						.setEnabledSecureTransportProtocols(Set.of("TLSv1.3"))
+						.setTrustOptions(TrustOptions.wrap(new HybridTrustManager(homePeerId.toString(), homePeerId.bytes())));
 			}
 
 			MqttClient client = MqttClient.create(vertx, options);
