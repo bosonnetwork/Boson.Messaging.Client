@@ -12,7 +12,6 @@ The Java client library for **Boson Messaging** (codename *Photon Messaging*) â€
 
 - [What Is Boson Messaging?](#what-is-boson-messaging)
 - [How It Works](#how-it-works)
-- [Key Classes](#key-classes)
 - [Prerequisites](#prerequisites)
 - [Build](#build)
 - [Adding as a Dependency](#adding-as-a-dependency)
