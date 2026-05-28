@@ -22,7 +22,6 @@
 
 package io.bosonnetwork.photonmessaging;
 
-import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.util.Objects;
 
@@ -33,6 +32,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.Identity;
 import io.bosonnetwork.crypto.Hash;
+import io.bosonnetwork.utils.Bytes;
 import io.bosonnetwork.utils.Hex;
 
 /**
@@ -178,7 +178,7 @@ public class InviteTicket {
 		sha256.update(inviter.bytes());
 		if (invitee != null)
 			sha256.update(invitee.bytes());
-		sha256.update(ByteBuffer.allocate(Long.BYTES).putLong(expiration).array());
+		sha256.update(Bytes.fromLong(expiration));
 
 		return inviter.toSignatureKey().verify(sha256.digest(), sig);
 	}
@@ -213,7 +213,7 @@ public class InviteTicket {
 		sha256.update(inviter.getId().bytes());
 		if (invitee != null)
 			sha256.update(invitee.bytes());
-		sha256.update(ByteBuffer.allocate(Long.BYTES).putLong(expiration).array());
+		sha256.update(Bytes.fromLong(expiration));
 		byte[] sig = inviter.sign(sha256.digest());
 
 		return new InviteTicket(channelId, sessionId, inviter.getId(), invitee, expiration, sig, sessionKey);

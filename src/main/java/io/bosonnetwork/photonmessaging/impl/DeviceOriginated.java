@@ -22,11 +22,11 @@
 
 package io.bosonnetwork.photonmessaging.impl;
 
-import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.crypto.Hash;
+import io.bosonnetwork.utils.Bytes;
 
 /**
  * Represents an interface for objects that originate from a specific device.
@@ -56,7 +56,7 @@ public interface DeviceOriginated {
 	 * @return {@code true} if the object's ID matches the hash generated from the provided device ID and its own timestamp; {@code false} otherwise
 	 */
 	default boolean isOriginated(Id deviceId) {
-		byte[] seedBytes = ByteBuffer.allocate(Long.BYTES).putLong(getTimestamp()).array();
+		byte[] seedBytes = Bytes.fromLong(getTimestamp());
 		byte[] hash = Hash.sha256(deviceId.bytes(), seedBytes);
 		return Arrays.equals(getId().bytes(), hash);
 	}
@@ -69,7 +69,7 @@ public interface DeviceOriginated {
 	 * @return a newly generated {@code Id} based on the provided device ID and timestamp
 	 */
 	static Id generateId(Id deviceId, long timestamp) {
-		byte[] seedBytes = ByteBuffer.allocate(Long.BYTES).putLong(timestamp).array();
+		byte[] seedBytes = Bytes.fromLong(timestamp);
 		return Id.of(Hash.sha256(deviceId.bytes(), seedBytes));
 	}
 }
