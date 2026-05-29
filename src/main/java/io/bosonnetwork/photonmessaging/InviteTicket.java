@@ -173,11 +173,11 @@ public class InviteTicket {
 	public boolean isGenuine() {
 		MessageDigest sha256 = Hash.sha256();
 		sha256.reset();
-		sha256.update(channelId.bytes());
-		sha256.update(sessionId.bytes());
-		sha256.update(inviter.bytes());
+		sha256.update(channelId.bytesUnsafe());
+		sha256.update(sessionId.bytesUnsafe());
+		sha256.update(inviter.bytesUnsafe());
 		if (invitee != null)
-			sha256.update(invitee.bytes());
+			sha256.update(invitee.bytesUnsafe());
 		sha256.update(Bytes.fromLong(expiration));
 
 		return inviter.toSignatureKey().verify(sha256.digest(), sig);
@@ -208,11 +208,11 @@ public class InviteTicket {
 									   long expiration, byte[] sessionKey) {
 		MessageDigest sha256 = Hash.sha256();
 		sha256.reset();
-		sha256.update(channelId.bytes());
-		sha256.update(sessionId.bytes());
-		sha256.update(inviter.getId().bytes());
+		sha256.update(channelId.bytesUnsafe());
+		sha256.update(sessionId.bytesUnsafe());
+		sha256.update(inviter.getId().bytesUnsafe());
 		if (invitee != null)
-			sha256.update(invitee.bytes());
+			sha256.update(invitee.bytesUnsafe());
 		sha256.update(Bytes.fromLong(expiration));
 		byte[] sig = inviter.sign(sha256.digest());
 

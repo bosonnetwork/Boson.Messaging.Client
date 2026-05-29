@@ -30,7 +30,7 @@ import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.ContentDisposition;
 import io.bosonnetwork.photonmessaging.ContentType;
 import io.bosonnetwork.photonmessaging.Message;
-import io.bosonnetwork.vertx.VertxFuture;
+import io.bosonnetwork.vertx.ContextualFuture;
 
 public class MessageBuilder implements Message.Builder {
 	private final PhotonMessagingClient client;
@@ -133,7 +133,7 @@ public class MessageBuilder implements Message.Builder {
 	}
 
 	@Override
-	public VertxFuture<Message> send() {
-		return VertxFuture.of(client.sendMessage(build()));
+	public ContextualFuture<Message> send() {
+		return ContextualFuture.of(client.sendMessage(build()));
 	}
 }

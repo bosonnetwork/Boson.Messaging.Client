@@ -91,8 +91,8 @@ import io.bosonnetwork.photonmessaging.impl.rpc.RpcRequest;
 import io.bosonnetwork.photonmessaging.impl.rpc.RpcResponse;
 import io.bosonnetwork.utils.Base58;
 import io.bosonnetwork.vertx.BosonVerticle;
+import io.bosonnetwork.vertx.ContextualFuture;
 import io.bosonnetwork.vertx.VertxCaffeine;
-import io.bosonnetwork.vertx.VertxFuture;
 
 public class PhotonMessagingClient extends BosonVerticle implements MessagingClient {
 	private final Vertx providedVertx;
@@ -337,19 +337,19 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	@Override
-	public VertxFuture<Void> start() {
+	public ContextualFuture<Void> start() {
 		if (running)
-			return VertxFuture.succeededFuture();
+			return ContextualFuture.succeededFuture();
 
-		return VertxFuture.of(providedVertx.deployVerticle(this).mapEmpty());
+		return ContextualFuture.of(providedVertx.deployVerticle(this).mapEmpty());
 	}
 
 	@Override
-	public VertxFuture<Void> stop() {
+	public ContextualFuture<Void> stop() {
 		if (!running)
-			return VertxFuture.succeededFuture();
+			return ContextualFuture.succeededFuture();
 
-		return VertxFuture.of(vertx.undeploy(deploymentID())
+		return ContextualFuture.of(vertx.undeploy(deploymentID())
 				.andThen(ar -> selfContext.resetNonce()));
 	}
 
@@ -380,14 +380,14 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	@Override
-	public VertxFuture<Conversation> getConversation(Id conversationId) {
+	public ContextualFuture<Conversation> getConversation(Id conversationId) {
 		Objects.requireNonNull(conversationId, "conversationId");
 		runningCheck();
-		return VertxFuture.of(conversationCache.get(conversationId).thenApply(c -> c));
+		return ContextualFuture.of(conversationCache.get(conversationId).thenApply(c -> c));
 	}
 
 	@Override
-	public VertxFuture<List<Conversation>> getConversations() {
+	public ContextualFuture<List<Conversation>> getConversations() {
 		runningCheck();
 
 		Future<List<Conversation>> future = repository.getAllConversations().map(convs -> {
@@ -403,79 +403,79 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			return new ArrayList<>(conversations.values());
 		});
 
-		return VertxFuture.of(future);
+		return ContextualFuture.of(future);
 	}
 
 	@Override
-	public VertxFuture<Boolean> removeConversations(Collection<Id> conversationIds) {
+	public ContextualFuture<Boolean> removeConversations(Collection<Id> conversationIds) {
 		Objects.requireNonNull(conversationIds, "conversationIds");
 		if (conversationIds.isEmpty())
-			return VertxFuture.succeededFuture(true);
+			return ContextualFuture.succeededFuture(true);
 		runningCheck();
 
 		Future<Boolean> future = repository.removeConversations(conversationIds).onSuccess(removed ->
 				conversationIds.forEach(id -> conversationCache.synchronous().invalidate(id))
 		);
-		return VertxFuture.of(future);
+		return ContextualFuture.of(future);
 	}
 
 	@Override
-	public VertxFuture<List<Message>> getMessages(Id conversationId, long until, int limit, int offset) {
+	public ContextualFuture<List<Message>> getMessages(Id conversationId, long until, int limit, int offset) {
 		Objects.requireNonNull(conversationId, "conversationId");
 		if (limit <= 0 || offset < 0)
 			throw new IllegalArgumentException("limit and offset must be positive");
 		runningCheck();
-		return VertxFuture.of(repository.getMessages(conversationId, until, limit, offset).map(List::copyOf));
+		return ContextualFuture.of(repository.getMessages(conversationId, until, limit, offset).map(List::copyOf));
 	}
 
 	@Override
-	public VertxFuture<List<Message>> getMessages(Id conversationId, long begin, long end) {
+	public ContextualFuture<List<Message>> getMessages(Id conversationId, long begin, long end) {
 		Objects.requireNonNull(conversationId, "conversationId");
 		if (begin > end)
 			throw new IllegalArgumentException("begin must be less than or equal to end");
 		runningCheck();
-		return VertxFuture.of(repository.getMessages(conversationId, begin, end).map(List::copyOf));
+		return ContextualFuture.of(repository.getMessages(conversationId, begin, end).map(List::copyOf));
 	}
 
 	@Override
-	public VertxFuture<Boolean> removeMessages(Collection<Long> messageIds) {
+	public ContextualFuture<Boolean> removeMessages(Collection<Long> messageIds) {
 		Objects.requireNonNull(messageIds, "messageIds");
 		if (messageIds.isEmpty())
-			return VertxFuture.succeededFuture(true);
+			return ContextualFuture.succeededFuture(true);
 		runningCheck();
-		return VertxFuture.of(repository.removeMessages(messageIds));
+		return ContextualFuture.of(repository.removeMessages(messageIds));
 	}
 
 	@Override
-	public VertxFuture<Boolean> removeMessages(Id conversionId) {
+	public ContextualFuture<Boolean> removeMessages(Id conversionId) {
 		Objects.requireNonNull(conversionId, "conversionId");
 		runningCheck();
-		return VertxFuture.of(repository.removeMessages(conversionId));
+		return ContextualFuture.of(repository.removeMessages(conversionId));
 	}
 
 	@Override
-	public VertxFuture<List<SessionInfo>> getSessions() {
+	public ContextualFuture<List<SessionInfo>> getSessions() {
 		runningCheck();
 
 		RpcCall<List<SessionInfo>> call = RpcCall.listSessions();
 		Promise<List<SessionInfo>> promise = Promise.promise();
 		runOnContext(v -> sendRpcCall(homePeerId, call).onComplete(promise));
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Void> revokeSession(Id deviceId) {
+	public ContextualFuture<Void> revokeSession(Id deviceId) {
 		Objects.requireNonNull(deviceId, "deviceId");
 		runningCheck();
 
 		RpcCall<Void> call = RpcCall.revokeSession(deviceId);
 		Promise<Void> promise = Promise.promise();
 		runOnContext(v -> sendRpcCall(homePeerId, call).onComplete(promise));
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Void> friendRequest(Id userId, String hello) {
+	public ContextualFuture<Void> friendRequest(Id userId, String hello) {
 		Objects.requireNonNull(userId, "id");
 		Objects.requireNonNull(hello, "hello");
 		runningCheck();
@@ -500,7 +500,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 						});
 			}).onComplete(promise);
 		});
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	@Override
@@ -547,44 +547,44 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			return promise.future();
 		});
 
-		return VertxFuture.of(future);
+		return ContextualFuture.of(future);
 	}
 
 	@Override
-	public VertxFuture<FriendRequest> getFriendRequest(Id userId) {
+	public ContextualFuture<FriendRequest> getFriendRequest(Id userId) {
 		Objects.requireNonNull(userId, "userId");
 		runningCheck();
-		return VertxFuture.of(repository.getFriendRequest(userId));
+		return ContextualFuture.of(repository.getFriendRequest(userId));
 	}
 
 	@Override
-	public VertxFuture<List<FriendRequest>> getFriendRequests() {
+	public ContextualFuture<List<FriendRequest>> getFriendRequests() {
 		runningCheck();
-		return VertxFuture.of(repository.getFriendRequests());
+		return ContextualFuture.of(repository.getFriendRequests());
 	}
 
 	@Override
-	public VertxFuture<Boolean> removeFriendRequest(Id userId) {
+	public ContextualFuture<Boolean> removeFriendRequest(Id userId) {
 		Objects.requireNonNull(userId, "userId");
 		runningCheck();
-		return VertxFuture.of(repository.removeFriendRequest(userId));
+		return ContextualFuture.of(repository.removeFriendRequest(userId));
 	}
 
 	@Override
-	public VertxFuture<Boolean> removeFriendRequests(Collection<Id> userIds) {
+	public ContextualFuture<Boolean> removeFriendRequests(Collection<Id> userIds) {
 		Objects.requireNonNull(userIds, "ids");
 		runningCheck();
 
 		if (userIds.isEmpty())
-			return VertxFuture.succeededFuture(true);
+			return ContextualFuture.succeededFuture(true);
 
-		return VertxFuture.of(repository.removeFriendRequests(userIds));
+		return ContextualFuture.of(repository.removeFriendRequests(userIds));
 	}
 
 	@Override
-	public VertxFuture<Void> clearFriendRequests() {
+	public ContextualFuture<Void> clearFriendRequests() {
 		runningCheck();
-		return VertxFuture.of(repository.clearFriendRequests());
+		return ContextualFuture.of(repository.clearFriendRequests());
 	}
 
 	private Future<Contact> addFriendInternal(Id id, byte[] sessionKey, String remark) {
@@ -601,7 +601,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	@Override
-	public VertxFuture<Contact> addFriend(Id id, byte[] sessionKey, String remark) {
+	public ContextualFuture<Contact> addFriend(Id id, byte[] sessionKey, String remark) {
 		Objects.requireNonNull(id, "id");
 		Objects.requireNonNull(sessionKey, "sessionKey");
 		Objects.requireNonNull(remark, "remark");
@@ -610,11 +610,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		byte[] sk = selfContext.encrypt(sessionKey);
 		Promise<Contact> promise = Promise.promise();
 		runOnContext(v -> addFriendInternal(id, sk, remark).onComplete(promise));
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Channel> createChannel(Channel.Permission permission, String name, String notice, boolean announce) {
+	public ContextualFuture<Channel> createChannel(Channel.Permission permission, String name, String notice, boolean announce) {
 		Objects.requireNonNull(permission, "permission");
 		Objects.requireNonNull(name, "name");
 		runningCheck();
@@ -652,11 +652,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Boolean> removeChannel(Id channelId) {
+	public ContextualFuture<Boolean> removeChannel(Id channelId) {
 		Objects.requireNonNull(channelId, "channelId");
 		runningCheck();
 
@@ -685,11 +685,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Channel> joinChannel(InviteTicket ticket) {
+	public ContextualFuture<Channel> joinChannel(InviteTicket ticket) {
 		Objects.requireNonNull(ticket, "ticket");
 		if (!ticket.isGenuine())
 			throw new IllegalArgumentException("Invalid ticket");
@@ -709,12 +709,12 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			Signature.KeyPair sessionKeypair = Signature.KeyPair.fromPrivateKey(sk);
 			Id sessionId = Id.of(sessionKeypair.publicKey().bytes());
 			if (!ticket.getSessionId().equals(sessionId))
-				return VertxFuture.failedFuture("Invalid ticket: session key not valid");
+				return ContextualFuture.failedFuture("Invalid ticket: session key not valid");
 
 			byte[] sessionKey = selfContext.encrypt(sk);
 			revisedTicket = ticket.revise(sessionKey);
 		} catch (CryptoException e) {
-			return VertxFuture.failedFuture("Invalid session key");
+			return ContextualFuture.failedFuture("Invalid session key");
 		}
 
 		Promise<Channel> promise = Promise.promise();
@@ -757,11 +757,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Boolean> leaveChannel(Id channelId) {
+	public ContextualFuture<Boolean> leaveChannel(Id channelId) {
 		Objects.requireNonNull(channelId, "channelId");
 		runningCheck();
 
@@ -788,11 +788,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<InviteTicket> createInviteTicket(Id channelId, Id invitee) {
+	public ContextualFuture<InviteTicket> createInviteTicket(Id channelId, Id invitee) {
 		Objects.requireNonNull(channelId, "channelId");
 		runningCheck();
 
@@ -844,11 +844,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Void> transferChannelOwnership(Id channelId, Id newOwner) {
+	public ContextualFuture<Void> transferChannelOwnership(Id channelId, Id newOwner) {
 		Objects.requireNonNull(channelId, "channelId");
 		Objects.requireNonNull(newOwner, "newOwner");
 		runningCheck();
@@ -879,11 +879,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Void> rotateChannelSessionKey(Id channelId, Signature.KeyPair sessionKeypair) {
+	public ContextualFuture<Void> rotateChannelSessionKey(Id channelId, Signature.KeyPair sessionKeypair) {
 		Objects.requireNonNull(channelId, "channelId");
 		runningCheck();
 
@@ -916,11 +916,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Void> updateChannelInfo(Channel channel) {
+	public ContextualFuture<Void> updateChannelInfo(Channel channel) {
 		Objects.requireNonNull(channel, "channel");
 		runningCheck();
 
@@ -955,11 +955,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Void> setChannelMembersRole(Id channelId, List<Id> members, Channel.Role role) {
+	public ContextualFuture<Void> setChannelMembersRole(Id channelId, List<Id> members, Channel.Role role) {
 		Objects.requireNonNull(channelId, "channelId");
 		Objects.requireNonNull(members, "members");
 		Objects.requireNonNull(role, "role");
@@ -991,11 +991,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Void> banChannelMembers(Id channelId, List<Id> members) {
+	public ContextualFuture<Void> banChannelMembers(Id channelId, List<Id> members) {
 		Objects.requireNonNull(channelId, "channelId");
 		Objects.requireNonNull(members, "members");
 		if (members.isEmpty())
@@ -1027,11 +1027,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Void> unbanChannelMembers(Id channelId, List<Id> members) {
+	public ContextualFuture<Void> unbanChannelMembers(Id channelId, List<Id> members) {
 		Objects.requireNonNull(channelId, "channelId");
 		Objects.requireNonNull(members, "members");
 		if (members.isEmpty())
@@ -1063,11 +1063,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Void> removeChannelMembers(Id channelId, List<Id> members) {
+	public ContextualFuture<Void> removeChannelMembers(Id channelId, List<Id> members) {
 		Objects.requireNonNull(channelId, "channelId");
 		Objects.requireNonNull(members, "members");
 		if (members.isEmpty())
@@ -1099,23 +1099,23 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Contact> getContact(Id contactId) {
+	public ContextualFuture<Contact> getContact(Id contactId) {
 		Objects.requireNonNull(contactId, "contactId");
 		runningCheck();
-		return VertxFuture.of(contactCache.get(contactId).thenCompose(c -> {
+		return ContextualFuture.of(contactCache.get(contactId).thenCompose(c -> {
 			if (c instanceof PhotonChannel ch)
 				return ch.loadMembers().thenApply(v -> ch);
 
-			return VertxFuture.succeededFuture(c);
+			return ContextualFuture.succeededFuture(c);
 		}));
 	}
 
 	@Override
-	public VertxFuture<List<Contact>> getContacts() {
+	public ContextualFuture<List<Contact>> getContacts() {
 		runningCheck();
 
 		Future<List<Contact>> future = repository.getAllContacts().map(contacts -> {
@@ -1129,11 +1129,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			// Return a **mutable** list
 			return new ArrayList<>(result.values());
 		});
-		return VertxFuture.of(future);
+		return ContextualFuture.of(future);
 	}
 
 	@Override
-	public VertxFuture<Contact> updateContact(Contact contact) {
+	public ContextualFuture<Contact> updateContact(Contact contact) {
 		Objects.requireNonNull(contact, "contact");
 		runningCheck();
 
@@ -1162,11 +1162,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	@Override
-	public VertxFuture<Boolean> removeContacts(List<Id> contactIds) {
+	public ContextualFuture<Boolean> removeContacts(List<Id> contactIds) {
 		Objects.requireNonNull(contactIds, "contactIds");
 		if (contactIds.isEmpty())
 			throw new IllegalArgumentException("No contacts specified");
@@ -1176,7 +1176,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		runOnContext(v -> {
 			removeContactsInternal(contactIds).map(true).onComplete(promise);
 		});
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	private Future<Void> removeContactsInternal(List<Id> contactIds) {
@@ -1190,7 +1190,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	@Override
-	public VertxFuture<Void> clearContacts() {
+	public ContextualFuture<Void> clearContacts() {
 		runningCheck();
 
 		Promise<Void> promise = Promise.promise();
@@ -1204,7 +1204,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					})
 			).onComplete(promise);
 		});
-		return VertxFuture.of(promise.future());
+		return ContextualFuture.of(promise.future());
 	}
 
 	private SessionContext sessionContextFactory(PhotonContact contact) {
@@ -1236,13 +1236,13 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				.maximumSize(512)
 				.expireAfterAccess(5, TimeUnit.MINUTES)
 				.buildAsync((id, executor) ->
-						VertxFuture.of(repository.getContact(id).map(c -> (PhotonContact) c)));
+						ContextualFuture.of(repository.getContact(id).map(c -> (PhotonContact) c)));
 
 		this.conversationCache = VertxCaffeine.newBuilder(vertx)
 				.maximumSize(512)
 				.expireAfterAccess(5, TimeUnit.MINUTES)
 				.buildAsync((id, executor) ->
-						VertxFuture.of(repository.getConversation(id).map(c -> {
+						ContextualFuture.of(repository.getConversation(id).map(c -> {
 							PhotonConversation conv = (PhotonConversation) c;
 							if (conv != null)
 								conv.setSessionContextFactory(this::sessionContextFactory);
@@ -1586,7 +1586,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			if (serviceEndpoint.getScheme().equals("mqtts")) {
 				options.setSsl(true)
 						.setEnabledSecureTransportProtocols(Set.of("TLSv1.3"))
-						.setTrustOptions(TrustOptions.wrap(new HybridTrustManager(homePeerId.toString(), homePeerId.bytes())));
+						.setTrustOptions(TrustOptions.wrap(new HybridTrustManager(homePeerId.toString(), homePeerId.bytesUnsafe())));
 			}
 
 			MqttClient client = MqttClient.create(vertx, options);
