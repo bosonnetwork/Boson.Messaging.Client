@@ -199,10 +199,10 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	public Future<Boolean> removeContactLocally(Id contactId) {
 		return withTransaction(c ->
 				forUpdate(c, getDialect().deleteContact())
-						.execute(Map.of("id", contactId.bytes()))
+						.execute(Map.of("id", contactId.bytesUnsafe()))
 						.map(this::hasAffectedRows)
 						.compose(removed -> forUpdate(c, getDialect().deleteMessagesByConversation())
-								.execute(Map.of("conversationId", contactId.bytes()))
+								.execute(Map.of("conversationId", contactId.bytesUnsafe()))
 								.map(removed)
 						)
 		).recover(e -> {
@@ -224,13 +224,13 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 				future = Future.succeededFuture();
 			else {
 				CollectionParameter<byte[]> idsParam = new CollectionParameter<>("id",
-						contactIds.stream().map(Id::bytes).toList());
+						contactIds.stream().map(Id::bytesUnsafe).toList());
 				future = forUpdate(c, getDialect().deleteContacts(idsParam))
 						.execute(idsParam.getParams())
 						.map(this::hasAffectedRows)
 						.compose(removed -> {
 							CollectionParameter<byte[]> cidsParam = new CollectionParameter<>("cid",
-									contactIds.stream().map(Id::bytes).toList());
+									contactIds.stream().map(Id::bytesUnsafe).toList());
 							return forUpdate(c, getDialect().deleteMessagesByConversations(cidsParam))
 									.execute(cidsParam.getParams())
 									.map(removed);
@@ -264,7 +264,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	public Future<Contact> getContact(Id contactId) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectContact())
-						.execute(Map.of("id", contactId.bytes()))
+						.execute(Map.of("id", contactId.bytesUnsafe()))
 						.map(rs -> findUnique(rs, this::rowToContact))
 		).recover(e -> {
 			getLogger().error("Failed to get contact {}", contactId, e);
@@ -278,7 +278,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 			return Future.succeededFuture(List.of());
 
 		CollectionParameter<byte[]> idsParam = new CollectionParameter<>("id",
-				contactIds.stream().map(Id::bytes).toList());
+				contactIds.stream().map(Id::bytesUnsafe).toList());
 		return withConnection(c ->
 				forQuery(c, getDialect().selectContacts(idsParam))
 						.execute(idsParam.getParams())
@@ -325,7 +325,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	public Future<Void> updateMessageSentTime(PhotonMessage<MessageContent> message) {
 		return withTransaction(c ->
 				forUpdate(c, getDialect().updateMessageSentTime())
-						.execute(Map.of("id", message.getId().bytes(), "sentAt", message.getSentAt()))
+						.execute(Map.of("id", message.getId().bytesUnsafe(), "sentAt", message.getSentAt()))
 						.<Void>mapEmpty()
 		).recover(e -> {
 			getLogger().error("Failed to update message sent time for {}", message.getId(), e);
@@ -337,7 +337,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	public Future<List<PhotonMessage<MessageContent>>> getMessages(Id conversationId, long begin, long end) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectMessagesByTimeRange())
-						.execute(Map.of("conversationId", conversationId.bytes(),
+						.execute(Map.of("conversationId", conversationId.bytesUnsafe(),
 								"begin", begin,
 								"end", end))
 						.map(rs -> findMany(rs, this::rowToMessage))
@@ -351,7 +351,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	public Future<List<PhotonMessage<MessageContent>>> getMessages(Id conversationId, long until, int limit, int offset) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectMessagesWithPagination())
-						.execute(Map.of("conversationId", conversationId.bytes(),
+						.execute(Map.of("conversationId", conversationId.bytesUnsafe(),
 								"until", until,
 								"limit", limit,
 								"offset", offset))
@@ -382,7 +382,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	public Future<Boolean> removeMessages(Id conversationId) {
 		return withTransaction(c ->
 				forUpdate(c, getDialect().deleteMessagesByConversation())
-						.execute(Map.of("conversationId", conversationId.bytes()))
+						.execute(Map.of("conversationId", conversationId.bytesUnsafe()))
 						.map(this::hasAffectedRows)
 		).recover(e -> {
 			getLogger().error("Failed to remove messages for conversation {}", conversationId, e);
@@ -395,7 +395,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 			return Future.succeededFuture(true);
 
 		CollectionParameter<byte[]> cidsParam = new CollectionParameter<>("cid",
-				conversationIds.stream().map(Id::bytes).toList());
+				conversationIds.stream().map(Id::bytesUnsafe).toList());
 
 		return withTransaction(c ->
 				forUpdate(c, getDialect().deleteMessagesByConversations(cidsParam))
@@ -439,7 +439,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	public Future<FriendRequest> getFriendRequest(Id userId) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectFriendRequest())
-						.execute(Map.of("id", userId.bytes()))
+						.execute(Map.of("id", userId.bytesUnsafe()))
 						.map(rs -> findUnique(rs, this::rowToFriendRequest))
 		).recover(e -> {
 			getLogger().error("Failed to get friend request for {}", userId, e);
@@ -463,7 +463,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	public Future<Boolean> removeFriendRequest(Id userId) {
 		return withTransaction(c ->
 				forUpdate(c, getDialect().deleteFriendRequest())
-						.execute(Map.of("id", userId.bytes()))
+						.execute(Map.of("id", userId.bytesUnsafe()))
 						.map(this::hasAffectedRows)
 		).recover(e -> {
 			getLogger().error("Failed to remove friend request for {}", userId, e);
@@ -476,7 +476,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		if (userIds.isEmpty())
 			return Future.succeededFuture(true);
 
-		CollectionParameter<byte[]> idsParam = new CollectionParameter<>("id", userIds.stream().map(Id::bytes).toList());
+		CollectionParameter<byte[]> idsParam = new CollectionParameter<>("id", userIds.stream().map(Id::bytesUnsafe).toList());
 		return withTransaction(c ->
 				forUpdate(c, getDialect().deleteFriendRequests(idsParam))
 						.execute(idsParam.getParams())
@@ -507,7 +507,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	public Future<Conversation> getConversation(Id conversationId) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectConversation())
-						.execute(Map.of("contactId", conversationId.bytes()))
+						.execute(Map.of("contactId", conversationId.bytesUnsafe()))
 						.map(rs -> findUnique(rs, this::rowToConversation))
 		).recover(e -> {
 			getLogger().error("Failed to get conversation {}", conversationId, e);
@@ -545,15 +545,15 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	public Future<Void> updateChannelOwnership(Id channelId, Id oldOwnerId, Id newOwnerId) {
 		return withTransaction(c ->
 				forUpdate(c, getDialect().updateChannelOwnership())
-						.execute(Map.of("id", channelId.bytes(),
-								"owner", newOwnerId.bytes()))
+						.execute(Map.of("id", channelId.bytesUnsafe(),
+								"owner", newOwnerId.bytesUnsafe()))
 						.compose(v -> forUpdate(c, getDialect().updateChannelMemberRole())
-								.execute(Map.of("channelId", channelId.bytes(),
-										"id", oldOwnerId.bytes(),
+								.execute(Map.of("channelId", channelId.bytesUnsafe(),
+										"id", oldOwnerId.bytesUnsafe(),
 										"role", Channel.Role.MEMBER.value())))
 						.compose(v -> forUpdate(c, getDialect().updateChannelMemberRole())
-								.execute(Map.of("channelId", channelId.bytes(),
-										"id", newOwnerId.bytes(),
+								.execute(Map.of("channelId", channelId.bytesUnsafe(),
+										"id", newOwnerId.bytesUnsafe(),
 										"role", Channel.Role.OWNER.value())))
 						.<Void>mapEmpty()
 		).recover(e -> {
@@ -585,7 +585,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	public Future<Void> refillChannelMembers(Id channelId, Collection<Channel.Member> members) {
 		return withTransaction(c ->
 				forUpdate(c, getDialect().clearChannelMembers())
-						.execute(Map.of("channelId", channelId.bytes()))
+						.execute(Map.of("channelId", channelId.bytesUnsafe()))
 						.compose(v -> {
 							if (members.isEmpty())
 								return Future.succeededFuture();
@@ -606,7 +606,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	public Future<Channel.Member> getChannelMember(Id channelId, Id memberId) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectChannelMember())
-						.execute(Map.of("channelId", channelId.bytes(), "id", memberId.bytes()))
+						.execute(Map.of("channelId", channelId.bytesUnsafe(), "id", memberId.bytesUnsafe()))
 						.map(rs -> findUnique(rs, this::rowToChannelMember))
 		).recover(e -> {
 			getLogger().error("Failed to get channel member {} for channel {}", memberId, channelId, e);
@@ -619,9 +619,9 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		if (memberId == null || memberId.isEmpty())
 			return Future.succeededFuture(Collections.emptyList());
 
-		CollectionParameter<byte[]> idsParam = new CollectionParameter<>("id", memberId.stream().map(Id::bytes).toList());
+		CollectionParameter<byte[]> idsParam = new CollectionParameter<>("id", memberId.stream().map(Id::bytesUnsafe).toList());
 		Map<String, Object> params = idsParam.getParams();
-		params.put("channelId", channelId.bytes());
+		params.put("channelId", channelId.bytesUnsafe());
 
 		return withConnection(c ->
 				forQuery(c, getDialect().selectChannelMembers(idsParam))
@@ -636,7 +636,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	public Future<List<ChannelMember>> _getAllChannelMembers(Id channelId) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectAllChannelMembers())
-						.execute(Map.of("channelId", channelId.bytes()))
+						.execute(Map.of("channelId", channelId.bytesUnsafe()))
 						.map(rs -> findMany(rs, r -> (ChannelMember) rowToChannelMember(r)))
 		).recover(e -> {
 			getLogger().error("Failed to get all channel members for channel {}", channelId, e);
@@ -648,7 +648,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	public Future<List<Channel.Member>> getAllChannelMembers(Id channelId) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectAllChannelMembers())
-						.execute(Map.of("channelId", channelId.bytes()))
+						.execute(Map.of("channelId", channelId.bytesUnsafe()))
 						.map(rs -> findMany(rs, this::rowToChannelMember))
 		).recover(e -> {
 			getLogger().error("Failed to get all channel members for channel {}", channelId, e);
@@ -661,9 +661,9 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		if (memberIds.isEmpty())
 			return Future.succeededFuture(true);
 
-		CollectionParameter<byte[]> idsParam = new CollectionParameter<>("id", memberIds.stream().map(Id::bytes).toList());
+		CollectionParameter<byte[]> idsParam = new CollectionParameter<>("id", memberIds.stream().map(Id::bytesUnsafe).toList());
 		Map<String, Object> params = idsParam.getParams();
-		params.put("channelId", channelId.bytes());
+		params.put("channelId", channelId.bytesUnsafe());
 		params.put("role", role.value());
 
 		return withTransaction(c ->
@@ -681,9 +681,9 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		if (memberIds.isEmpty())
 			return Future.succeededFuture(true);
 
-		CollectionParameter<byte[]> idsParam = new CollectionParameter<>("id", memberIds.stream().map(Id::bytes).toList());
+		CollectionParameter<byte[]> idsParam = new CollectionParameter<>("id", memberIds.stream().map(Id::bytesUnsafe).toList());
 		Map<String, Object> params = idsParam.getParams();
-		params.put("channelId", channelId.bytes());
+		params.put("channelId", channelId.bytesUnsafe());
 
 		return withTransaction(c ->
 				forUpdate(c, getDialect().deleteChannelMembers(idsParam))
@@ -701,12 +701,12 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 
 	private Map<String, Object> paramsFromMessage(PhotonMessage<MessageContent> message) {
 		Map<String, Object> params = new HashMap<>();
-		params.put("id", message.getId().bytes());
-		params.put("conversationId", message.getConversationId().bytes());
+		params.put("id", message.getId().bytesUnsafe());
+		params.put("conversationId", message.getConversationId().bytesUnsafe());
 		params.put("version", message.getVersion());
-		params.put("recipient", message.getRecipient().bytes());
+		params.put("recipient", message.getRecipient().bytesUnsafe());
 		params.put("type", message.getType().value());
-		params.put("fromId", message.getFrom() != null ? message.getFrom().bytes() : null);
+		params.put("fromId", message.getFrom() != null ? message.getFrom().bytesUnsafe() : null);
 		params.put("createdAt", message.getCreatedAt());
 		params.put("sentAt", message.getSentAt());
 		params.put("receivedAt", message.getReceivedAt());
@@ -738,8 +738,8 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 
 	private Map<String, Object> paramsFromFriendRequest(PhotonFriendRequest request) {
 		Map<String, Object> params = new HashMap<>();
-		params.put("id", request.getUserId().bytes());
-		params.put("initiator", request.getInitiatorId().bytes());
+		params.put("id", request.getUserId().bytesUnsafe());
+		params.put("initiator", request.getInitiatorId().bytesUnsafe());
 		params.put("hello", request.getHello());
 		params.put("createdAt", request.getCreatedAt());
 		params.put("updatedAt", request.getUpdatedAt());
@@ -762,7 +762,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 
 	private Map<String, Object> paramsFromContact(Contact contact) {
 		Map<String, Object> params = new HashMap<>();
-		params.put("id", contact.getId().bytes());
+		params.put("id", contact.getId().bytesUnsafe());
 		params.put("type", contact.getType().value());
 		params.put("sessionKey", contact instanceof PhotonContact ac ? ac.getSessionKey() : null);
 		params.put("name", contact.getName());
@@ -810,8 +810,8 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 
 	private Map<String, Object> paramsFromChannel(Channel channel) {
 		Map<String, Object> params = new HashMap<>();
-		params.put("id", channel.getId().bytes());
-		params.put("owner", channel.getOwnerId().bytes());
+		params.put("id", channel.getId().bytesUnsafe());
+		params.put("owner", channel.getOwnerId().bytesUnsafe());
 		params.put("permission", channel.getPermission().value());
 		params.put("notice", channel.getNotice());
 		params.put("announce", channel.isAnnounce());
@@ -824,8 +824,8 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 
 	private Map<String, Object> paramsFromChannelMember(Id channelId, Channel.Member member) {
 		Map<String, Object> params = new HashMap<>();
-		params.put("id", member.getId().bytes());
-		params.put("channelId", channelId.bytes());
+		params.put("id", member.getId().bytesUnsafe());
+		params.put("channelId", channelId.bytesUnsafe());
 		params.put("role", member.getRole().value());
 		params.put("joined", member.getJoined());
 		return params;

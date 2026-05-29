@@ -41,7 +41,7 @@ import io.vertx.core.Future;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Channel;
 import io.bosonnetwork.photonmessaging.Contact;
-import io.bosonnetwork.vertx.VertxFuture;
+import io.bosonnetwork.vertx.ContextualFuture;
 
 @JsonPropertyOrder({"id", "t", "sk", "o", "p", "n", "nt", "a", "r", "ts", "m", "b", "c", "u", "v"})
 public class PhotonChannel extends PhotonContact implements Channel {
@@ -156,7 +156,7 @@ public class PhotonChannel extends PhotonContact implements Channel {
 
 	@Override
 	public CompletableFuture<Void> loadMembers() {
-		return VertxFuture.of(tryLoadMembers());
+		return ContextualFuture.of(tryLoadMembers());
 	}
 
 	protected Future<Void> tryLoadMembers() {

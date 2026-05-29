@@ -31,6 +31,7 @@ import java.util.Objects;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.crypto.Signature;
+import io.bosonnetwork.database.SqlSafety;
 import io.bosonnetwork.photonmessaging.impl.Database;
 import io.bosonnetwork.utils.Base58;
 import io.bosonnetwork.utils.ConfigMap;
@@ -137,13 +138,7 @@ public class Configuration {
 			throw new IllegalArgumentException("Invalid database poolSize: " + config.databasePoolSize);
 
 		String schemaName = database.getString("schema", config.databaseSchemaName);
-		if (schemaName != null && !schemaName.isEmpty()) {
-			if (!schemaName.matches("[a-z][a-z0-9_]{0,31}"))
-				throw new IllegalArgumentException("Invalid database schema name: " + schemaName);
-			config.databaseSchemaName = schemaName;
-		} else {
-			config.databaseSchemaName = null;
-		}
+		config.databaseSchemaName = SqlSafety.validateSchema(schemaName);
 
 		return config;
 	}
@@ -521,14 +516,7 @@ public class Configuration {
 		 * @throws IllegalArgumentException if the schema name is invalid.
 		 */
 		public Builder databaseSchemaName(String schema) {
-			if (schema != null && !schema.isEmpty()) {
-				if (!schema.matches("[a-z][a-z0-9_]{0,31}"))
-					throw new IllegalArgumentException("Invalid database schema name: " + schema);
-				config().databaseSchemaName = schema;
-			} else {
-				config().databaseSchemaName = null;
-			}
-
+			config().databaseSchemaName = SqlSafety.validateSchema(schema);
 			return this;
 		}
 

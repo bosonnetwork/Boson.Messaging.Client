@@ -57,8 +57,8 @@ public interface DeviceOriginated {
 	 */
 	default boolean isOriginated(Id deviceId) {
 		byte[] seedBytes = Bytes.fromLong(getTimestamp());
-		byte[] hash = Hash.sha256(deviceId.bytes(), seedBytes);
-		return Arrays.equals(getId().bytes(), hash);
+		byte[] hash = Hash.sha256(deviceId.bytesUnsafe(), seedBytes);
+		return Arrays.equals(getId().bytesUnsafe(), hash);
 	}
 
 	/**
@@ -70,6 +70,6 @@ public interface DeviceOriginated {
 	 */
 	static Id generateId(Id deviceId, long timestamp) {
 		byte[] seedBytes = Bytes.fromLong(timestamp);
-		return Id.of(Hash.sha256(deviceId.bytes(), seedBytes));
+		return Id.of(Hash.sha256(deviceId.bytesUnsafe(), seedBytes));
 	}
 }
