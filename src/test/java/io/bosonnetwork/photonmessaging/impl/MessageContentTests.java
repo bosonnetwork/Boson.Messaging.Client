@@ -256,6 +256,21 @@ public class MessageContentTests {
 		assertEquals(pojo, objContent.asObject(Pojo.class));
 	}
 
+	@Test
+	public void testDefensiveCopy() {
+		byte[] data = new byte[]{1, 2, 3};
+		MessageContent content = MessageContent.binary(data);
+
+		// Mutate original array
+		data[0] = 9;
+		assertArrayEquals(new byte[]{1, 2, 3}, content.asBinary());
+
+		// Mutate retrieved array
+		byte[] retrieved = content.asBinary();
+		retrieved[0] = 9;
+		assertArrayEquals(new byte[]{1, 2, 3}, content.asBinary());
+	}
+
 	record Pojo(@JsonProperty("name") String name,
 				@JsonProperty("value") int value) {
 	}

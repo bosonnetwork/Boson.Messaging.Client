@@ -22,13 +22,17 @@
 
 package io.bosonnetwork.photonmessaging.impl;
 
-import java.util.ArrayList;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.FriendRequestListener;
 
-public class FriendRequestListenerArray extends ArrayList<FriendRequestListener> implements FriendRequestListener {
+public class FriendRequestListenerArray extends CopyOnWriteArrayList<FriendRequestListener> implements FriendRequestListener {
 	private static final long serialVersionUID = -3378257093435511382L;
+	private static final Logger log = LoggerFactory.getLogger(FriendRequestListenerArray.class);
 
 	public FriendRequestListenerArray(FriendRequestListener existing, FriendRequestListener newListener) {
 		super();
@@ -38,13 +42,23 @@ public class FriendRequestListenerArray extends ArrayList<FriendRequestListener>
 
 	@Override
 	public void onFriendRequest(Id userId, String hello) {
-		for (FriendRequestListener listener : this)
-			listener.onFriendRequest(userId, hello);
+		for (FriendRequestListener listener : this) {
+			try {
+				listener.onFriendRequest(userId, hello);
+			} catch (Throwable t) {
+				log.error("Error dispatching onFriendRequest to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onFriendRequestAccepted(Id userId) {
-		for (FriendRequestListener listener : this)
-			listener.onFriendRequestAccepted(userId);
+		for (FriendRequestListener listener : this) {
+			try {
+				listener.onFriendRequestAccepted(userId);
+			} catch (Throwable t) {
+				log.error("Error dispatching onFriendRequestAccepted to listener: {}", listener, t);
+			}
+		}
 	}
 }

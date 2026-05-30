@@ -22,15 +22,19 @@
 
 package io.bosonnetwork.photonmessaging.impl;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Channel;
 import io.bosonnetwork.photonmessaging.ChannelListener;
 
-public class ChannelListenerArray extends ArrayList<ChannelListener> implements ChannelListener {
+public class ChannelListenerArray extends CopyOnWriteArrayList<ChannelListener> implements ChannelListener {
 	private static final long serialVersionUID = -6049409118596156775L;
+	private static final Logger log = LoggerFactory.getLogger(ChannelListenerArray.class);
 
 	public ChannelListenerArray(ChannelListener existing, ChannelListener newListener) {
 		super();
@@ -40,79 +44,144 @@ public class ChannelListenerArray extends ArrayList<ChannelListener> implements 
 
 	@Override
 	public void onChannelCreated(Channel channel) {
-		for (ChannelListener listener : this)
-			listener.onChannelCreated(channel);
+		for (ChannelListener listener : this) {
+			try {
+				listener.onChannelCreated(channel);
+			} catch (Throwable t) {
+				log.error("Error dispatching onChannelCreated to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onChannelDeleted(Channel channel) {
-		for (ChannelListener listener : this)
-			listener.onChannelDeleted(channel);
+		for (ChannelListener listener : this) {
+			try {
+				listener.onChannelDeleted(channel);
+			} catch (Throwable t) {
+				log.error("Error dispatching onChannelDeleted to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onJoinedChannel(Channel channel) {
-		for (ChannelListener listener : this)
-			listener.onJoinedChannel(channel);
+		for (ChannelListener listener : this) {
+			try {
+				listener.onJoinedChannel(channel);
+			} catch (Throwable t) {
+				log.error("Error dispatching onJoinedChannel to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onLeftChannel(Channel channel) {
-		for (ChannelListener listener : this)
-			listener.onLeftChannel(channel);
+		for (ChannelListener listener : this) {
+			try {
+				listener.onLeftChannel(channel);
+			} catch (Throwable t) {
+				log.error("Error dispatching onLeftChannel to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onChannelOwnershipTransferred(Channel channel, Id oldOwner, Id newOwner) {
-		for (ChannelListener listener : this)
-			listener.onChannelOwnershipTransferred(channel, oldOwner, newOwner);
+		for (ChannelListener listener : this) {
+			try {
+				listener.onChannelOwnershipTransferred(channel, oldOwner, newOwner);
+			} catch (Throwable t) {
+				log.error("Error dispatching onChannelOwnershipTransferred to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onChannelSessionKeyRotated(Channel channel) {
-		for (ChannelListener listener : this)
-			listener.onChannelSessionKeyRotated(channel);
+		for (ChannelListener listener : this) {
+			try {
+				listener.onChannelSessionKeyRotated(channel);
+			} catch (Throwable t) {
+				log.error("Error dispatching onChannelSessionKeyRotated to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onChannelUpdated(Channel channel) {
-		for (ChannelListener listener : this)
-			listener.onChannelUpdated(channel);
+		for (ChannelListener listener : this) {
+			try {
+				listener.onChannelUpdated(channel);
+			} catch (Throwable t) {
+				log.error("Error dispatching onChannelUpdated to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onChannelMemberJoined(Channel channel, Channel.Member member) {
-		for (ChannelListener listener : this)
-			listener.onChannelMemberJoined(channel, member);
+		for (ChannelListener listener : this) {
+			try {
+				listener.onChannelMemberJoined(channel, member);
+			} catch (Throwable t) {
+				log.error("Error dispatching onChannelMemberJoined to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onChannelMemberLeft(Channel channel, Channel.Member member) {
-		for (ChannelListener listener : this)
-			listener.onChannelMemberLeft(channel, member);
+		for (ChannelListener listener : this) {
+			try {
+				listener.onChannelMemberLeft(channel, member);
+			} catch (Throwable t) {
+				log.error("Error dispatching onChannelMemberLeft to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onChannelMembersRemoved(Channel channel, List<Channel.Member> members) {
-		for (ChannelListener listener : this)
-			listener.onChannelMembersRemoved(channel, members);
+		for (ChannelListener listener : this) {
+			try {
+				listener.onChannelMembersRemoved(channel, members);
+			} catch (Throwable t) {
+				log.error("Error dispatching onChannelMembersRemoved to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onChannelMembersBanned(Channel channel, List<Channel.Member> banned) {
-		for (ChannelListener listener : this)
-			listener.onChannelMembersBanned(channel, banned);
+		for (ChannelListener listener : this) {
+			try {
+				listener.onChannelMembersBanned(channel, banned);
+			} catch (Throwable t) {
+				log.error("Error dispatching onChannelMembersBanned to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onChannelMembersUnbanned(Channel channel, List<Channel.Member> unbanned) {
-		for (ChannelListener listener : this)
-			listener.onChannelMembersUnbanned(channel, unbanned);
+		for (ChannelListener listener : this) {
+			try {
+				listener.onChannelMembersUnbanned(channel, unbanned);
+			} catch (Throwable t) {
+				log.error("Error dispatching onChannelMembersUnbanned to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onChannelMembersRoleChanged(Channel channel, List<Channel.Member> changed, Channel.Role role) {
-		for (ChannelListener listener : this)
-			listener.onChannelMembersRoleChanged(channel, changed, role);
+		for (ChannelListener listener : this) {
+			try {
+				listener.onChannelMembersRoleChanged(channel, changed, role);
+			} catch (Throwable t) {
+				log.error("Error dispatching onChannelMembersRoleChanged to listener: {}", listener, t);
+			}
+		}
 	}
 }

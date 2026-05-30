@@ -96,7 +96,7 @@ public class MessageBuilder implements Message.Builder {
 	public MessageBuilder contentBinary(byte[] binary) {
 		Objects.requireNonNull(binary, "binary");
 		this.format = MessageContent.Format.BINARY;
-		this.content = binary;
+		this.content = binary.clone();
 		if (!headers.containsKey(ContentType.HEADER_NAME))
 			headers.put(ContentType.HEADER_NAME, ContentType.BINARY);
 

@@ -22,12 +22,16 @@
 
 package io.bosonnetwork.photonmessaging.impl;
 
-import java.util.ArrayList;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.bosonnetwork.photonmessaging.ConnectionListener;
 
-public class ConnectionListenerArray extends ArrayList<ConnectionListener> implements ConnectionListener {
+public class ConnectionListenerArray extends CopyOnWriteArrayList<ConnectionListener> implements ConnectionListener {
 	private static final long serialVersionUID = -7838487839783662456L;
+	private static final Logger log = LoggerFactory.getLogger(ConnectionListenerArray.class);
 
 	public ConnectionListenerArray(ConnectionListener existing, ConnectionListener newListener) {
 		super();
@@ -37,25 +41,45 @@ public class ConnectionListenerArray extends ArrayList<ConnectionListener> imple
 
 	@Override
 	public void onConnecting() {
-		for (ConnectionListener listener : this)
-			listener.onConnecting();
+		for (ConnectionListener listener : this) {
+			try {
+				listener.onConnecting();
+			} catch (Throwable t) {
+				log.error("Error dispatching onConnecting to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onConnected() {
-		for (ConnectionListener listener : this)
-			listener.onConnected();
+		for (ConnectionListener listener : this) {
+			try {
+				listener.onConnected();
+			} catch (Throwable t) {
+				log.error("Error dispatching onConnected to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onReady() {
-		for (ConnectionListener listener : this)
-			listener.onReady();
+		for (ConnectionListener listener : this) {
+			try {
+				listener.onReady();
+			} catch (Throwable t) {
+				log.error("Error dispatching onReady to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onDisconnected() {
-		for (ConnectionListener listener : this)
-			listener.onDisconnected();
+		for (ConnectionListener listener : this) {
+			try {
+				listener.onDisconnected();
+			} catch (Throwable t) {
+				log.error("Error dispatching onDisconnected to listener: {}", listener, t);
+			}
+		}
 	}
 }

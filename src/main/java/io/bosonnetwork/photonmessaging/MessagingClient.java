@@ -324,10 +324,10 @@ public interface MessagingClient {
 	/**
 	 * Removes all messages associated with a specific conversation.
 	 *
-	 * @param conversionId the identifier of the conversation.
+	 * @param conversationId the identifier of the conversation.
 	 * @return a {@link CompletableFuture} that will be completed with {@code true} if successful; {@code false} otherwise.
 	 */
-	CompletableFuture<Boolean> removeMessages(Id conversionId);
+	CompletableFuture<Boolean> removeMessages(Id conversationId);
 
 	////////////////////////////////////////////////////////////////////////////
 	// Session APIs

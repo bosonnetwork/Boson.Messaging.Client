@@ -89,8 +89,8 @@ public class InviteTicket {
 		this.inviter = Objects.requireNonNull(inviter, "inviter");
 		this.invitee = invitee;
 		this.expiration = expiration;
-		this.sig = Objects.requireNonNull(sig, "sig");
-		this.sessionKey = sessionKey == null || sessionKey.length == 0 ? null : sessionKey;
+		this.sig = Objects.requireNonNull(sig, "sig").clone();
+		this.sessionKey = sessionKey == null || sessionKey.length == 0 ? null : sessionKey.clone();
 	}
 
 	/**
@@ -153,7 +153,7 @@ public class InviteTicket {
 	 * @return the session key, or {@code null} if none was provided
 	 */
 	public byte[] getSessionKey() {
-		return sessionKey;
+		return sessionKey != null ? sessionKey.clone() : null;
 	}
 
 	/**
