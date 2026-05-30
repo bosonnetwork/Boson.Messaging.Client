@@ -95,6 +95,7 @@ import io.bosonnetwork.vertx.ContextualFuture;
 import io.bosonnetwork.vertx.VertxCaffeine;
 
 public class PhotonMessagingClient extends BosonVerticle implements MessagingClient {
+	private final boolean internalVertx;
 	private final Vertx providedVertx;
 	private final Node node;
 	private final Configuration config;
@@ -131,6 +132,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private static final Logger log = LoggerFactory.getLogger(PhotonMessagingClient.class);
 
 	public PhotonMessagingClient(Vertx vertx, Node node, Configuration config) {
+		this.internalVertx = vertx == null;
 		this.providedVertx = vertx == null ? Vertx.vertx() : vertx;
 		this.config = Objects.requireNonNull(config, "config");
 		this.node = config.getServiceEndpoint() == null ? Objects.requireNonNull(node, "node") : node;
@@ -186,7 +188,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 	@Override
 	public String getServiceEndpoint() {
-		return config.getServiceEndpoint().toString();
+		return serviceEndpoint != null ? serviceEndpoint.toString()
+				: (config.getServiceEndpoint() != null ? config.getServiceEndpoint().toString() : null);
 	}
 
 	@Override
@@ -349,8 +352,12 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		if (!running)
 			return ContextualFuture.succeededFuture();
 
-		return ContextualFuture.of(vertx.undeploy(deploymentID())
-				.andThen(ar -> selfContext.resetNonce()));
+		Future<Void> future = vertx.undeploy(deploymentID())
+				.andThen(ar -> selfContext.resetNonce());
+		if (internalVertx)
+			future = future.compose(v -> providedVertx.close());
+
+		return ContextualFuture.of(future);
 	}
 
 	@Override
@@ -447,10 +454,10 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	@Override
-	public ContextualFuture<Boolean> removeMessages(Id conversionId) {
-		Objects.requireNonNull(conversionId, "conversionId");
+	public ContextualFuture<Boolean> removeMessages(Id conversationId) {
+		Objects.requireNonNull(conversationId, "conversationId");
 		runningCheck();
-		return ContextualFuture.of(repository.removeMessages(conversionId));
+		return ContextualFuture.of(repository.removeMessages(conversationId));
 	}
 
 	@Override
@@ -531,7 +538,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			runOnContext(v -> {
 				Id messageId = DeviceOriginated.generateId(getDeviceId(), now);
 				PhotonMessage<Handshake> message = new PhotonMessage<>(messageId,
-							userId, Message.Type.HANDSHAKE_MESSAGE, now, hs);
+						userId, Message.Type.HANDSHAKE_MESSAGE, now, hs);
 				log.trace("Sending friend request accept to {}", userId);
 				sendMessageInternal(message).compose(packetId -> {
 					request.accept();
@@ -604,7 +611,6 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	public ContextualFuture<Contact> addFriend(Id id, byte[] sessionKey, String remark) {
 		Objects.requireNonNull(id, "id");
 		Objects.requireNonNull(sessionKey, "sessionKey");
-		Objects.requireNonNull(remark, "remark");
 		runningCheck();
 
 		byte[] sk = selfContext.encrypt(sessionKey);
@@ -632,7 +638,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			sendRpcCall(homePeerId, createChannelCall).compose(ci -> {
 				// 2. Save the channel locally
 				PhotonChannel channel = new PhotonChannel(ci.channelId(), ci.sessionKey(), ci.ownerId(), ci.permission(),
-							ci.name(), ci.notice(), ci.announce(), ci.createdAt(), ci.updateAt());
+						ci.name(), ci.notice(), ci.announce(), ci.createdAt(), ci.updateAt());
 				return repository.putContactLocally(channel).compose(vv -> {
 					if (ci.members() != null && !ci.members().isEmpty())
 						return repository.putChannelMembers(channel.getId(), ci.members()).map(channel);
@@ -1019,7 +1025,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					return sendRpcCall(channelId, call).compose(banned -> {
 						if (!banned.isEmpty()) {
 							channel.invalidateMembers();
-							return repository.updateChannelMembersRole(channelId, members, Channel.Role.BANNED).<Void>mapEmpty();
+							return repository.updateChannelMembersRole(channelId, banned, Channel.Role.BANNED).<Void>mapEmpty();
 						} else {
 							return Future.succeededFuture();
 						}
@@ -1055,7 +1061,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					return sendRpcCall(channelId, call).compose(unbanned -> {
 						if (!unbanned.isEmpty()) {
 							channel.invalidateMembers();
-							return repository.updateChannelMembersRole(channelId, members, Channel.Role.MEMBER).<Void>mapEmpty();
+							return repository.updateChannelMembersRole(channelId, unbanned, Channel.Role.MEMBER).<Void>mapEmpty();
 						} else {
 							return Future.succeededFuture();
 						}
@@ -1091,7 +1097,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					return sendRpcCall(channelId, call).compose(removed -> {
 						if (!removed.isEmpty()) {
 							channel.invalidateMembers();
-							return repository.removeChannelMembers(channelId, members).<Void>mapEmpty();
+							return repository.removeChannelMembers(channelId, removed).<Void>mapEmpty();
 						} else {
 							return Future.succeededFuture();
 						}
@@ -1149,7 +1155,18 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				if (contact.getRevision() < origin.getRevision())
 					return Future.failedFuture(new RevisionNotMonotonicException("Contact revision is outdate"));
 
-				PhotonContact updated = (PhotonContact) contact;
+				final PhotonContact updated;
+				if (contact instanceof PhotonContact pc) {
+					updated = pc;
+				} else {
+					updated = (PhotonContact) ((ContactEditor) origin.edit())
+							.setRemark(contact.getRemark())
+							.setTags(contact.getTags())
+							.setMuted(contact.isMuted())
+							.setBlocked(contact.isBlocked())
+							.build();
+				}
+
 				ContactMutation mutation = ContactMutation.update(contactsRevision, updated.toOpaque(selfContext));
 				RpcCall<Integer> call = RpcCall.contactMutate(mutation);
 				return sendRpcCall(homePeerId, call).compose(revision -> {
@@ -1261,7 +1278,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private Future<PhotonConversation> getOrCreateConversation(Id id) {
 		return Future.fromCompletionStage(conversationCache.get(id)).compose(conv -> {
 			if (conv != null)
-					return Future.succeededFuture(conv);
+				return Future.succeededFuture(conv);
 			else
 				return contact(id).map(contact -> {
 					if (contact == null)
@@ -1288,8 +1305,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	private Future<PhotonChannel> channel(Id id) {
-		return Future.fromCompletionStage(contactCache.get(id)).map(contact ->
-				contact instanceof PhotonChannel channel ? channel : null);
+		return Future.fromCompletionStage(contactCache.get(id))
+				.map(contact -> contact instanceof PhotonChannel channel ? channel : null);
 	}
 
 	private Future<Void> refreshChannel(PhotonChannel channel) {
@@ -1314,7 +1331,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		Id messageId = DeviceOriginated.generateId(getDeviceId(), now);
 		PhotonMessage<RpcRequest> message = new PhotonMessage<>(messageId, recipient, Message.Type.CONTROL_MESSAGE, now, call.getRequest());
 		log.debug("Sending RPC call {}:{} to {} ...", call.getId(), call.getMethod(), recipient);
-		return sendMessageInternal(message).compose(packageId -> call.getFuture(), error -> {
+		return sendMessageInternal(message).compose(packageId -> call.getFuture()
+				.onFailure(e -> inflightRpcCalls.remove(call.getId())), error -> {
 			inflightRpcCalls.remove(call.getId());
 			log.error("Send RPC call {}:{} failed", call.getId(), call.getMethod(), error);
 			return Future.failedFuture(error);
@@ -1323,7 +1341,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 	protected Future<Message> sendMessage(Message message) {
 		@SuppressWarnings("unchecked")
-		PhotonMessage<MessageContent> msg = (PhotonMessage<MessageContent>)message;
+		PhotonMessage<MessageContent> msg = (PhotonMessage<MessageContent>) message;
 		msg.setConversationId(msg.getRecipient());
 		msg.setFrom(getUserId());
 
@@ -1431,7 +1449,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			return Future.succeededFuture(message);
 
 		Message.Type type = message.getType();
-		return switch(type) {
+		return switch (type) {
 			case CONTENT_MESSAGE -> contact(conversationId).compose(contact -> {
 				if (contact == null) {
 					log.error("Received a {} from unknown contact {}, ignored", type, from);
@@ -1549,13 +1567,13 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 	private int getRetryInterval() {
 		if (failures == 0)
-			return 0;				// no delay
+			return 0; // no delay
 		else if (failures <= 6)
-			return (1 << failures);	// 2 ~ 64 seconds retry interval
+			return (1 << failures); // 2 ~ 64 seconds retry interval
 		else if (failures <= 20)
-			return 300;				// 5 minutes retry interval
+			return 300; // 5 minutes retry interval
 		else
-			return 600;				// 10 minutes retry interval
+			return 600; // 10 minutes retry interval
 	}
 
 	private Future<Void> connect() {
@@ -1643,7 +1661,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 	private Future<Void> disconnect() {
 		if (mqttClient == null || !mqttClient.isConnected())
-				return Future.succeededFuture();
+			return Future.succeededFuture();
 
 		return mqttClient.disconnect();
 	}
@@ -2315,12 +2333,12 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				Id memberId = notif.getBody();
 				log.trace("Channel {} member left: {}", channel.getId(), memberId);
 				yield repository.getChannelMember(channel.getId(), memberId).compose(member -> {
-					if (member == null)
-						return Future.succeededFuture(new ChannelMember(memberId, Channel.Role.MEMBER, 0));
-					else
-						return repository.removeChannelMember(channel.getId(), memberId).map(member);
-				}, error ->
-						Future.succeededFuture(new ChannelMember(memberId, Channel.Role.MEMBER, 0))
+							if (member == null)
+								return Future.succeededFuture(new ChannelMember(memberId, Channel.Role.MEMBER, 0));
+							else
+								return repository.removeChannelMember(channel.getId(), memberId).map(member);
+						}, error ->
+								Future.succeededFuture(new ChannelMember(memberId, Channel.Role.MEMBER, 0))
 				).map(member -> {
 					channel.invalidateMembers();
 					if (channelListener != null)
@@ -2384,6 +2402,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			}
 		};
 	}
+
 	private Future<Void> applyContactMutation(ContactMutation mutation) {
 		final int revision = mutation.getRevision() + 1;
 		return switch (mutation.getOp()) {
@@ -2442,7 +2461,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				contactsRevision = revision;
 				contactCache.synchronous().invalidateAll();
 				if (contactListener != null)
-						contactListener.onContactsCleared();
+					contactListener.onContactsCleared();
 				return null;
 			});
 		};

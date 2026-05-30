@@ -58,4 +58,26 @@ public class InviteTicketTests {
 		InviteTicket expiredTicket = InviteTicket.create(inviterIdentity, channelId, sessionId, null, expiration, sessionKey);
 		assertTrue(expiredTicket.isExpired());
 	}
+
+	@Test
+	void testDefensiveCopy() {
+		CryptoIdentity inviterIdentity = new CryptoIdentity();
+		CryptoIdentity sessionIdentity = new CryptoIdentity();
+		Id channelId = Id.random();
+		Id sessionId = sessionIdentity.getId();
+		long expiration = System.currentTimeMillis() + 3600000;
+		byte[] sessionKey = sessionIdentity.getKeyPair().privateKey().bytes();
+
+		InviteTicket ticket = InviteTicket.create(inviterIdentity, channelId, sessionId, null, expiration, sessionKey);
+		byte[] originalKey = ticket.getSessionKey();
+
+		// Mutate the original passed array
+		sessionKey[0] ^= 0xFF;
+		assertTrue(java.util.Arrays.equals(originalKey, ticket.getSessionKey()));
+
+		// Mutate the retrieved array
+		byte[] retrievedKey = ticket.getSessionKey();
+		retrievedKey[0] ^= 0xFF;
+		assertTrue(java.util.Arrays.equals(originalKey, ticket.getSessionKey()));
+	}
 }

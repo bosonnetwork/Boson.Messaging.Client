@@ -22,13 +22,17 @@
 
 package io.bosonnetwork.photonmessaging.impl;
 
-import java.util.ArrayList;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.bosonnetwork.photonmessaging.SessionInfo;
 import io.bosonnetwork.photonmessaging.SessionListener;
 
-public class SessionListenerArray extends ArrayList<SessionListener> implements SessionListener {
+public class SessionListenerArray extends CopyOnWriteArrayList<SessionListener> implements SessionListener {
 	private static final long serialVersionUID = -7777075924791490548L;
+	private static final Logger log = LoggerFactory.getLogger(SessionListenerArray.class);
 
 	public SessionListenerArray(SessionListener existing, SessionListener newListener) {
 		super();
@@ -38,7 +42,12 @@ public class SessionListenerArray extends ArrayList<SessionListener> implements 
 
 	@Override
 	public void onNewSession(SessionInfo sessionInfo) {
-		for (SessionListener listener : this)
-			listener.onNewSession(sessionInfo);
+		for (SessionListener listener : this) {
+			try {
+				listener.onNewSession(sessionInfo);
+			} catch (Throwable t) {
+				log.error("Error dispatching onNewSession to listener: {}", listener, t);
+			}
+		}
 	}
 }

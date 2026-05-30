@@ -184,6 +184,7 @@ public class MessageContent implements Message.Content {
 			case BINARY -> {
 				if (!(body instanceof byte[]))
 					throw new IllegalArgumentException("Invalid binary content");
+				body = ((byte[]) body).clone();
 			}
 			case OBJECT -> {}
 		}
@@ -209,7 +210,8 @@ public class MessageContent implements Message.Content {
 
 	public static MessageContent binary(Map<String, Object> headers, byte[] binary) {
 		Objects.requireNonNull(binary, "binary");
-		return new MessageContent(headers, Format.BINARY, binary, binary);
+		byte[] cloned = binary.clone();
+		return new MessageContent(headers, Format.BINARY, cloned, cloned);
 	}
 
 	public static MessageContent binary(byte[] binary) {
@@ -252,7 +254,7 @@ public class MessageContent implements Message.Content {
 	public byte[] asBinary() {
 		return switch (format) {
 			case TEXT -> ((String) body).getBytes(StandardCharsets.UTF_8);
-			case BINARY-> (byte[]) body;
+			case BINARY-> ((byte[]) body).clone();
 			case OBJECT -> Json.toBytes(body);
 		};
 	}

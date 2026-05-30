@@ -22,15 +22,19 @@
 
 package io.bosonnetwork.photonmessaging.impl;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Contact;
 import io.bosonnetwork.photonmessaging.ContactListener;
 
-public class ContactListenerArray extends ArrayList<ContactListener> implements ContactListener {
+public class ContactListenerArray extends CopyOnWriteArrayList<ContactListener> implements ContactListener {
 	private static final long serialVersionUID = -6724210075837468138L;
+	private static final Logger log = LoggerFactory.getLogger(ContactListenerArray.class);
 
 	public ContactListenerArray(ContactListener existing, ContactListener newListener) {
 		super();
@@ -40,25 +44,45 @@ public class ContactListenerArray extends ArrayList<ContactListener> implements 
 
 	@Override
 	public void onContactAdded(Contact contact) {
-		for (ContactListener listener : this)
-			listener.onContactAdded(contact);
+		for (ContactListener listener : this) {
+			try {
+				listener.onContactAdded(contact);
+			} catch (Throwable t) {
+				log.error("Error dispatching onContactAdded to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onContactsUpdated(List<Contact> contacts) {
-		for (ContactListener listener : this)
-			listener.onContactsUpdated(contacts);
+		for (ContactListener listener : this) {
+			try {
+				listener.onContactsUpdated(contacts);
+			} catch (Throwable t) {
+				log.error("Error dispatching onContactsUpdated to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onContactsRemoved(List<Id> contactIds) {
-		for (ContactListener listener : this)
-			listener.onContactsRemoved(contactIds);
+		for (ContactListener listener : this) {
+			try {
+				listener.onContactsRemoved(contactIds);
+			} catch (Throwable t) {
+				log.error("Error dispatching onContactsRemoved to listener: {}", listener, t);
+			}
+		}
 	}
 
 	@Override
 	public void onContactsCleared() {
-		for (ContactListener listener : this)
-			listener.onContactsCleared();
+		for (ContactListener listener : this) {
+			try {
+				listener.onContactsCleared();
+			} catch (Throwable t) {
+				log.error("Error dispatching onContactsCleared to listener: {}", listener, t);
+			}
+		}
 	}
 }
