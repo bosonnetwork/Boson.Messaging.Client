@@ -34,10 +34,9 @@ public class SessionListenerArray extends CopyOnWriteArrayList<SessionListener> 
 	private static final long serialVersionUID = -7777075924791490548L;
 	private static final Logger log = LoggerFactory.getLogger(SessionListenerArray.class);
 
-	public SessionListenerArray(SessionListener existing, SessionListener newListener) {
+	public SessionListenerArray(SessionListener listener) {
 		super();
-		add(existing);
-		add(newListener);
+		add(listener);
 	}
 
 	@Override

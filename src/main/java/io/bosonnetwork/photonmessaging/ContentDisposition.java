@@ -107,7 +107,7 @@ public class ContentDisposition {
 	 *
 	 * @param filename the filename to include
 	 * @return an attachment disposition with a filename
-	 * @throws NullPointerException if filename is null
+	 * @throws NullPointerException if the filename is null
 	 */
 	public static ContentDisposition attachment(String filename) {
 		Objects.requireNonNull(filename, "filename");
@@ -197,7 +197,9 @@ public class ContentDisposition {
 	 *
 	 * @param header the header string to parse
 	 * @return the parsed {@link ContentDisposition}
-	 * @throws NullPointerException if header is null
+	 * @throws NullPointerException if the header is null
+	 * @throws IllegalArgumentException if the disposition type is not one of {@code inline}
+	 *         or {@code attachment}, or if an embedded RFC 5987 filename is malformed
 	 */
 	public static ContentDisposition parse(String header) {
 		Objects.requireNonNull(header, "header");

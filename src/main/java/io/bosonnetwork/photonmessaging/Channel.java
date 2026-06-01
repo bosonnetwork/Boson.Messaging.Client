@@ -48,44 +48,49 @@ public interface Channel extends Contact {
 		 * Indicates that the channel is open to all users without requiring any specific
 		 * invitation or approval. Users can freely join and interact without restrictions.
 		 */
-		PUBLIC,
-		// new members should be invited by the members
+		PUBLIC(0),
 		/**
 		 * Represents a permission level where new members can only join a channel
 		 * if they are explicitly invited by existing members. This enforces a more
 		 * controlled and selective process for adding participants to the channel.
 		 */
-		MEMBER_INVITE,
+		MEMBER_INVITE(1),
 		/**
 		 * Represents a permission level where new members can only join a channel
 		 * if they are invited by a moderator. This ensures that moderators have
 		 * control over who can participate in the channel, providing an added layer
 		 * of oversight and security.
 		 */
-		MODERATOR_INVITE,
+		MODERATOR_INVITE(2),
 		/**
 		 * Represents a permission level where new members can only join a channel
 		 * if they are invited by the owner. This provides the highest degree of control
 		 * over whom is allowed to participate, ensuring that only individuals explicitly
 		 * approved by the owner can join.
 		 */
-		OWNER_INVITE;
+		OWNER_INVITE(3);
+
+		private final int value;
+
+		Permission(int value) {
+			this.value = value;
+		}
 
 		/**
-		 * Returns the ordinal value of the enum constant, which represents its position
-		 * in the declaration order. This value is used for serialization purposes
-		 * and can be mapped back to the corresponding enum constant.
+		 * Returns the stable integer value associated with this permission. This value is
+		 * used for serialization purposes and is independent of the constant's declaration
+		 * order, so it can be safely mapped back via {@link #valueOf(int)}.
 		 *
-		 * @return the integer ordinal value of the enum constant
+		 * @return the integer value representing the permission
 		 */
 		@JsonValue
 		public int value() {
-			return ordinal();
+			return value;
 		}
 
 		/**
 		 * Converts an integer value to the corresponding {@code Permission} enum constant.
-		 * The mapping is based on the ordinal positions of the constants:
+		 * The mapping is based on the stable {@link #value()} of each constant.
 		 *
 		 * @param value the integer value representing a {@code Permission} level
 		 * @return the corresponding {@code Permission} enum constant
@@ -306,7 +311,7 @@ public interface Channel extends Contact {
 	 * regular users, moderators, and the channel owner, and will be updated based on the
 	 * most recent state of the channel.
 	 *
-	 * @return a {@code Future<Void>} that completes once the member-loading process is finished.
+* @return a {@code CompletableFuture<Void>} that completes once the member-loading process is finished.
 	 */
 	public CompletableFuture<Void> loadMembers();
 
@@ -357,18 +362,24 @@ public interface Channel extends Contact {
 	boolean hasMember(Id memberId);
 
 	/**
-	 * Prepares a {@link Editor} instance to modify the properties of the current channel.
+	 * Prepares an {@link Editor} instance to modify the channel-specific properties of the
+	 * current channel (permission, name, notice and announce flag).
 	 * <p>
-	 * Since {@link Channel} is immutable, the builder will return a new instance
-	 * reflecting any modifications when {@link Editor#build()} is called.
+	 * Common contact-level properties (remark, tags, muted and blocked) are edited
+	 * separately through the inherited {@link Contact#edit()} method.
+	 * <p>
+	 * Since {@link Channel} is immutable, the editor returns a new instance reflecting any
+	 * modifications when {@link Editor#build()} is called.
 	 *
-	 * @return a {@link Editor} instance to configure and apply changes to the channel
+	 * @return an {@link Editor} instance to configure and apply changes to the channel
 	 */
 	Editor editChannel();
 
 	/**
-	 * A builder for creating or updating {@link Channel} instances.
-	 * Extends {@link Contact.Editor} to provide channel-specific configuration.
+	 * A builder for updating the channel-specific properties of a {@link Channel}.
+	 * <p>
+	 * This editor covers only channel-specific fields. To change common contact-level
+	 * fields, use the {@link Contact.Editor} obtained from {@link Contact#edit()}.
 	 */
 	interface Editor {
 		/**

@@ -36,10 +36,9 @@ public class ChannelListenerArray extends CopyOnWriteArrayList<ChannelListener> 
 	private static final long serialVersionUID = -6049409118596156775L;
 	private static final Logger log = LoggerFactory.getLogger(ChannelListenerArray.class);
 
-	public ChannelListenerArray(ChannelListener existing, ChannelListener newListener) {
+	public ChannelListenerArray(ChannelListener listener) {
 		super();
-		add(existing);
-		add(newListener);
+		add(listener);
 	}
 
 	@Override

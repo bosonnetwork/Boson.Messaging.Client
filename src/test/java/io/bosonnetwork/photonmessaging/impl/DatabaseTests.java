@@ -199,7 +199,7 @@ public class DatabaseTests {
 		}
 
 		Future.all(futures)
-				.compose(v -> db.getMessages(convId, System.currentTimeMillis(), 10, 0))
+				.compose(v -> db.getMessagesBefore(convId, System.currentTimeMillis(), 10, 0))
 				.onComplete(context.succeeding(messages -> {
 					context.verify(() -> {
 						assertEquals(3, messages.size());
@@ -255,14 +255,14 @@ public class DatabaseTests {
 					// Verify members and messages exist
 					return db.getAllChannelMembers(channelId).compose(members -> {
 						assertEquals(1, members.size());
-						return db.getMessages(channelId, System.currentTimeMillis(), 10, 0);
+						return db.getMessagesBefore(channelId, System.currentTimeMillis(), 10, 0);
 					}).onSuccess(messages -> assertEquals(1, messages.size()));
 				})
 				.compose(v -> db.removeContactLocally(channelId))
 				.compose(v -> db.getAllChannelMembers(channelId))
 				.compose(members -> {
 					context.verify(() -> assertEquals(0, members.size(), "Channel members should be Cascaded deleted"));
-					return db.getMessages(channelId, System.currentTimeMillis(), 10, 0);
+					return db.getMessagesBefore(channelId, System.currentTimeMillis(), 10, 0);
 				})
 				.onComplete(context.succeeding(messages -> {
 					context.verify(() -> assertEquals(0, messages.size(), "Messages should be Cascaded deleted"));
@@ -286,7 +286,7 @@ public class DatabaseTests {
 					m1.setSentAt(System.currentTimeMillis() + 1000);
 					return db.updateMessageSentTime(m1);
 				})
-				.compose(v -> db.getMessages(convId, System.currentTimeMillis(), 10, 0))
+				.compose(v -> db.getMessagesBefore(convId, System.currentTimeMillis(), 10, 0))
 				.compose(messages -> {
 					context.verify(() -> {
 						assertEquals(3, messages.size());
@@ -297,7 +297,7 @@ public class DatabaseTests {
 				})
 				.compose(removed -> {
 					context.verify(() -> assertTrue(removed));
-					return db.getMessages(convId, System.currentTimeMillis(), 10, 0);
+					return db.getMessagesBefore(convId, System.currentTimeMillis(), 10, 0);
 				})
 				.compose(messages -> {
 					context.verify(() -> assertEquals(2, messages.size()));
@@ -305,7 +305,7 @@ public class DatabaseTests {
 				})
 				.compose(removed -> {
 					context.verify(() -> assertTrue(removed));
-					return db.getMessages(convId, System.currentTimeMillis(), 10, 0);
+					return db.getMessagesBefore(convId, System.currentTimeMillis(), 10, 0);
 				})
 				.onComplete(context.succeeding(messages -> {
 					context.verify(() -> assertEquals(0, messages.size()));

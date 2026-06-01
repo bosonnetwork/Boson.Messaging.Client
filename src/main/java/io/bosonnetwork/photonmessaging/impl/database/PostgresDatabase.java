@@ -36,6 +36,7 @@ import io.vertx.sqlclient.SqlConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.bosonnetwork.database.SqlSafety;
 import io.bosonnetwork.photonmessaging.impl.Database;
 import io.bosonnetwork.utils.FileUtils;
 
@@ -56,7 +57,10 @@ public class PostgresDatabase extends Database {
 	public PostgresDatabase(String connectionUri, int poolSize, String schema) {
 		this.connectionUri = connectionUri;
 		this.poolSize = poolSize <= 0 ? DEFAULT_POOL_SIZE : poolSize;
-		this.schema = schema;
+		// Defense-in-depth: the schema is interpolated into "SET search_path TO ..." in
+		// prepareConnection(), so re-validate it here even though Configuration already does —
+		// this class must not assume its caller validated the identifier.
+		this.schema = SqlSafety.validateSchema(schema);
 		this.sqlDialect = new PostgresSqlDialect();
 	}
 
