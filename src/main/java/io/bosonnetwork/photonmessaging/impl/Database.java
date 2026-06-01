@@ -334,7 +334,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	@Override
-	public Future<List<PhotonMessage<MessageContent>>> getMessages(Id conversationId, long begin, long end) {
+	public Future<List<PhotonMessage<MessageContent>>> getMessagesInRange(Id conversationId, long begin, long end) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectMessagesByTimeRange())
 						.execute(Map.of("conversationId", conversationId.bytesUnsafe(),
@@ -348,7 +348,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	@Override
-	public Future<List<PhotonMessage<MessageContent>>> getMessages(Id conversationId, long until, int limit, int offset) {
+	public Future<List<PhotonMessage<MessageContent>>> getMessagesBefore(Id conversationId, long until, int limit, int offset) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectMessagesWithPagination())
 						.execute(Map.of("conversationId", conversationId.bytesUnsafe(),
@@ -731,7 +731,9 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		long sentAt = row.getLong("sent_at");
 		long receivedAt = row.getLong("received_at");
 
-		MessageContent content = MessageContent.parse(payloadBytes);
+		// The payload column is nullable (BLOB/BYTEA DEFAULT NULL), so guard against a null payload
+		// rather than letting MessageContent.parse(null) throw.
+		MessageContent content = payloadBytes == null ? null : MessageContent.parse(payloadBytes);
 		return new PhotonMessage<>(rid, conversationId, version, id, recipient, type, fromId,
 				createdAt, content, sentAt, receivedAt);
 	}
@@ -779,7 +781,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 
 	private Contact rowToContact(Row row) {
 		Id id = getId(row, "id");
-		Contact.Type type = Contact.Type.of(row.getInteger("type"));
+		Contact.Type type = Contact.Type.valueOf(row.getInteger("type"));
 		byte[] sessionKey = getBytes(row, "session_key");
 		String name = row.getString("name");
 		String avatar = row.getString("avatar");
@@ -856,7 +858,8 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		long msgSentAt = row.getLong("last_message_sent_at");
 		long msgReceivedAt = row.getLong("last_message_received_at");
 
-		MessageContent content = MessageContent.parse(msgPayloadBytes);
+		// The payload column is nullable (BLOB/BYTEA DEFAULT NULL); guard against a null payload.
+		MessageContent content = msgPayloadBytes == null ? null : MessageContent.parse(msgPayloadBytes);
 		PhotonMessage<MessageContent> lastMessage = new PhotonMessage<>(msgRid, msgConversationId, msgVersion, msgId,
 				msgRecipient, msgType, msgFromId, msgCreatedAt, content, msgSentAt, msgReceivedAt);
 
@@ -885,6 +888,8 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		return buf == null ? null : buf.getBytes();
 	}
 
+	// Booleans arrive typed differently per backend: PostgreSQL returns a Boolean, while SQLite
+	// stores them as integer 0/1 (Number). The String branch is only a last-resort fallback.
 	protected static boolean getBoolean(Row row, String column) {
 		Object value = row.getValue(column);
 		return value instanceof Boolean b ? b :

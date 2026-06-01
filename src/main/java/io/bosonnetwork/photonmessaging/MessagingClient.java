@@ -39,12 +39,35 @@ import io.bosonnetwork.photonmessaging.impl.PhotonMessagingClient;
  * <p>
  * This client provides comprehensive APIs for managing conversations, messages,
  * contacts, and channels within the Boson network.
+ * <p>
+ * <b>Asynchronous error contract.</b> Unless stated otherwise, the methods on this
+ * interface are non-blocking and report failures by completing the returned
+ * {@link CompletableFuture} exceptionally rather than by throwing. The completion
+ * exception is a {@link io.bosonnetwork.photonmessaging.exceptions.MessagingException}
+ * (or one of its subtypes), for example:
+ * <ul>
+ *   <li>{@link io.bosonnetwork.photonmessaging.exceptions.ChannelNotExistsException} /
+ *       {@link io.bosonnetwork.photonmessaging.exceptions.ContactNotExistsException}
+ *       when the target channel or contact does not exist;</li>
+ *   <li>{@link io.bosonnetwork.photonmessaging.exceptions.InsufficientPermissionException}
+ *       when the caller is not allowed to perform the operation;</li>
+ *   <li>{@link io.bosonnetwork.photonmessaging.exceptions.MessageTimeoutException} when a
+ *       send is not acknowledged in time;</li>
+ *   <li>{@link io.bosonnetwork.photonmessaging.exceptions.RepositoryException} for local
+ *       persistence failures, and
+ *       {@link io.bosonnetwork.photonmessaging.exceptions.rpc.RpcException} (carrying an
+ *       error code) for failures reported by the messaging service.</li>
+ * </ul>
+ * Argument-validation problems (such as {@code null} arguments or out-of-range values)
+ * are signalled synchronously with {@link NullPointerException} /
+ * {@link IllegalArgumentException}, and calling a method while the client is not running
+ * fails fast with {@link IllegalStateException}.
  */
 public interface MessagingClient {
 	/**
 	 * Default limit for the number of messages to retrieve in a single request.
 	 */
-	static int DEFAULT_MESSAGES_LIMIT = 100;
+	static final int DEFAULT_MESSAGES_LIMIT = 100;
 
 	////////////////////////////////////////////////////////////////////////////
 	// Client identities
@@ -258,7 +281,9 @@ public interface MessagingClient {
 	 * Removes a conversation and all its associated messages.
 	 *
 	 * @param conversationId the identifier of the conversation to remove.
-	 * @return a {@link CompletableFuture} that will be completed with {@code true} if successful; {@code false} otherwise.
+	 * @return a {@link CompletableFuture} that completes with {@code true} if at least one matching
+	 *         entry was removed, or {@code false} if nothing was removed because no matching entry
+	 *         existed. The future completes exceptionally if the operation itself fails.
 	 */
 	default CompletableFuture<Boolean> removeConversation(Id conversationId) {
 		return removeConversations(List.of(conversationId));
@@ -268,7 +293,9 @@ public interface MessagingClient {
 	 * Removes multiple conversations and all their associated messages.
 	 *
 	 * @param conversationIds the identifiers of the conversations to remove.
-	 * @return a {@link CompletableFuture} that will be completed with {@code true} if successful; {@code false} otherwise.
+	 * @return a {@link CompletableFuture} that completes with {@code true} if at least one matching
+	 *         entry was removed, or {@code false} if nothing was removed because no matching entry
+	 *         existed. The future completes exceptionally if the operation itself fails.
 	 */
 	CompletableFuture<Boolean> removeConversations(Collection<Id> conversationIds);
 
@@ -279,7 +306,7 @@ public interface MessagingClient {
 	 * @return a {@link CompletableFuture} that will be completed with the list of {@link Message}s.
 	 */
 	default CompletableFuture<List<Message>> getMessages(Id conversationId) {
-		return getMessages(conversationId, System.currentTimeMillis(), DEFAULT_MESSAGES_LIMIT, 0);
+		return getMessagesBefore(conversationId, System.currentTimeMillis(), DEFAULT_MESSAGES_LIMIT, 0);
 	}
 
 	/**
@@ -291,7 +318,7 @@ public interface MessagingClient {
 	 * @param offset the number of messages to skip.
 	 * @return a {@link CompletableFuture} that will be completed with the list of {@link Message}s.
 	 */
-	CompletableFuture<List<Message>> getMessages(Id conversationId, long until, int limit, int offset);
+	CompletableFuture<List<Message>> getMessagesBefore(Id conversationId, long until, int limit, int offset);
 
 	/**
 	 * Retrieves a list of messages for a specific conversation within a time range.
@@ -301,13 +328,15 @@ public interface MessagingClient {
 	 * @param end the end timestamp (inclusive).
 	 * @return a {@link CompletableFuture} that will be completed with the list of {@link Message}s.
 	 */
-	CompletableFuture<List<Message>> getMessages(Id conversationId, long begin, long end);
+	CompletableFuture<List<Message>> getMessagesInRange(Id conversationId, long begin, long end);
 
 	/**
 	 * Removes a specific message by its internal identifier.
 	 *
 	 * @param messageId the internal numeric identifier of the message.
-	 * @return a {@link CompletableFuture} that will be completed with {@code true} if successful; {@code false} otherwise.
+	 * @return a {@link CompletableFuture} that completes with {@code true} if at least one matching
+	 *         entry was removed, or {@code false} if nothing was removed because no matching entry
+	 *         existed. The future completes exceptionally if the operation itself fails.
 	 */
 	default CompletableFuture<Boolean> removeMessage(long messageId) {
 		return removeMessages(List.of(messageId));
@@ -317,7 +346,9 @@ public interface MessagingClient {
 	 * Removes multiple specific messages by their internal identifiers.
 	 *
 	 * @param messageIds the internal numeric identifiers of the messages to remove.
-	 * @return a {@link CompletableFuture} that will be completed with {@code true} if successful; {@code false} otherwise.
+	 * @return a {@link CompletableFuture} that completes with {@code true} if at least one matching
+	 *         entry was removed, or {@code false} if nothing was removed because no matching entry
+	 *         existed. The future completes exceptionally if the operation itself fails.
 	 */
 	CompletableFuture<Boolean> removeMessages(Collection<Long> messageIds);
 
@@ -325,7 +356,9 @@ public interface MessagingClient {
 	 * Removes all messages associated with a specific conversation.
 	 *
 	 * @param conversationId the identifier of the conversation.
-	 * @return a {@link CompletableFuture} that will be completed with {@code true} if successful; {@code false} otherwise.
+	 * @return a {@link CompletableFuture} that completes with {@code true} if at least one matching
+	 *         entry was removed, or {@code false} if nothing was removed because no matching entry
+	 *         existed. The future completes exceptionally if the operation itself fails.
 	 */
 	CompletableFuture<Boolean> removeMessages(Id conversationId);
 
@@ -386,7 +419,9 @@ public interface MessagingClient {
 	 * Removes a friend request.
 	 *
 	 * @param id the identifier of the user associated with the request to remove.
-	 * @return a {@link CompletableFuture} that will be completed with {@code true} if successful; {@code false} otherwise.
+	 * @return a {@link CompletableFuture} that completes with {@code true} if at least one matching
+	 *         entry was removed, or {@code false} if nothing was removed because no matching entry
+	 *         existed. The future completes exceptionally if the operation itself fails.
 	 */
 	CompletableFuture<Boolean> removeFriendRequest(Id id);
 
@@ -394,7 +429,9 @@ public interface MessagingClient {
 	 * Removes multiple friend requests.
 	 *
 	 * @param ids the identifiers of the users associated with the requests to remove.
-	 * @return a {@link CompletableFuture} that will be completed with {@code true} if successful; {@code false} otherwise.
+	 * @return a {@link CompletableFuture} that completes with {@code true} if at least one matching
+	 *         entry was removed, or {@code false} if nothing was removed because no matching entry
+	 *         existed. The future completes exceptionally if the operation itself fails.
 	 */
 	CompletableFuture<Boolean> removeFriendRequests(Collection<Id> ids);
 
@@ -465,7 +502,9 @@ public interface MessagingClient {
 	 * Removes a channel. Only the owner can remove a channel.
 	 *
 	 * @param channelId the identifier of the channel to remove.
-	 * @return a {@link CompletableFuture} that will be completed with {@code true} if successful; {@code false} otherwise.
+	 * @return a {@link CompletableFuture} that completes with {@code true} if at least one matching
+	 *         entry was removed, or {@code false} if nothing was removed because no matching entry
+	 *         existed. The future completes exceptionally if the operation itself fails.
 	 */
 	CompletableFuture<Boolean> removeChannel(Id channelId);
 
@@ -481,7 +520,9 @@ public interface MessagingClient {
 	 * Leaves a channel.
 	 *
 	 * @param channelId the identifier of the channel to leave.
-	 * @return a {@link CompletableFuture} that will be completed with {@code true} if successful; {@code false} otherwise.
+	 * @return a {@link CompletableFuture} that completes with {@code true} if at least one matching
+	 *         entry was removed, or {@code false} if nothing was removed because no matching entry
+	 *         existed. The future completes exceptionally if the operation itself fails.
 	 */
 	CompletableFuture<Boolean> leaveChannel(Id channelId);
 
@@ -548,7 +589,7 @@ public interface MessagingClient {
 	 * @param role the new role to be assigned.
 	 * @return a {@link CompletableFuture} that completes when the roles have been updated.
 	 */
-	CompletableFuture<Void> setChannelMembersRole(Id channelId, List<Id> members, Channel.Role role);
+	CompletableFuture<Void> setChannelMembersRole(Id channelId, Collection<Id> members, Channel.Role role);
 
 	/**
 	 * Bans specific members from a channel.
@@ -557,7 +598,7 @@ public interface MessagingClient {
 	 * @param members the list of identifiers of members to ban.
 	 * @return a {@link CompletableFuture} that completes when the members have been banned.
 	 */
-	CompletableFuture<Void> banChannelMembers(Id channelId, List<Id> members);
+	CompletableFuture<Void> banChannelMembers(Id channelId, Collection<Id> members);
 
 	/**
 	 * Unbans specific members from a channel.
@@ -566,7 +607,7 @@ public interface MessagingClient {
 	 * @param members the list of identifiers of members to unban.
 	 * @return a {@link CompletableFuture} that completes when the members have been unbanned.
 	 */
-	CompletableFuture<Void> unbanChannelMembers(Id channelId, List<Id> members);
+	CompletableFuture<Void> unbanChannelMembers(Id channelId, Collection<Id> members);
 
 	/**
 	 * Removes (kicks) specific members from a channel.
@@ -575,7 +616,7 @@ public interface MessagingClient {
 	 * @param members the list of identifiers of members to remove.
 	 * @return a {@link CompletableFuture} that completes when the members have been removed.
 	 */
-	CompletableFuture<Void> removeChannelMembers(Id channelId, List<Id> members);
+	CompletableFuture<Void> removeChannelMembers(Id channelId, Collection<Id> members);
 
 	////////////////////////////////////////////////////////////////////////////
 	// Generic contact APIs
@@ -599,7 +640,7 @@ public interface MessagingClient {
 	 * Updates the settings of a generic contact (e.g., remark, muted status).
 	 *
 	 * @param contact the {@link Contact} object containing updated information.
-	 * @return a {@link CompletableFuture} that containing the updated contact object.
+	 * @return a {@link CompletableFuture} that will be completed with the updated contact object.
 	 */
 	CompletableFuture<Contact> updateContact(Contact contact);
 
@@ -607,7 +648,9 @@ public interface MessagingClient {
 	 * Removes a specific contact.
 	 *
 	 * @param contactId the identifier of the contact to remove.
-	 * @return a {@link CompletableFuture} that will be completed with {@code true} if successful; {@code false} otherwise.
+	 * @return a {@link CompletableFuture} that completes with {@code true} if at least one matching
+	 *         entry was removed, or {@code false} if nothing was removed because no matching entry
+	 *         existed. The future completes exceptionally if the operation itself fails.
 	 */
 	default CompletableFuture<Boolean> removeContact(Id contactId) {
 		return removeContacts(List.of(contactId));
@@ -617,9 +660,11 @@ public interface MessagingClient {
 	 * Removes multiple contacts.
 	 *
 	 * @param contactIds the identifiers of the contacts to remove.
-	 * @return a {@link CompletableFuture} that will be completed with {@code true} if successful; {@code false} otherwise.
+	 * @return a {@link CompletableFuture} that completes with {@code true} if at least one matching
+	 *         entry was removed, or {@code false} if nothing was removed because no matching entry
+	 *         existed. The future completes exceptionally if the operation itself fails.
 	 */
-	CompletableFuture<Boolean> removeContacts(List<Id> contactIds);
+	CompletableFuture<Boolean> removeContacts(Collection<Id> contactIds);
 
 	/**
 	 * Clears all generic contacts.

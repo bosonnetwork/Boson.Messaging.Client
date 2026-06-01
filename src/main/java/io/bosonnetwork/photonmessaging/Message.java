@@ -40,22 +40,30 @@ public interface Message {
 	 */
 	enum Type {
 		/** Handshake message */
-		HANDSHAKE_MESSAGE,
+		HANDSHAKE_MESSAGE(0),
 		/** Standard user-to-user content. */
-		CONTENT_MESSAGE,
+		CONTENT_MESSAGE(1),
 		/** Internal RPC call or control instructions. */
-		CONTROL_MESSAGE,
+		CONTROL_MESSAGE(2),
 		/** User/Device status updates. */
-		STATE_MESSAGE;
+		STATE_MESSAGE(3);
+
+		private final int value;
+
+		Type(int value) {
+			this.value = value;
+		}
 
 		/**
-		 * Returns the numeric value associated with this message type.
+		 * Returns the stable numeric value associated with this message type. This value is
+		 * used for serialization purposes and is independent of the constant's declaration
+		 * order, so it can be safely mapped back via {@link #valueOf(int)}.
 		 *
 		 * @return the message type value.
 		 */
 		@JsonValue
 		public int value() {
-			return ordinal();
+			return value;
 		}
 
 		/**
@@ -168,7 +176,7 @@ public interface Message {
 
 		/**
 		 * Retrieves the content type of the message.
-		 * The default content type is "plain/text" if not specified.
+		 * The default content type is "text/plain" if not specified.
 		 *
 		 * @return the content type as a string, representing the media type (e.g., "text/plain", "application/json").
 		 */

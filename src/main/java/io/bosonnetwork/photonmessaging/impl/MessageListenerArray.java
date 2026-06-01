@@ -34,10 +34,9 @@ public class MessageListenerArray extends CopyOnWriteArrayList<MessageListener> 
 	private static final long serialVersionUID = 4311687361012466140L;
 	private static final Logger log = LoggerFactory.getLogger(MessageListenerArray.class);
 
-	public MessageListenerArray(MessageListener existing, MessageListener newListener) {
+	public MessageListenerArray(MessageListener listener) {
 		super();
-		add(existing);
-		add(newListener);
+		add(listener);
 	}
 
 	@Override

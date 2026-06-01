@@ -33,10 +33,9 @@ public class ConnectionListenerArray extends CopyOnWriteArrayList<ConnectionList
 	private static final long serialVersionUID = -7838487839783662456L;
 	private static final Logger log = LoggerFactory.getLogger(ConnectionListenerArray.class);
 
-	public ConnectionListenerArray(ConnectionListener existing, ConnectionListener newListener) {
+	public ConnectionListenerArray(ConnectionListener listener) {
 		super();
-		add(existing);
-		add(newListener);
+		add(listener);
 	}
 
 	@Override

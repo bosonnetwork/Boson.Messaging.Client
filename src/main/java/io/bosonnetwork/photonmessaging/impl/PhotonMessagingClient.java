@@ -23,6 +23,8 @@
 package io.bosonnetwork.photonmessaging.impl;
 
 import java.net.URI;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -34,6 +36,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
@@ -96,7 +99,9 @@ import io.bosonnetwork.vertx.VertxCaffeine;
 
 public class PhotonMessagingClient extends BosonVerticle implements MessagingClient {
 	private final boolean internalVertx;
-	private final Vertx providedVertx;
+	// Non-final: when no external Vertx is supplied, the internal one is created lazily in
+	// start() (and closed in stop()), so a constructed-but-never-started client leaks no threads.
+	private Vertx providedVertx;
 	private final Node node;
 	private final Configuration config;
 
@@ -110,18 +115,29 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private MqttClient mqttClient;
 	private int failures;
 
-	private ConnectionListener connectionListener;
-	private MessageListener messageListener;
-	private ChannelListener channelListener;
-	private ContactListener contactListener;
-	private SessionListener sessionListener;
-	private FriendRequestListener friendRequestListener;
+	// Listeners are stored in the CopyOnWriteArrayList-backed *ListenerArray wrappers (even a
+	// single listener), so dispatch is always exception-isolated (one bad listener cannot break
+	// the pipeline). Fields are volatile so the event-loop reader sees the latest reference;
+	// add/remove mutate them under listenersLock so registration (which may happen on any
+	// thread, including before start() when no Vert.x context exists yet) is race-free.
+	private final Object listenersLock = new Object();
+	private volatile ConnectionListener connectionListener;
+	private volatile MessageListener messageListener;
+	private volatile ChannelListener channelListener;
+	private volatile ContactListener contactListener;
+	private volatile SessionListener sessionListener;
+	private volatile FriendRequestListener friendRequestListener;
 
 	private final Database repository;
 
 	private volatile int contactsRevision;
 	private AsyncLoadingCache<Id, PhotonContact> contactCache;
 	private AsyncLoadingCache<Id, PhotonConversation> conversationCache;
+	// Thread-confinement invariant: these maps are accessed ONLY on this verticle's
+	// event-loop context (from sendMessageInternal/sendRpcCall, which public methods reach
+	// via runOnContext, and from the MQTT publish/response handlers which run on the same
+	// context). They are therefore intentionally plain HashMaps, not concurrent maps. Do not
+	// touch them from any other thread without marshalling onto vertxContext first.
 	private final Map<Integer, PhotonMessage<?>> inflightMessages;
 	private final Map<Long, RpcCall<?>> inflightRpcCalls;
 
@@ -129,11 +145,20 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private volatile boolean ready;
 	private volatile boolean running;
 
+	// Public lifecycle gate. A client instance is single-use: it can be started once and stopped
+	// once, and cannot be restarted after stopping (stop() closes the internal Vertx and the
+	// repository, neither of which is recreated). start() transitions NEW -> RUNNING and stop()
+	// transitions RUNNING -> STOPPED via compareAndSet, so both are atomic, one-shot, and reject
+	// reuse.
+	private enum State { NEW, RUNNING, STOPPED }
+	private final AtomicReference<State> state = new AtomicReference<>(State.NEW);
+
 	private static final Logger log = LoggerFactory.getLogger(PhotonMessagingClient.class);
 
 	public PhotonMessagingClient(Vertx vertx, Node node, Configuration config) {
 		this.internalVertx = vertx == null;
-		this.providedVertx = vertx == null ? Vertx.vertx() : vertx;
+		// When no external Vertx is supplied, the internal one is created lazily in start().
+		this.providedVertx = vertx;
 		this.config = Objects.requireNonNull(config, "config");
 		this.node = config.getServiceEndpoint() == null ? Objects.requireNonNull(node, "node") : node;
 
@@ -152,19 +177,25 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		this.inflightMessages = new HashMap<>();
 		this.inflightRpcCalls = new HashMap<>();
 
-		providedVertx.fileSystem().mkdirsBlocking(config.getDataDir().toString());
+		// Prepare directories with plain NIO so the constructor does not depend on a Vert.x
+		// instance (the internal Vertx, if any, does not exist until start()).
+		try {
+			Files.createDirectories(config.getDataDir());
 
-		String databaseUri = config.getDatabaseUri();
-		// fix the sqlite database file location
-		if (databaseUri.startsWith(SqliteDatabase.CONNECTION_URI_PREFIX)) {
-			Path dbFile = Path.of(databaseUri.substring(SqliteDatabase.CONNECTION_URI_PREFIX.length()));
-			if (!dbFile.isAbsolute())
-				databaseUri = SqliteDatabase.CONNECTION_URI_PREFIX + config.getDataDir().resolve(dbFile).toAbsolutePath();
-			else
-				providedVertx.fileSystem().mkdirsBlocking(dbFile.getParent().toString());
+			String databaseUri = config.getDatabaseUri();
+			// fix the sqlite database file location
+			if (databaseUri.startsWith(SqliteDatabase.CONNECTION_URI_PREFIX)) {
+				Path dbFile = Path.of(databaseUri.substring(SqliteDatabase.CONNECTION_URI_PREFIX.length()));
+				if (!dbFile.isAbsolute())
+					databaseUri = SqliteDatabase.CONNECTION_URI_PREFIX + config.getDataDir().resolve(dbFile).toAbsolutePath();
+				else
+					Files.createDirectories(dbFile.getParent());
+			}
+
+			this.repository = Database.create(databaseUri, config.getDatabasePoolSize(), config.getDatabaseSchemaName());
+		} catch (IOException e) {
+			throw new IllegalStateException("Failed to prepare the client data directory", e);
 		}
-
-		this.repository = Database.create(databaseUri, config.getDatabasePoolSize(), config.getDatabaseSchemaName());
 
 		this.connected = false;
 		this.ready = false;
@@ -200,156 +231,171 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	@Override
 	public void addConnectionListener(ConnectionListener listener) {
 		Objects.requireNonNull(listener, "listener");
-		if (this.connectionListener == null) {
-			this.connectionListener = listener;
-		} else {
-			if (this.connectionListener instanceof ConnectionListenerArray listeners)
+		synchronized (listenersLock) {
+			if (connectionListener instanceof ConnectionListenerArray listeners)
 				listeners.add(listener);
 			else
-				this.connectionListener = new ConnectionListenerArray(this.connectionListener, listener);
+				connectionListener = new ConnectionListenerArray(listener);
 		}
 	}
 
 	@Override
 	public void removeConnectionListener(ConnectionListener listener) {
-		ConnectionListener current = this.connectionListener;
-		if (current == listener)
-			this.connectionListener = null;
-		else if (current instanceof ConnectionListenerArray listeners)
-			listeners.remove(listener);
+		synchronized (listenersLock) {
+			if (connectionListener instanceof ConnectionListenerArray listeners) {
+				listeners.remove(listener);
+				if (listeners.isEmpty())
+					connectionListener = null;
+			}
+		}
 	}
 
 	@Override
 	public void addMessageListener(MessageListener listener) {
 		Objects.requireNonNull(listener, "listener");
-		if (this.messageListener == null) {
-			this.messageListener = listener;
-		} else {
-			if (this.messageListener instanceof MessageListenerArray listeners)
+		synchronized (listenersLock) {
+			if (messageListener instanceof MessageListenerArray listeners)
 				listeners.add(listener);
 			else
-				this.messageListener = new MessageListenerArray(this.messageListener, listener);
+				messageListener = new MessageListenerArray(listener);
 		}
 	}
 
 	@Override
 	public void removeMessageListener(MessageListener listener) {
-		MessageListener current = this.messageListener;
-		if (current == listener)
-			this.messageListener = null;
-		else if (current instanceof MessageListenerArray listeners)
-			listeners.remove(listener);
+		synchronized (listenersLock) {
+			if (messageListener instanceof MessageListenerArray listeners) {
+				listeners.remove(listener);
+				if (listeners.isEmpty())
+					messageListener = null;
+			}
+		}
 	}
 
 	@Override
 	public void addChannelListener(ChannelListener listener) {
 		Objects.requireNonNull(listener, "listener");
-		if (this.channelListener == null) {
-			this.channelListener = listener;
-		} else {
-			if (this.channelListener instanceof ChannelListenerArray listeners)
+		synchronized (listenersLock) {
+			if (channelListener instanceof ChannelListenerArray listeners)
 				listeners.add(listener);
 			else
-				this.channelListener = new ChannelListenerArray(this.channelListener, listener);
+				channelListener = new ChannelListenerArray(listener);
 		}
 	}
 
 	@Override
 	public void removeChannelListener(ChannelListener listener) {
-		ChannelListener current = this.channelListener;
-		if (current == listener)
-			this.channelListener = null;
-		else if (current instanceof ChannelListenerArray listeners)
-			listeners.remove(listener);
+		synchronized (listenersLock) {
+			if (channelListener instanceof ChannelListenerArray listeners) {
+				listeners.remove(listener);
+				if (listeners.isEmpty())
+					channelListener = null;
+			}
+		}
 	}
 
 	@Override
 	public void addContactListener(ContactListener listener) {
 		Objects.requireNonNull(listener, "listener");
-		if (this.contactListener == null) {
-			this.contactListener = listener;
-		} else {
-			if (this.contactListener instanceof ContactListenerArray listeners)
+		synchronized (listenersLock) {
+			if (contactListener instanceof ContactListenerArray listeners)
 				listeners.add(listener);
 			else
-				this.contactListener = new ContactListenerArray(this.contactListener, listener);
+				contactListener = new ContactListenerArray(listener);
 		}
 	}
 
 	@Override
 	public void removeContactListener(ContactListener listener) {
-		ContactListener current = this.contactListener;
-		if (current == listener)
-			this.contactListener = null;
-		else if (current instanceof ContactListenerArray listeners)
-			listeners.remove(listener);
+		synchronized (listenersLock) {
+			if (contactListener instanceof ContactListenerArray listeners) {
+				listeners.remove(listener);
+				if (listeners.isEmpty())
+					contactListener = null;
+			}
+		}
 	}
 
 	@Override
 	public void addSessionListener(SessionListener listener) {
 		Objects.requireNonNull(listener, "listener");
-		if (this.sessionListener == null) {
-			this.sessionListener = listener;
-		} else {
-			if (this.sessionListener instanceof SessionListenerArray listeners)
+		synchronized (listenersLock) {
+			if (sessionListener instanceof SessionListenerArray listeners)
 				listeners.add(listener);
 			else
-				this.sessionListener = new SessionListenerArray(this.sessionListener, listener);
+				sessionListener = new SessionListenerArray(listener);
 		}
 	}
 
 	@Override
 	public void removeSessionListener(SessionListener listener) {
-		SessionListener current = this.sessionListener;
-		if (current == listener)
-			this.sessionListener = null;
-		else if (current instanceof SessionListenerArray listeners)
-			listeners.remove(listener);
+		synchronized (listenersLock) {
+			if (sessionListener instanceof SessionListenerArray listeners) {
+				listeners.remove(listener);
+				if (listeners.isEmpty())
+					sessionListener = null;
+			}
+		}
 	}
 
 	@Override
 	public void addFriendRequestListener(FriendRequestListener listener) {
 		Objects.requireNonNull(listener, "listener");
-		if (this.friendRequestListener == null) {
-			this.friendRequestListener = listener;
-		} else {
-			if (this.friendRequestListener instanceof FriendRequestListenerArray listeners)
+		synchronized (listenersLock) {
+			if (friendRequestListener instanceof FriendRequestListenerArray listeners)
 				listeners.add(listener);
 			else
-				this.friendRequestListener = new FriendRequestListenerArray(this.friendRequestListener, listener);
+				friendRequestListener = new FriendRequestListenerArray(listener);
 		}
 	}
 
 	@Override
 	public void removeFriendRequestListener(FriendRequestListener listener) {
-		FriendRequestListener current = this.friendRequestListener;
-		if (current == listener)
-			this.friendRequestListener = null;
-		else if (current instanceof FriendRequestListenerArray listeners)
-			listeners.remove(listener);
+		synchronized (listenersLock) {
+			if (friendRequestListener instanceof FriendRequestListenerArray listeners) {
+				listeners.remove(listener);
+				if (listeners.isEmpty())
+					friendRequestListener = null;
+			}
+		}
 	}
 
 	@Override
 	public void removeAllListeners() {
-		this.connectionListener = null;
-		this.messageListener = null;
-		this.channelListener = null;
-		this.contactListener = null;
-		this.sessionListener = null;
-		this.friendRequestListener = null;
+		synchronized (listenersLock) {
+			connectionListener = null;
+			messageListener = null;
+			channelListener = null;
+			contactListener = null;
+			sessionListener = null;
+			friendRequestListener = null;
+		}
 	}
 
 	@Override
 	public ContextualFuture<Void> start() {
-		if (running)
-			return ContextualFuture.succeededFuture();
+		// One-shot NEW -> RUNNING: rejects concurrent double-deploy and any reuse after stop().
+		if (!state.compareAndSet(State.NEW, State.RUNNING))
+			return ContextualFuture.of(Future.failedFuture(new IllegalStateException(
+					"Messaging client is single-use and cannot be started more than once")));
 
-		return ContextualFuture.of(providedVertx.deployVerticle(this).mapEmpty());
+		// Create the internal Vert.x lazily here (not in the constructor), so a constructed-but-
+		// never-started client leaks no event-loop threads. It is owned by this client and closed
+		// in stop(); on a deploy failure we close it immediately to avoid leaking it.
+		if (internalVertx)
+			providedVertx = Vertx.vertx();
+
+		return ContextualFuture.of(providedVertx.deployVerticle(this).<Void>mapEmpty()
+				.onFailure(e -> {
+					if (internalVertx)
+						providedVertx.close();
+				}));
 	}
 
 	@Override
 	public ContextualFuture<Void> stop() {
-		if (!running)
+		// One-shot RUNNING -> STOPPED: no-op if never started or already stopped.
+		if (!state.compareAndSet(State.RUNNING, State.STOPPED))
 			return ContextualFuture.succeededFuture();
 
 		Future<Void> future = vertx.undeploy(deploymentID())
@@ -427,21 +473,21 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	@Override
-	public ContextualFuture<List<Message>> getMessages(Id conversationId, long until, int limit, int offset) {
+	public ContextualFuture<List<Message>> getMessagesBefore(Id conversationId, long until, int limit, int offset) {
 		Objects.requireNonNull(conversationId, "conversationId");
 		if (limit <= 0 || offset < 0)
 			throw new IllegalArgumentException("limit and offset must be positive");
 		runningCheck();
-		return ContextualFuture.of(repository.getMessages(conversationId, until, limit, offset).map(List::copyOf));
+		return ContextualFuture.of(repository.getMessagesBefore(conversationId, until, limit, offset).map(List::copyOf));
 	}
 
 	@Override
-	public ContextualFuture<List<Message>> getMessages(Id conversationId, long begin, long end) {
+	public ContextualFuture<List<Message>> getMessagesInRange(Id conversationId, long begin, long end) {
 		Objects.requireNonNull(conversationId, "conversationId");
 		if (begin > end)
 			throw new IllegalArgumentException("begin must be less than or equal to end");
 		runningCheck();
-		return ContextualFuture.of(repository.getMessages(conversationId, begin, end).map(List::copyOf));
+		return ContextualFuture.of(repository.getMessagesInRange(conversationId, begin, end).map(List::copyOf));
 	}
 
 	@Override
@@ -965,7 +1011,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	@Override
-	public ContextualFuture<Void> setChannelMembersRole(Id channelId, List<Id> members, Channel.Role role) {
+	public ContextualFuture<Void> setChannelMembersRole(Id channelId, Collection<Id> members, Channel.Role role) {
 		Objects.requireNonNull(channelId, "channelId");
 		Objects.requireNonNull(members, "members");
 		Objects.requireNonNull(role, "role");
@@ -988,7 +1034,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					if (!member.isOwner() && !member.isModerator())
 						return Future.failedFuture(new InsufficientPermissionException("Not an owner or a moderator of the channel"));
 
-					ChannelMembersRole params = new ChannelMembersRole(members, role);
+					ChannelMembersRole params = new ChannelMembersRole(List.copyOf(members), role);
 					RpcCall<List<Id>> call = RpcCall.updateChannelMembersRole(params);
 					return sendRpcCall(channelId, call).compose(ids -> {
 						channel.invalidateMembers();
@@ -1001,7 +1047,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	@Override
-	public ContextualFuture<Void> banChannelMembers(Id channelId, List<Id> members) {
+	public ContextualFuture<Void> banChannelMembers(Id channelId, Collection<Id> members) {
 		Objects.requireNonNull(channelId, "channelId");
 		Objects.requireNonNull(members, "members");
 		if (members.isEmpty())
@@ -1021,7 +1067,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					if (!member.isOwner() && !member.isModerator())
 						return Future.failedFuture(new InsufficientPermissionException("Not an owner or a moderator of the channel"));
 
-					RpcCall<List<Id>> call = RpcCall.banChannelMembers(members);
+					RpcCall<List<Id>> call = RpcCall.banChannelMembers(List.copyOf(members));
 					return sendRpcCall(channelId, call).compose(banned -> {
 						if (!banned.isEmpty()) {
 							channel.invalidateMembers();
@@ -1037,7 +1083,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	@Override
-	public ContextualFuture<Void> unbanChannelMembers(Id channelId, List<Id> members) {
+	public ContextualFuture<Void> unbanChannelMembers(Id channelId, Collection<Id> members) {
 		Objects.requireNonNull(channelId, "channelId");
 		Objects.requireNonNull(members, "members");
 		if (members.isEmpty())
@@ -1057,7 +1103,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					if (!member.isOwner() && !member.isModerator())
 						return Future.failedFuture(new InsufficientPermissionException("Not an owner or a moderator of the channel"));
 
-					RpcCall<List<Id>> call = RpcCall.unbanChannelMembers(members);
+					RpcCall<List<Id>> call = RpcCall.unbanChannelMembers(List.copyOf(members));
 					return sendRpcCall(channelId, call).compose(unbanned -> {
 						if (!unbanned.isEmpty()) {
 							channel.invalidateMembers();
@@ -1073,7 +1119,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	@Override
-	public ContextualFuture<Void> removeChannelMembers(Id channelId, List<Id> members) {
+	public ContextualFuture<Void> removeChannelMembers(Id channelId, Collection<Id> members) {
 		Objects.requireNonNull(channelId, "channelId");
 		Objects.requireNonNull(members, "members");
 		if (members.isEmpty())
@@ -1093,7 +1139,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					if (!member.isOwner() && !member.isModerator())
 						return Future.failedFuture(new InsufficientPermissionException("Not an owner or a moderator of the channel"));
 
-					RpcCall<List<Id>> call = RpcCall.removeChannelMembers(members);
+					RpcCall<List<Id>> call = RpcCall.removeChannelMembers(List.copyOf(members));
 					return sendRpcCall(channelId, call).compose(removed -> {
 						if (!removed.isEmpty()) {
 							channel.invalidateMembers();
@@ -1183,15 +1229,16 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	@Override
-	public ContextualFuture<Boolean> removeContacts(List<Id> contactIds) {
+	public ContextualFuture<Boolean> removeContacts(Collection<Id> contactIds) {
 		Objects.requireNonNull(contactIds, "contactIds");
 		if (contactIds.isEmpty())
 			throw new IllegalArgumentException("No contacts specified");
 		runningCheck();
 
+		List<Id> ids = List.copyOf(contactIds);
 		Promise<Boolean> promise = Promise.promise();
 		runOnContext(v -> {
-			removeContactsInternal(contactIds).map(true).onComplete(promise);
+			removeContactsInternal(ids).map(true).onComplete(promise);
 		});
 		return ContextualFuture.of(promise.future());
 	}
@@ -1331,12 +1378,19 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		Id messageId = DeviceOriginated.generateId(getDeviceId(), now);
 		PhotonMessage<RpcRequest> message = new PhotonMessage<>(messageId, recipient, Message.Type.CONTROL_MESSAGE, now, call.getRequest());
 		log.debug("Sending RPC call {}:{} to {} ...", call.getId(), call.getMethod(), recipient);
-		return sendMessageInternal(message).compose(packageId -> call.getFuture()
-				.onFailure(e -> inflightRpcCalls.remove(call.getId())), error -> {
-			inflightRpcCalls.remove(call.getId());
-			log.error("Send RPC call {}:{} failed", call.getId(), call.getMethod(), error);
-			return Future.failedFuture(error);
-		});
+		return sendMessageInternal(message)
+				// Stage 1: the RPC request could not even be sent — drop the pending call now,
+				// otherwise it would leak in inflightRpcCalls, then propagate the failure.
+				.recover(error -> {
+					inflightRpcCalls.remove(call.getId());
+					log.error("Send RPC call {}:{} failed", call.getId(), call.getMethod(), error);
+					return Future.failedFuture(error);
+				})
+				// Stage 2: request sent successfully — await the response future. If the call
+				// later fails (timeout or RPC error), drop the pending call. The success path
+				// removes it when the matching response arrives (see onResponse).
+				.compose(packetId -> call.getFuture()
+						.onFailure(e -> inflightRpcCalls.remove(call.getId())));
 	}
 
 	protected Future<Message> sendMessage(Message message) {
@@ -1727,7 +1781,6 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		}
 
 		// Sent message failed, remove it from the sending messages
-		inflightMessages.remove(packetId);
 		message.failed(new MessageTimeoutException("Get message ACK timeout"));
 	}
 
@@ -2083,7 +2136,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				yield applyContactSync(contactSync).andThen(ar -> {
 					if (ar.succeeded()) {
 						if (!ready) {
-							log.info("Contact synchronization completed on startup，revision {}, client is ready", contactsRevision);
+							log.info("Contact synchronization completed on startup, revision {}, client is ready", contactsRevision);
 							ready = true;
 							if (connectionListener != null)
 								connectionListener.onReady();

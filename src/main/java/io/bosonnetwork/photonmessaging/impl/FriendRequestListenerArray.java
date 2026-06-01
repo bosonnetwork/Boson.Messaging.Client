@@ -34,10 +34,9 @@ public class FriendRequestListenerArray extends CopyOnWriteArrayList<FriendReque
 	private static final long serialVersionUID = -3378257093435511382L;
 	private static final Logger log = LoggerFactory.getLogger(FriendRequestListenerArray.class);
 
-	public FriendRequestListenerArray(FriendRequestListener existing, FriendRequestListener newListener) {
+	public FriendRequestListenerArray(FriendRequestListener listener) {
 		super();
-		add(existing);
-		add(newListener);
+		add(listener);
 	}
 
 	@Override

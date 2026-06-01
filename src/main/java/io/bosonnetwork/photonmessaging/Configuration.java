@@ -64,6 +64,23 @@ public class Configuration {
 	}
 
 	/**
+	 * Validates a service endpoint URI. A valid endpoint is an absolute URI with a host,
+	 * a port in the range 1-65535, and an {@code mqtt} or {@code mqtts} scheme.
+	 *
+	 * @param endpoint the endpoint URI to validate
+	 * @return the same endpoint URI, if valid
+	 * @throws IllegalArgumentException if the endpoint is invalid or uses an unsupported scheme
+	 */
+	private static URI validateEndpoint(URI endpoint) {
+		if (!endpoint.isAbsolute() || endpoint.getHost() == null || endpoint.getScheme() == null ||
+				endpoint.getPort() <= 0 || endpoint.getPort() > 65535 ||
+				(!endpoint.getScheme().equals("mqtt") && !endpoint.getScheme().equals("mqtts")))
+			throw new IllegalArgumentException("Invalid endpoint: " + endpoint);
+
+		return endpoint;
+	}
+
+	/**
 	 * Creates a {@link Configuration} instance from the provided map.
 	 * The map is expected to contain the necessary configuration parameters, and invalid or missing parameters
 	 * will result in specific exceptions being thrown.
@@ -86,17 +103,13 @@ public class Configuration {
 		config.servicePeerId = service.getId("peerId");
 		// optional
 		String endpoint = service.getString("endpoint", null);
-		if (endpoint != null) {
-			URI uri = URI.create(endpoint);
-			if (!uri.isAbsolute() || uri.getHost() == null || uri.getScheme() == null ||
-					uri.getPort() <= 0 || uri.getPort() > 65535 ||
-					(!uri.getScheme().equals("mqtt") && !uri.getScheme().equals("mqtts")))
-				throw new IllegalArgumentException("Invalid endpoint: " + endpoint);
-
-			config.serviceEndpoint = uri;
-		}
+		if (endpoint != null)
+			config.serviceEndpoint = validateEndpoint(URI.create(endpoint));
 
 		ConfigMap client = cm.getObject("client");
+		if (client == null || client.isEmpty())
+			throw new IllegalArgumentException("Missing client");
+
 		String sk = client.getString("userPrivateKey", null);
 		if (sk == null || sk.isEmpty())
 			throw new IllegalArgumentException("Missing client userPrivateKey");
@@ -332,12 +345,7 @@ public class Configuration {
 		 */
 		public Builder serviceEndpoint(URI endpoint) {
 			Objects.requireNonNull(endpoint);
-			if (!endpoint.isAbsolute() || endpoint.getHost() == null || endpoint.getScheme() == null ||
-					endpoint.getPort() <= 0 || endpoint.getPort() > 65535 ||
-					(!endpoint.getScheme().equals("mqtt") && !endpoint.getScheme().equals("mqtts")))
-				throw new IllegalArgumentException("Invalid endpoint");
-
-			config().serviceEndpoint = endpoint;
+			config().serviceEndpoint = validateEndpoint(endpoint);
 			return this;
 		}
 

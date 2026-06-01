@@ -36,10 +36,9 @@ public class ContactListenerArray extends CopyOnWriteArrayList<ContactListener> 
 	private static final long serialVersionUID = -6724210075837468138L;
 	private static final Logger log = LoggerFactory.getLogger(ContactListenerArray.class);
 
-	public ContactListenerArray(ContactListener existing, ContactListener newListener) {
+	public ContactListenerArray(ContactListener listener) {
 		super();
-		add(existing);
-		add(newListener);
+		add(listener);
 	}
 
 	@Override

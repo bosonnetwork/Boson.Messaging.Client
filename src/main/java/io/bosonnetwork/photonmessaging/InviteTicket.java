@@ -23,6 +23,7 @@
 package io.bosonnetwork.photonmessaging;
 
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.util.Objects;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -46,7 +47,7 @@ public class InviteTicket {
 	 * Default ticket expiration duration in milliseconds.
 	 * The current value corresponds to 7 days.
 	 */
-	public static long DEFAULT_EXPIRATION = 7 * 24 * 60 * 60 * 1000; // 7 days
+	public static final long DEFAULT_EXPIRATION = Duration.ofDays(7).toMillis();
 
 	@JsonProperty(value = "c", required = true)
 	private final Id channelId;

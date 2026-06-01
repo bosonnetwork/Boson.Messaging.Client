@@ -244,6 +244,8 @@ public class SqlDialect {
 		return "DELETE FROM messages";
 	}
 
+	// Note: the JOIN on messages is intentional. A conversation exists only for a contact that has
+	// at least one message; contacts with no messages are deliberately not returned as conversations.
 	public String selectConversation() {
 		return """
 				SELECT c.*, ch.owner, ch.permission, ch.notice, ch.announce,
@@ -261,6 +263,8 @@ public class SqlDialect {
 				""";
 	}
 
+	// Note: the JOIN on messages is intentional (see selectConversation) — only contacts with at
+	// least one message are returned as conversations.
 	public String selectAllConversations() {
 		return """
 				SELECT c.*, ch.owner, ch.permission, ch.notice, ch.announce,

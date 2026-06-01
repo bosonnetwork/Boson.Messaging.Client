@@ -63,7 +63,7 @@ interface MessagingRepository {
 	 * @param end the end timestamp (exclusive)
 	 * @return a Future with the list of messages found
 	 */
-	Future<List<PhotonMessage<MessageContent>>> getMessages(Id conversationId, long begin, long end);
+	Future<List<PhotonMessage<MessageContent>>> getMessagesInRange(Id conversationId, long begin, long end);
 
 	/**
 	 * Retrieves messages for a specific conversation with pagination.
@@ -74,7 +74,7 @@ interface MessagingRepository {
 	 * @param offset the number of messages to skip
 	 * @return a Future with the list of messages found
 	 */
-	Future<List<PhotonMessage<MessageContent>>> getMessages(Id conversationId, long until, int limit, int offset);
+	Future<List<PhotonMessage<MessageContent>>> getMessagesBefore(Id conversationId, long until, int limit, int offset);
 
 	/**
 	 * Removes a single message from the repository by its ID.

@@ -43,24 +43,32 @@ public interface Contact extends Comparable<Contact> {
 		/**
 		 * The system automatically adds the contact.
 		 */
-		AUTO,
+		AUTO(0),
 		/**
 		 * Represents a contact explicitly added as a friend by the user.
 		 */
-		FRIEND,
+		FRIEND(1),
 		/**
 		 * Represents a contact associated with a specific messaging channel.
 		 */
-		CHANNEL;
+		CHANNEL(2);
+
+		private final int value;
+
+		Type(int value) {
+			this.value = value;
+		}
 
 		/**
-		 * Returns the numeric value associated with this type.
+		 * Returns the stable numeric value associated with this type. This value is used
+		 * for serialization purposes and is independent of the constant's declaration
+		 * order, so it can be safely mapped back via {@link #valueOf(int)}.
 		 *
-		 * @return the account type value.
+		 * @return the contact type value.
 		 */
 		@JsonValue
 		public int value() {
-			return ordinal();
+			return value;
 		}
 
 		/**
@@ -71,7 +79,7 @@ public interface Contact extends Comparable<Contact> {
 		 * @throws IllegalArgumentException if the value is invalid.
 		 */
 		@JsonCreator
-		public static Type of(int value) {
+		public static Type valueOf(int value) {
 			return switch (value) {
 				case 0 -> AUTO;
 				case 1 -> FRIEND;
