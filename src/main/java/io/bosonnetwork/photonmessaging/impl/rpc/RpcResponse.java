@@ -160,6 +160,7 @@ public class RpcResponse {
 
 		if (o instanceof RpcResponse that)
 			return id == that.id &&
+					method == that.method &&
 					Objects.equals(result, that.result) &&
 					Objects.equals(error, that.error);
 
@@ -168,7 +169,7 @@ public class RpcResponse {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(id, result, error);
+		return Objects.hash(id, method, result, error);
 	}
 
 	@Override

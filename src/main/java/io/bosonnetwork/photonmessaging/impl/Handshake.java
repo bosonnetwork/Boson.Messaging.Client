@@ -22,6 +22,8 @@
 
 package io.bosonnetwork.photonmessaging.impl;
 
+import java.util.Objects;
+
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -103,6 +105,11 @@ public class Handshake {
 
 	@SuppressWarnings("unchecked")
 	public <T> T getBody() {
+		// Defensively copy a binary body (FRIEND_REQUEST_ACCEPT session key) so callers cannot
+		// mutate the internal array; the String body (FRIEND_REQUEST hello) is immutable.
+		if (body instanceof byte[] b)
+			return (T) b.clone();
+
 		return (T) body;
 	}
 
@@ -127,6 +134,7 @@ public class Handshake {
 	}
 
 	public static Handshake friendRequestAccept(byte[] sessionKey, long timestamp) {
+		Objects.requireNonNull(sessionKey, "sessionKey");
 		return new Handshake(timestamp, Type.FRIEND_REQUEST_ACCEPT, sessionKey);
 	}
 }

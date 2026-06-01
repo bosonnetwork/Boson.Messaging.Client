@@ -77,6 +77,9 @@ public class PhotonChannel extends PhotonContact implements Channel {
 	 */
 	private volatile Map<Id, ChannelMember> _members;
 	private Function<Id, Future<List<ChannelMember>>> membersLoader;
+	// In-flight load, used to dedupe concurrent loadMembers() calls so they share one DB load
+	// instead of each triggering a separate query. Confined to the verticle's event loop.
+	private Future<Void> membersLoading;
 
 	// Constructor for database OR mapping
 	protected PhotonChannel(Id id, byte[] sessionKey, Id ownerId, Permission permission, String name, String notice,
@@ -166,10 +169,18 @@ public class PhotonChannel extends PhotonContact implements Channel {
 		if (membersLoader == null)
 			return Future.failedFuture(new IllegalStateException("Members loader not set"));
 
-		return membersLoader.apply(getId()).map(ml -> {
-			setMembers(ml);
-			return null;
-		});
+		// Reuse an in-flight load if one is already running; clear it on completion so a later
+		// reload (e.g. after invalidateMembers()) or a retry-after-failure can run again.
+		if (membersLoading != null)
+			return membersLoading;
+
+		membersLoading = membersLoader.apply(getId())
+				.<Void>map(ml -> {
+					setMembers(ml);
+					return null;
+				})
+				.andThen(ar -> membersLoading = null);
+		return membersLoading;
 	}
 
 	void setMembers(Collection<ChannelMember> members) {

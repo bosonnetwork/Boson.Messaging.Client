@@ -64,7 +64,7 @@ public class PhotonMessage<P> implements Message, DeviceOriginated {
 	private long sentAt;
 	private long receivedAt;
 
-	private Promise<Void> sentPromise;
+	private volatile Promise<Void> sentPromise;
 
 	@JsonCreator
 	protected PhotonMessage(@JsonProperty(value = "v", required = true) int version,
@@ -74,6 +74,10 @@ public class PhotonMessage<P> implements Message, DeviceOriginated {
 	                        @JsonProperty(value = "f") Id from,
 	                        @JsonProperty(value = "c", required = true) long createdAt,
 	                        @JsonProperty(value = "p", required = true) P payload) {
+		// Reject wire messages with an unrecognised version: we cannot correctly interpret them.
+		if (version != VERSION)
+			throw new IllegalArgumentException("Unsupported message version: " + version);
+
 		this.version = version;
 		this.id = id;
 		this.recipient = recipient;
@@ -222,7 +226,7 @@ public class PhotonMessage<P> implements Message, DeviceOriginated {
 		try {
 			return Json.cborMapper().writeValueAsBytes(payload);
 		} catch (IOException e) {
-			throw new IllegalStateException("Message payload deserialization failed", e);
+			throw new IllegalStateException("Message payload serialization failed", e);
 		}
 	}
 

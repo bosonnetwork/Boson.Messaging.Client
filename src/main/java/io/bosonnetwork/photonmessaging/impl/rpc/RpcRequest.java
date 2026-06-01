@@ -24,6 +24,7 @@ package io.bosonnetwork.photonmessaging.impl.rpc;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
@@ -94,7 +95,7 @@ public class RpcRequest {
 		this.id = id;
 		this.method = method;
 		this.params = params;
-		this.cookie = cookie;
+		this.cookie = cookie == null ? null : cookie.clone();
 	}
 
 	protected RpcRequest(long id, RpcMethod method, Object params) {
@@ -115,16 +116,12 @@ public class RpcRequest {
 	}
 
 	/**
-	 * Returns the request cookie.
-	 * <p>
-	 * The returned array is the internal reference and is not defensively copied.
-	 * This is intentional for internal-use performance reasons, so callers must not
-	 * modify the returned array unless they explicitly own that contract.
+	 * Returns a copy of the request cookie.
 	 *
-	 * @return the cookie bytes, or {@code null} if no cookie is present
+	 * @return a defensive copy of the cookie bytes, or {@code null} if no cookie is present
 	 */
 	public byte[] getCookie() {
-		return cookie;
+		return cookie == null ? null : cookie.clone();
 	}
 
 	public byte[] serialize() {
@@ -206,16 +203,16 @@ public class RpcRequest {
 		return new RpcRequest(id, RpcMethod.CHANNEL_MEMBERS_ROLE_UPDATE, params);
 	}
 
-	public static RpcRequest banChannelMembers(long id, List<Id> memberIds) {
-		return new RpcRequest(id, RpcMethod.CHANNEL_MEMBERS_BAN, memberIds);
+	public static RpcRequest banChannelMembers(long id, Collection<Id> memberIds) {
+		return new RpcRequest(id, RpcMethod.CHANNEL_MEMBERS_BAN, List.copyOf(memberIds));
 	}
 
-	public static RpcRequest unbanChannelMembers(long id, List<Id> memberIds) {
-		return new RpcRequest(id, RpcMethod.CHANNEL_MEMBERS_UNBAN, memberIds);
+	public static RpcRequest unbanChannelMembers(long id, Collection<Id> memberIds) {
+		return new RpcRequest(id, RpcMethod.CHANNEL_MEMBERS_UNBAN, List.copyOf(memberIds));
 	}
 
-	public static RpcRequest removeChannelMembers(long id, List<Id> memberIds) {
-		return new RpcRequest(id, RpcMethod.CHANNEL_MEMBERS_REMOVE, memberIds);
+	public static RpcRequest removeChannelMembers(long id, Collection<Id> memberIds) {
+		return new RpcRequest(id, RpcMethod.CHANNEL_MEMBERS_REMOVE, List.copyOf(memberIds));
 	}
 
 	public static RpcRequest getChannelInfo(long id) {

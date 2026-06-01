@@ -210,8 +210,8 @@ public class MessageContent implements Message.Content {
 
 	public static MessageContent binary(Map<String, Object> headers, byte[] binary) {
 		Objects.requireNonNull(binary, "binary");
-		byte[] cloned = binary.clone();
-		return new MessageContent(headers, Format.BINARY, cloned, cloned);
+		// The constructor already defensively clones a binary body, so don't pre-clone here.
+		return new MessageContent(headers, Format.BINARY, binary);
 	}
 
 	public static MessageContent binary(byte[] binary) {
@@ -238,6 +238,11 @@ public class MessageContent implements Message.Content {
 
 	@SuppressWarnings("unchecked")
 	public <T> T getBody() {
+		// Defensively copy a binary body so callers cannot mutate the internal array (mirrors
+		// asBinary() and the constructor); other body types are immutable (String) or read-only.
+		if (body instanceof byte[] b)
+			return (T) b.clone();
+
 		return (T) body;
 	}
 
@@ -333,7 +338,7 @@ public class MessageContent implements Message.Content {
 		try {
 			return WRITER.writeValueAsBytes(this);
 		} catch (JsonProcessingException e) {
-			throw new IllegalStateException("INTERNAL ERROR: DefaultContent serialization", e);
+			throw new IllegalStateException("INTERNAL ERROR: MessageContent serialization", e);
 		}
 	}
 
@@ -341,7 +346,7 @@ public class MessageContent implements Message.Content {
 		try {
 			return READER.readValue(data);
 		} catch (Exception e) {
-			throw new IllegalStateException("INTERNAL ERROR: DefaultContent parsing", e);
+			throw new IllegalStateException("INTERNAL ERROR: MessageContent parsing", e);
 		}
 	}
 }
