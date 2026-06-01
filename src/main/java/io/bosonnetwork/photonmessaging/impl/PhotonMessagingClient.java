@@ -36,7 +36,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
@@ -143,15 +143,14 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 	private volatile boolean connected;
 	private volatile boolean ready;
-	private volatile boolean running;
 
-	// Public lifecycle gate. A client instance is single-use: it can be started once and stopped
-	// once, and cannot be restarted after stopping (stop() closes the internal Vertx and the
-	// repository, neither of which is recreated). start() transitions NEW -> RUNNING and stop()
-	// transitions RUNNING -> STOPPED via compareAndSet, so both are atomic, one-shot, and reject
-	// reuse.
-	private enum State { NEW, RUNNING, STOPPED }
-	private final AtomicReference<State> state = new AtomicReference<>(State.NEW);
+	// Lifecycle gate and running status in one. The client is restartable: start() flips
+	// false -> true and stop() flips true -> false via compareAndSet, so both are atomic and
+	// idempotent (extra/concurrent calls are no-ops). A fresh start() after a completed stop() is
+	// safe because the internal Vert.x is recreated in start(), the repository pool is recreated by
+	// deploy()'s repository.initialize(), and deploy() rebuilds the caches and resets the connection
+	// flags.
+	private final AtomicBoolean running = new AtomicBoolean(false);
 
 	private static final Logger log = LoggerFactory.getLogger(PhotonMessagingClient.class);
 
@@ -199,7 +198,6 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 		this.connected = false;
 		this.ready = false;
-		this.running = false;
 	}
 
 	@Override
@@ -374,19 +372,20 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 	@Override
 	public ContextualFuture<Void> start() {
-		// One-shot NEW -> RUNNING: rejects concurrent double-deploy and any reuse after stop().
-		if (!state.compareAndSet(State.NEW, State.RUNNING))
-			return ContextualFuture.of(Future.failedFuture(new IllegalStateException(
-					"Messaging client is single-use and cannot be started more than once")));
+		// Atomic + idempotent false -> true: only a stopped instance actually deploys; concurrent/
+		// extra start() calls are no-ops. A start() after a completed stop() restarts the client.
+		if (!running.compareAndSet(false, true))
+			return ContextualFuture.succeededFuture();
 
-		// Create the internal Vert.x lazily here (not in the constructor), so a constructed-but-
-		// never-started client leaks no event-loop threads. It is owned by this client and closed
-		// in stop(); on a deploy failure we close it immediately to avoid leaking it.
+		// The internal Vert.x is owned by this client: (re)create it on each start (so a
+		// constructed-but-never-started client leaks no event-loop threads), and close it on stop.
 		if (internalVertx)
 			providedVertx = Vertx.vertx();
 
 		return ContextualFuture.of(providedVertx.deployVerticle(this).<Void>mapEmpty()
 				.onFailure(e -> {
+					// Roll back so the client can be started again; don't leak the internal Vertx.
+					running.set(false);
 					if (internalVertx)
 						providedVertx.close();
 				}));
@@ -394,8 +393,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 	@Override
 	public ContextualFuture<Void> stop() {
-		// One-shot RUNNING -> STOPPED: no-op if never started or already stopped.
-		if (!state.compareAndSet(State.RUNNING, State.STOPPED))
+		// Atomic + idempotent true -> false: only a running instance actually undeploys.
+		if (!running.compareAndSet(true, false))
 			return ContextualFuture.succeededFuture();
 
 		Future<Void> future = vertx.undeploy(deploymentID())
@@ -408,7 +407,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 	@Override
 	public boolean isRunning() {
-		return running;
+		return running.get();
 	}
 
 	@Override
@@ -422,7 +421,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	private void runningCheck() {
-		if (!running)
+		if (!running.get())
 			throw new IllegalStateException("Messaging client is not running");
 	}
 
@@ -1067,7 +1066,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					if (!member.isOwner() && !member.isModerator())
 						return Future.failedFuture(new InsufficientPermissionException("Not an owner or a moderator of the channel"));
 
-					RpcCall<List<Id>> call = RpcCall.banChannelMembers(List.copyOf(members));
+					RpcCall<List<Id>> call = RpcCall.banChannelMembers(members);
 					return sendRpcCall(channelId, call).compose(banned -> {
 						if (!banned.isEmpty()) {
 							channel.invalidateMembers();
@@ -1103,7 +1102,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					if (!member.isOwner() && !member.isModerator())
 						return Future.failedFuture(new InsufficientPermissionException("Not an owner or a moderator of the channel"));
 
-					RpcCall<List<Id>> call = RpcCall.unbanChannelMembers(List.copyOf(members));
+					RpcCall<List<Id>> call = RpcCall.unbanChannelMembers(members);
 					return sendRpcCall(channelId, call).compose(unbanned -> {
 						if (!unbanned.isEmpty()) {
 							channel.invalidateMembers();
@@ -1139,7 +1138,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					if (!member.isOwner() && !member.isModerator())
 						return Future.failedFuture(new InsufficientPermissionException("Not an owner or a moderator of the channel"));
 
-					RpcCall<List<Id>> call = RpcCall.removeChannelMembers(List.copyOf(members));
+					RpcCall<List<Id>> call = RpcCall.removeChannelMembers(members);
 					return sendRpcCall(channelId, call).compose(removed -> {
 						if (!removed.isEmpty()) {
 							channel.invalidateMembers();
@@ -1292,7 +1291,6 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 	@Override
 	protected Future<Void> deploy() {
-		this.running = true;
 		this.connected = false;
 		this.ready = false;
 
@@ -1318,7 +1316,6 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 	@Override
 	protected Future<Void> undeploy() {
-		this.running = false;
 		return disconnect().compose(v -> repository.close());
 	}
 
@@ -1631,7 +1628,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	private Future<Void> connect() {
-		if (!running)
+		if (!running.get())
 			return Future.succeededFuture();
 
 		log.info("Connecting ...");
@@ -1685,7 +1682,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				}, error -> {
 					this.failures++;
 
-					if (running) {
+					if (running.get()) {
 						long delay = getRetryInterval();
 						log.warn("Failed to subscribe to the messaging server {} @ {}, will retry in {} seconds...",
 								homePeerId, serviceEndpoint, delay);
@@ -1699,7 +1696,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			}, error -> {
 				this.failures++;
 
-				if (running) {
+				if (running.get()) {
 					long delay = getRetryInterval();
 					log.warn("Failed to connect to the messaging server {} @ {}, will retry in {} seconds...",
 							homePeerId, serviceEndpoint, delay);
@@ -1729,7 +1726,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		if (connectionListener != null)
 			connectionListener.onDisconnected();
 
-		if (!running) {
+		if (!running.get()) {
 			log.info("Disconnected");
 		} else {
 			this.failures++;

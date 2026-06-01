@@ -22,6 +22,7 @@
 
 package io.bosonnetwork.photonmessaging.impl.rpc;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
@@ -98,6 +99,8 @@ public class RpcCall<R> {
 		}
 	}
 
+	// A timeout <= 0 means "wait indefinitely" (no timeout); a positive timeout fails the
+	// future with RpcTimeoutException after that many milliseconds.
 	public Future<R> getFuture() {
 		return timeout <= 0 ? responsePromise.future() :
 				responsePromise.future().timeout(timeout, TimeUnit.MILLISECONDS)
@@ -189,15 +192,15 @@ public class RpcCall<R> {
 		return new RpcCall<>(RpcRequest.updateChannelMembersRole(nextId(), params));
 	}
 
-	public static RpcCall<List<Id>> banChannelMembers(List<Id> memberIds) {
+	public static RpcCall<List<Id>> banChannelMembers(Collection<Id> memberIds) {
 		return new RpcCall<>(RpcRequest.banChannelMembers(nextId(), memberIds));
 	}
 
-	public static RpcCall<List<Id>> unbanChannelMembers(List<Id> memberIds) {
+	public static RpcCall<List<Id>> unbanChannelMembers(Collection<Id> memberIds) {
 		return new RpcCall<>(RpcRequest.unbanChannelMembers(nextId(), memberIds));
 	}
 
-	public static RpcCall<List<Id>> removeChannelMembers(List<Id> memberIds) {
+	public static RpcCall<List<Id>> removeChannelMembers(Collection<Id> memberIds) {
 		return new RpcCall<>(RpcRequest.removeChannelMembers(nextId(), memberIds));
 	}
 

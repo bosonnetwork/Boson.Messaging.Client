@@ -22,6 +22,7 @@
 
 package io.bosonnetwork.photonmessaging.impl;
 
+import java.util.Comparator;
 import java.util.Objects;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -294,7 +295,10 @@ public abstract class PhotonContact implements Contact {
 
 	@Override
 	public int compareTo(Contact contact) {
-		int rc = getDisplayName().compareTo(contact.getDisplayName());
+		// Our getDisplayName() never returns null (it falls back to an abbreviated id), but Contact
+		// is a public interface, so compare defensively in case an external implementation does.
+		int rc = Comparator.nullsFirst(Comparator.<String>naturalOrder())
+				.compare(getDisplayName(), contact.getDisplayName());
 		return rc != 0 ? rc : getId().compareTo(contact.getId());
 	}
 

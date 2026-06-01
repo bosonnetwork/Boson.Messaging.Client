@@ -208,6 +208,9 @@ public interface MessagingClient {
 	////////////////////////////////////////////////////////////////////////////
 	/**
 	 * Starts the messaging client, initiating the connection and synchronization process.
+	 * <p>
+	 * This method is idempotent while the client is running, and a stopped client may be
+	 * started again (the client is restartable).
 	 *
 	 * @return a {@link CompletableFuture} that completes when the client has started.
 	 */
@@ -215,7 +218,8 @@ public interface MessagingClient {
 
 	/**
 	 * Stops the messaging client and releases all associated resources.
-	 * Once stopped, the client instance cannot be reused.
+	 * <p>
+	 * This method is idempotent. A stopped client may be started again via {@link #start()}.
 	 *
 	 * @return a {@link CompletableFuture} that completes when the client has stopped.
 	 */
