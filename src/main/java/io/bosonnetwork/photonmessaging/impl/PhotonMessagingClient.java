@@ -384,10 +384,13 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 		return ContextualFuture.of(providedVertx.deployVerticle(this).<Void>mapEmpty()
 				.onFailure(e -> {
+					if (internalVertx) {
+						providedVertx.close();
+						providedVertx = null;
+					}
+
 					// Roll back so the client can be started again; don't leak the internal Vertx.
 					running.set(false);
-					if (internalVertx)
-						providedVertx.close();
 				}));
 	}
 
@@ -400,7 +403,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		Future<Void> future = vertx.undeploy(deploymentID())
 				.andThen(ar -> selfContext.resetNonce());
 		if (internalVertx)
-			future = future.compose(v -> providedVertx.close());
+			future = future.compose(v -> providedVertx.close())
+					.andThen(ar -> providedVertx = null);
 
 		return ContextualFuture.of(future);
 	}
