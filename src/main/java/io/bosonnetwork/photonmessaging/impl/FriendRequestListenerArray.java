@@ -25,17 +25,17 @@ package io.bosonnetwork.photonmessaging.impl;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.FriendRequestListener;
 
 public class FriendRequestListenerArray extends CopyOnWriteArrayList<FriendRequestListener> implements FriendRequestListener {
 	private static final long serialVersionUID = -3378257093435511382L;
-	private static final Logger log = LoggerFactory.getLogger(FriendRequestListenerArray.class);
+	private final Logger log;
 
-	public FriendRequestListenerArray(FriendRequestListener listener) {
+	public FriendRequestListenerArray(FriendRequestListener listener, Logger log) {
 		super();
+		this.log = log;
 		add(listener);
 	}
 

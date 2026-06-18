@@ -23,9 +23,11 @@
 package io.bosonnetwork.photonmessaging.impl;
 
 import java.time.Instant;
+import java.util.Optional;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Channel;
@@ -39,7 +41,7 @@ public class ChannelMember implements Channel.Member {
 	@JsonProperty(value = "j", required = true)
 	private final long joined;
 
-	private transient PhotonContact contact;
+	private transient @Nullable PhotonContact contact;
 
 	/**
 	 * Constructs a new Member instance with the specified parameters.
@@ -73,8 +75,8 @@ public class ChannelMember implements Channel.Member {
 	}
 
 	@Override
-	public Contact getContact() {
-		return contact;
+	public Optional<Contact> getContact() {
+		return Optional.ofNullable(contact);
 	}
 
 	// TODO: remove this method,

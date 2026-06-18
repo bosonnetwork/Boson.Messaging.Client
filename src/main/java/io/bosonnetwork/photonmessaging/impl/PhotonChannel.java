@@ -30,6 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
@@ -37,6 +38,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import io.vertx.core.Future;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Channel;
@@ -62,7 +64,7 @@ public class PhotonChannel extends PhotonContact implements Channel {
 	 */
 	@JsonProperty(value = "nt")
 	@JsonInclude(JsonInclude.Include.NON_EMPTY)
-	private final String notice;
+	private final @Nullable String notice;
 
 	/**
 	 * Indicates whether the channel is actively being announced to the network.
@@ -75,32 +77,39 @@ public class PhotonChannel extends PhotonContact implements Channel {
 	 * A thread-safe map of channel members, indexed by their unique IDs.
 	 * Uses Copy-On-Write logic: a new map is created on member additions or removals.
 	 */
-	private volatile Map<Id, ChannelMember> _members;
-	private Function<Id, Future<List<ChannelMember>>> membersLoader;
+	private volatile @Nullable Map<Id, ChannelMember> _members;
+	private @Nullable Function<Id, Future<List<ChannelMember>>> membersLoader;
 	// In-flight load, used to dedupe concurrent loadMembers() calls so they share one DB load
-	// instead of each triggering a separate query. Confined to the verticle's event loop.
-	private Future<Void> membersLoading;
+	// instead of each triggering a separate query. Confined to the Verticle's event loop.
+	private @Nullable Future<Void> membersLoading;
 
 	// Constructor for database OR mapping
-	protected PhotonChannel(Id id, byte[] sessionKey, Id ownerId, Permission permission, String name, String notice,
-	                        boolean announce, String remark, String tags, boolean muted, boolean blocked,
+	protected PhotonChannel(Id id, byte[] sessionKey, Id ownerId, Permission permission, String name, @Nullable String notice,
+	                        boolean announce, @Nullable String remark, @Nullable String tags, boolean muted, boolean blocked,
 	                        long createdAt, long updatedAt, int revision) {
-		super(id, sessionKey, name, null, remark, tags, muted, blocked, createdAt, updatedAt, revision);
+		super(id, Objects.requireNonNull(sessionKey, "sessionKey"), name, null, remark, tags,
+				muted, blocked, createdAt, updatedAt, revision);
 		this.ownerId = ownerId;
 		this.permission = permission;
 		this.notice = notice;
 		this.announce = announce;
 	}
 
-	protected PhotonChannel(Id id, byte[] sessionKey, Id ownerId, Permission permission, String name, String notice,
+	protected PhotonChannel(Id id, byte[] sessionKey, Id ownerId, Permission permission, String name, @Nullable String notice,
 	                        boolean announce, long createdAt, long updatedAt) {
-		this(id, sessionKey, ownerId, permission, name, notice, announce,
+		this(id, Objects.requireNonNull(sessionKey, "sessionKey"), ownerId, permission, name, notice, announce,
 				null, null, false, false, createdAt, updatedAt, 0);
 	}
 
 	@Override
 	public Contact.Type getType() {
 		return Contact.Type.CHANNEL;
+	}
+
+	@Override
+	public byte[] getSessionKey() {
+		byte[] key = super.getSessionKey();
+		return Objects.requireNonNull(key, "INTERNAL ERROR: sessionKey not set");
 	}
 
 	@Override
@@ -114,8 +123,8 @@ public class PhotonChannel extends PhotonContact implements Channel {
 	}
 
 	@Override
-	public String getNotice() {
-		return notice;
+	public Optional<String> getNotice() {
+		return Optional.ofNullable(notice);
 	}
 
 	@Override
@@ -139,8 +148,8 @@ public class PhotonChannel extends PhotonContact implements Channel {
 	}
 
 	@Override
-	public ChannelMember getMember(Id memberId) {
-		return getMembersMap().get(memberId);
+	public Optional<Member> getMember(Id memberId) {
+		return Optional.ofNullable(getMembersMap().get(memberId));
 	}
 
 	@Override
@@ -170,12 +179,12 @@ public class PhotonChannel extends PhotonContact implements Channel {
 			return Future.failedFuture(new IllegalStateException("Members loader not set"));
 
 		// Reuse an in-flight load if one is already running; clear it on completion so a later
-		// reload (e.g. after invalidateMembers()) or a retry-after-failure can run again.
+		// reload (e.g.; after invalidateMembers()) or a retry-after-failure can run again.
 		if (membersLoading != null)
 			return membersLoading;
 
-		membersLoading = membersLoader.apply(getId())
-				.<Void>map(ml -> {
+		membersLoading = (Future<Void>) membersLoader.apply(getId())
+				.<@Nullable Void>map(ml -> {
 					setMembers(ml);
 					return null;
 				})
@@ -205,10 +214,11 @@ public class PhotonChannel extends PhotonContact implements Channel {
 	}
 
 	private Map<Id, ChannelMember> getMembersMap() {
-		if (_members == null)
+		Map<Id, ChannelMember> members = _members;
+		if (members == null)
 			throw new IllegalStateException("Members not loaded");
 
-		return _members;
+		return members;
 	}
 
 	@Override
@@ -233,7 +243,7 @@ public class PhotonChannel extends PhotonContact implements Channel {
 
 		repr.append("Channel: ").append(getId().toBase58String())
 				.append("[owner=").append(ownerId.toBase58String())
-				.append(", permission=").append(permission.toString())
+				.append(", permission=").append(permission)
 				.append(", sessionKey=").append(hasSessionKey() ? "*" : "none")
 				.append(", members=");
 
@@ -242,17 +252,10 @@ public class PhotonChannel extends PhotonContact implements Channel {
 		else
 			repr.append('?');
 
-		if (getName() != null)
-			repr.append(", name=").append(getName());
-
-		if (notice != null)
-			repr.append(", notice=").append(notice);
-
-		if (getRemark() != null)
-			repr.append(", remark=").append(getRemark());
-
-		if (getTags() != null)
-			repr.append(", tags=").append(getTags());
+		getName().ifPresent(name -> repr.append(", name=").append(name));
+		getNotice().ifPresent(notice -> repr.append(", notice=").append(notice));
+		getRemark().ifPresent(remark -> repr.append(", remark=").append(remark));
+		getTags().ifPresent(tags -> repr.append(", tags=").append(tags));
 
 		if (announce)
 			repr.append(", announce = true");
@@ -274,20 +277,13 @@ public class PhotonChannel extends PhotonContact implements Channel {
 	public void dump(PrintStream out) {
 		out.println("Channel: " + getId().toBase58String());
 		out.println("  owner = " + ownerId.toBase58String());
-		out.println("  permission = " + permission.toString());
+		out.println("  permission = " + permission);
 		out.println(", sessionKey=" + (hasSessionKey() ? "*" : "none"));
 
-		if (getName() != null)
-			out.println("  name = " + getName());
-
-		if (notice != null)
-			out.println("  notice = " + notice);
-
-		if (getRemark() != null)
-			out.println("  remark = " + getRemark());
-
-		if (getTags() != null)
-			out.println("  tags = " + getTags());
+		getName().ifPresent(name -> out.println("  name = " + name));
+		getNotice().ifPresent(notice -> out.println("  notice = " + notice));
+		getRemark().ifPresent(remark -> out.println("  remark = " + remark));
+		getTags().ifPresent(tags -> out.println("  tags = " + tags));
 
 		if (announce)
 			out.println("  announce = true");
@@ -305,6 +301,6 @@ public class PhotonChannel extends PhotonContact implements Channel {
 		out.println("  members = " + size());
 
 		for (Member m : getMembersMap().values())
-			out.println("    " + m.toString());
+			out.println("    " + m);
 	}
 }

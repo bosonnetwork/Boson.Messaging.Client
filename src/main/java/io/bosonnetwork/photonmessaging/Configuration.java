@@ -29,6 +29,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
+
 import io.bosonnetwork.Id;
 import io.bosonnetwork.crypto.Signature;
 import io.bosonnetwork.database.SqlSafety;
@@ -44,40 +47,27 @@ import io.bosonnetwork.utils.Hex;
  * endpoints, cryptographic keys, data directories, and database configurations.
  */
 public class Configuration {
-	private static final String DEFAULT_SCHEME = "mqtts://";
+	private final Id servicePeerId;
+	private final @Nullable URI serviceEndpoint;
 
-	private Id servicePeerId;
-	private URI serviceEndpoint; // optional
+	private final Signature.KeyPair userKey;
+	private final Signature.KeyPair deviceKey;
 
-	private Signature.KeyPair userKey;
-	private Signature.KeyPair deviceKey;
+	private final Path dataDir;
 
-	private Path dataDir;
+	private final String databaseUri;
+	private final int databasePoolSize;
+	private final @Nullable String databaseSchemaName;
 
-	private String databaseUri;
-	private int databasePoolSize;
-	private String databaseSchemaName;
-
-	private Configuration() {
-		dataDir = FileUtils.getUserDataDir().resolve( "boson/client/photon-messaging");
-		databaseUri = "jdbc:sqlite:photonmessaging.db";
-	}
-
-	/**
-	 * Validates a service endpoint URI. A valid endpoint is an absolute URI with a host,
-	 * a port in the range 1-65535, and an {@code mqtt} or {@code mqtts} scheme.
-	 *
-	 * @param endpoint the endpoint URI to validate
-	 * @return the same endpoint URI, if valid
-	 * @throws IllegalArgumentException if the endpoint is invalid or uses an unsupported scheme
-	 */
-	private static URI validateEndpoint(URI endpoint) {
-		if (!endpoint.isAbsolute() || endpoint.getHost() == null || endpoint.getScheme() == null ||
-				endpoint.getPort() <= 0 || endpoint.getPort() > 65535 ||
-				(!endpoint.getScheme().equals("mqtt") && !endpoint.getScheme().equals("mqtts")))
-			throw new IllegalArgumentException("Invalid endpoint: " + endpoint);
-
-		return endpoint;
+	private Configuration(Builder builder) {
+		this.servicePeerId = Objects.requireNonNull(builder.servicePeerId, "servicePeerId must be set");
+		this.serviceEndpoint = Objects.requireNonNull(builder.serviceEndpoint, "serviceEndpoint must be set");
+		this.userKey = Objects.requireNonNull(builder.userKey, "userKey must be set");
+		this.deviceKey = Objects.requireNonNull(builder.deviceKey, "deviceKey must be set");
+		this.dataDir = Objects.requireNonNull(builder.dataDir, "dataDir must be set");
+		this.databaseUri = Objects.requireNonNull(builder.databaseUri, "databaseUri must be set");
+		this.databasePoolSize = builder.databasePoolSize;
+		this.databaseSchemaName = builder.databaseSchemaName;
 	}
 
 	/**
@@ -94,66 +84,45 @@ public class Configuration {
 	 */
 	public static Configuration fromMap(Map<String, Object> map) throws IllegalArgumentException {
 		ConfigMap cm = new ConfigMap(map);
-		Configuration config = new Configuration();
+		Builder builder = new Builder();
 
 		ConfigMap service = cm.getObject("service");
 		if (service == null || service.isEmpty())
 			throw new IllegalArgumentException("Missing service");
 
-		config.servicePeerId = service.getId("peerId");
+		builder.servicePeerId(service.getId("peerId"));
 		// optional
 		String endpoint = service.getString("endpoint", null);
 		if (endpoint != null)
-			config.serviceEndpoint = validateEndpoint(URI.create(endpoint));
+			builder.serviceEndpoint(endpoint);
 
 		ConfigMap client = cm.getObject("client");
 		if (client == null || client.isEmpty())
 			throw new IllegalArgumentException("Missing client");
 
 		String sk = client.getString("userPrivateKey", null);
-		if (sk == null || sk.isEmpty())
-			throw new IllegalArgumentException("Missing client userPrivateKey");
-
-		try {
-			config.userKey = Signature.KeyPair.fromPrivateKey(sk.startsWith("0x") ?
-					Hex.decode(sk, 2, sk.length() - 2) :
-					Base58.decode(sk));
-		} catch (Exception e) {
-			throw new IllegalArgumentException("config error, invalid client userPrivateKey", e);
-		}
+		builder.userKey(sk);
 
 		sk = client.getString("devicePrivateKey", null);
-		if (sk == null || sk.isEmpty())
-			throw new IllegalArgumentException("Missing client devicePrivateKey");
-
-		try {
-			config.deviceKey = Signature.KeyPair.fromPrivateKey(sk.startsWith("0x") ?
-					Hex.decode(sk, 2, sk.length() - 2) :
-					Base58.decode(sk));
-		} catch (Exception e) {
-			throw new IllegalArgumentException("config error, invalid client devicePrivateKey", e);
-		}
+		builder.deviceKey(sk);
 
 		// Data directory
-		config.dataDir = cm.getPath("dataDir", config.dataDir);
+		Path dataDir = cm.getPath("dataDir", null);
+		if (dataDir != null)
+			builder.dataDir(dataDir);
 
 		// Database
 		ConfigMap database = cm.getObject("database");
 		if (database == null || database.isEmpty())
 			throw new IllegalArgumentException("Missing database configuration");
 
-		config.databaseUri = database.getString("uri");
-		if (!Database.supports(config.databaseUri))
-			throw new IllegalArgumentException("Unsupported database URI: " + config.databaseUri);
+		builder.databaseUri(database.getString("uri"));
 
-		config.databasePoolSize = database.getInteger("poolSize", config.databasePoolSize);
-		if (config.databasePoolSize < 0)
-			throw new IllegalArgumentException("Invalid database poolSize: " + config.databasePoolSize);
+		builder.databasePoolSize(database.getInteger("poolSize", 0));
 
-		String schemaName = database.getString("schema", config.databaseSchemaName);
-		config.databaseSchemaName = SqlSafety.validateSchema(schemaName);
+		builder.databaseSchemaName(database.getString("schema", null));
 
-		return config;
+		return builder.build();
 	}
 
 	/**
@@ -205,7 +174,7 @@ public class Configuration {
 	 *
 	 * @return the service endpoint as an instance of {@link URI}.
 	 */
-	public URI getServiceEndpoint() {
+	public @Nullable URI getServiceEndpoint() {
 		return serviceEndpoint;
 	}
 
@@ -259,7 +228,7 @@ public class Configuration {
 	 *
 	 * @return the database schema name, or {@code null} if not specified.
 	 */
-	public String getDatabaseSchemaName() {
+	public @Nullable String getDatabaseSchemaName() {
 		return databaseSchemaName;
 	}
 
@@ -275,15 +244,23 @@ public class Configuration {
 	/**
 	 * Builder for {@link Configuration} instances.
 	 */
+	@NullUnmarked
 	public static class Builder {
-		private Configuration config;
+		private Id servicePeerId;
+		private URI serviceEndpoint; // optional
+
+		private Signature.KeyPair userKey;
+		private Signature.KeyPair deviceKey;
+
+		private Path dataDir;
+
+		private String databaseUri;
+		private int databasePoolSize;
+		private String databaseSchemaName;
 
 		private Builder() {
-			config = new Configuration();
-		}
-
-		private Configuration config() {
-			return config == null ? config = new Configuration() : config;
+			dataDir = FileUtils.getUserDataDir().resolve( "boson/client/photon-messaging");
+			databaseUri = "jdbc:sqlite:photonmessaging.db";
 		}
 
 		/**
@@ -320,8 +297,25 @@ public class Configuration {
 		 */
 		public Builder servicePeerId(Id peerId) {
 			Objects.requireNonNull(peerId, "peerId");
-			config().servicePeerId = peerId;
+			this.servicePeerId = peerId;
 			return this;
+		}
+
+		/**
+		 * Validates a service endpoint URI. A valid endpoint is an absolute URI with a host,
+		 * a port in the range 1-65535, and an {@code mqtt} or {@code mqtts} scheme.
+		 *
+		 * @param endpoint the endpoint URI to validate
+		 * @return the same endpoint URI, if valid
+		 * @throws IllegalArgumentException if the endpoint is invalid or uses an unsupported scheme
+		 */
+		private static URI validateEndpoint(URI endpoint) {
+			if (!endpoint.isAbsolute() || endpoint.getHost() == null || endpoint.getScheme() == null ||
+					endpoint.getPort() <= 0 || endpoint.getPort() > 65535 ||
+					(!endpoint.getScheme().equals("mqtt") && !endpoint.getScheme().equals("mqtts")))
+				throw new IllegalArgumentException("Invalid endpoint: " + endpoint);
+
+			return endpoint;
 		}
 
 		/**
@@ -345,7 +339,7 @@ public class Configuration {
 		 */
 		public Builder serviceEndpoint(URI endpoint) {
 			Objects.requireNonNull(endpoint);
-			config().serviceEndpoint = validateEndpoint(endpoint);
+			this.serviceEndpoint = validateEndpoint(endpoint);
 			return this;
 		}
 
@@ -357,7 +351,7 @@ public class Configuration {
 		 */
 		public Builder userKey(Signature.KeyPair userKey) {
 			Objects.requireNonNull(userKey, "userKey");
-			config().userKey = userKey;
+			this.userKey = userKey;
 			return this;
 		}
 
@@ -407,7 +401,7 @@ public class Configuration {
 		 */
 		public Builder deviceKey(Signature.KeyPair deviceKey) {
 			Objects.requireNonNull(deviceKey, "deviceKey");
-			config().deviceKey = deviceKey;
+			this.deviceKey = deviceKey;
 			return this;
 		}
 
@@ -457,7 +451,7 @@ public class Configuration {
 		 */
 		public Builder dataDir(Path dataDir) {
 			Objects.requireNonNull(dataDir, "dataDir");
-			config().dataDir = dataDir.normalize();
+			this.dataDir = dataDir.normalize();
 			return this;
 		}
 
@@ -498,7 +492,9 @@ public class Configuration {
 		 */
 		public Builder databaseUri(String databaseUri) {
 			Objects.requireNonNull(databaseUri, "databaseUri");
-			config().databaseUri = databaseUri;
+			if (!Database.supports(databaseUri))
+				throw new IllegalArgumentException("Unsupported database URI: " + databaseUri);
+			this.databaseUri = databaseUri;
 			return this;
 		}
 
@@ -512,7 +508,7 @@ public class Configuration {
 		public Builder databasePoolSize(int databasePoolSize) {
 			if (databasePoolSize < 0)
 				throw new IllegalArgumentException("Invalid databasePoolSize");
-			config().databasePoolSize = databasePoolSize;
+			this.databasePoolSize = databasePoolSize;
 			return this;
 		}
 
@@ -524,13 +520,8 @@ public class Configuration {
 		 * @throws IllegalArgumentException if the schema name is invalid.
 		 */
 		public Builder databaseSchemaName(String schema) {
-			config().databaseSchemaName = SqlSafety.validateSchema(schema);
+			this.databaseSchemaName = SqlSafety.validateSchema(schema);
 			return this;
-		}
-
-		private boolean verify() {
-			return config().servicePeerId != null && config().userKey != null && config().deviceKey != null
-					&& config().databaseUri != null;
 		}
 
 		/**
@@ -540,12 +531,11 @@ public class Configuration {
 		 * @throws IllegalStateException if the configuration is incomplete.
 		 */
 		public Configuration build() {
-			if (!verify())
-				throw new IllegalStateException("Incomplete configuration");
-
-			Configuration c = config();
-			config = null;
-			return c;
+			try {
+				return new Configuration(this);
+			} catch (NullPointerException | IllegalArgumentException e) {
+				throw new IllegalStateException("Invalid configuration: " + e.getMessage(), e);
+			}
 		}
 	}
 }

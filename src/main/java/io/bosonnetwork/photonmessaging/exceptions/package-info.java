@@ -61,4 +61,7 @@
  * {@link io.bosonnetwork.photonmessaging.exceptions.rpc.RpcException} and its subtypes; see that
  * package for the error-code mapping.
  */
+@NullUnmarked
 package io.bosonnetwork.photonmessaging.exceptions;
+
+import org.jspecify.annotations.NullUnmarked;

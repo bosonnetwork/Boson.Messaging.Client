@@ -27,6 +27,7 @@ import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
+import org.jspecify.annotations.NullUnmarked;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.crypto.CryptoBox;
@@ -34,6 +35,7 @@ import io.bosonnetwork.crypto.Signature;
 import io.bosonnetwork.photonmessaging.Channel;
 import io.bosonnetwork.photonmessaging.Contact;
 
+@NullUnmarked
 @JsonPOJOBuilder
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ContactBuilder {

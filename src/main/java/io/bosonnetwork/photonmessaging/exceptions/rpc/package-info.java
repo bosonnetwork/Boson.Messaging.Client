@@ -61,4 +61,7 @@
  * (internal); the mapping above is performed when a failed {@code RpcResponse} is turned into a
  * thrown/completed exception.
  */
+@NullUnmarked
 package io.bosonnetwork.photonmessaging.exceptions.rpc;
+
+import org.jspecify.annotations.NullUnmarked;

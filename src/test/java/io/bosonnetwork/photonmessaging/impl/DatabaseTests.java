@@ -70,7 +70,7 @@ public class DatabaseTests {
 
 		if (pgServer != null) {
 			postgres = new PostgresDatabase(pgServer.getDatabaseUri(), 4, "photon_test");
-			f1 = postgres.initialize(vertx)
+			f1 = postgres.initialize(vertx, c -> null)
 					.onSuccess(v -> dbs.add(Arguments.of("postgres", postgres)));
 		} else {
 			f1 = Future.succeededFuture(0);
@@ -79,7 +79,7 @@ public class DatabaseTests {
 		// Initialize SQLite
 		String sqliteUri = "jdbc:sqlite:" + testDir.resolve("client.db");
 		Database sqlite = new SqliteDatabase(sqliteUri, 1);
-		Future<Integer> f2 = sqlite.initialize(vertx)
+		Future<Integer> f2 = sqlite.initialize(vertx, c -> null)
 				.onSuccess(v -> dbs.add(Arguments.of("sqlite", sqlite)));
 
 		Future.all(f1, f2).onComplete(context.succeedingThenComplete());
@@ -134,14 +134,16 @@ public class DatabaseTests {
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
 	void testFriendLifecycle(String name, Database db, VertxTestContext context) {
 		Id friendId = Id.random();
-		Friend friend = new Friend(friendId, null, "Alice", null, "Remark", null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
+		Friend friend = new Friend(friendId, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES),
+				"Alice", null, "Remark", null, false, false,
+				System.currentTimeMillis(), System.currentTimeMillis(), 1);
 
 		db.putContactLocally(friend).onComplete(context.succeeding(v1 -> {
 			db.getContact(friendId).onComplete(context.succeeding(c -> {
 				context.verify(() -> {
 					assertNotNull(c);
 					assertTrue(c instanceof Friend);
-					assertEquals("Alice", c.getName());
+					assertEquals("Alice", c.getName().orElseThrow());
 				});
 
 				db.removeContactLocally(friendId).onComplete(context.succeeding(v2 -> {
@@ -159,7 +161,9 @@ public class DatabaseTests {
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
 	void testChannelAndMembers(String name, Database db, VertxTestContext context) {
 		Id channelId = Id.random();
-		PhotonChannel channel = new PhotonChannel(channelId, null, Id.random(), Channel.Permission.PUBLIC, "Channel 1", "Notice", false, System.currentTimeMillis(), System.currentTimeMillis());
+		PhotonChannel channel = new PhotonChannel(channelId, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES),
+				Id.random(), Channel.Permission.PUBLIC, "Channel 1", "Notice", false,
+				System.currentTimeMillis(), System.currentTimeMillis());
 
 		Id m1 = Id.random();
 		Id m2 = Id.random();
@@ -216,7 +220,9 @@ public class DatabaseTests {
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
 	void testConversationJoin(String name, Database db, VertxTestContext context) {
 		Id contactId = Id.random();
-		Friend friend = new Friend(contactId, null, "Bob", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
+		Friend friend = new Friend(contactId, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES),
+				"Bob", null, null, null, false, false,
+				System.currentTimeMillis(), System.currentTimeMillis(), 1);
 
 		Id msgId = Id.random();
 		MessageContent content = MessageContent.text("Last");
@@ -229,7 +235,7 @@ public class DatabaseTests {
 				.onComplete(context.succeeding(conv -> {
 					context.verify(() -> {
 						assertNotNull(conv);
-						assertEquals("Bob", conv.getContact().getName());
+						assertEquals("Bob", conv.getContact().getName().orElseThrow());
 						assertEquals(msg.getReceivedAt(), conv.getUpdatedAt());
 					});
 					context.completeNow();
@@ -241,7 +247,9 @@ public class DatabaseTests {
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
 	void testCascadeDelete(String name, Database db, VertxTestContext context) {
 		Id channelId = Id.random();
-		PhotonChannel channel = new PhotonChannel(channelId, null, Id.random(), Channel.Permission.PUBLIC, "Cascade", "Notice", false, System.currentTimeMillis(), System.currentTimeMillis());
+		PhotonChannel channel = new PhotonChannel(channelId, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES),
+				Id.random(), Channel.Permission.PUBLIC, "Cascade", "Notice", false,
+				System.currentTimeMillis(), System.currentTimeMillis());
 		Id m1 = Id.random();
 		Channel.Member member1 = new ChannelMember(m1, Channel.Role.MEMBER, System.currentTimeMillis());
 

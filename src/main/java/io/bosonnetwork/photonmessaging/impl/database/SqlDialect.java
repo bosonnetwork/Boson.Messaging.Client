@@ -263,7 +263,7 @@ public class SqlDialect {
 				""";
 	}
 
-	// Note: the JOIN on messages is intentional (see selectConversation) — only contacts with at
+	// Note: the JOIN on messages is intentional (see selectConversation) - only contacts with at
 	// least one message are returned as conversations.
 	public String selectAllConversations() {
 		return """

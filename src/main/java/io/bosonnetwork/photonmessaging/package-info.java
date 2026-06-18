@@ -107,4 +107,8 @@
  * @see io.bosonnetwork.photonmessaging.Configuration
  * @see io.bosonnetwork.photonmessaging.exceptions
  */
+
+@NullMarked
 package io.bosonnetwork.photonmessaging;
+
+import org.jspecify.annotations.NullMarked;

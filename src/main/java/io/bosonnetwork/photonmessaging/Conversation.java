@@ -22,6 +22,8 @@
 
 package io.bosonnetwork.photonmessaging;
 
+import java.util.Optional;
+
 import io.bosonnetwork.Id;
 
 /**
@@ -51,7 +53,7 @@ public interface Conversation extends Comparable<Conversation> {
 	 *
 	 * @return the avatar string
 	 */
-	default String getAvatar() {
+	default Optional<String> getAvatar() {
 		return getContact().getAvatar();
 	}
 
@@ -74,7 +76,7 @@ public interface Conversation extends Comparable<Conversation> {
 	 *
 	 * @return the preview text
 	 */
-	String getPreview();
+	Optional<String> getPreview();
 
 	/**
 	 * Returns the timestamp of when the conversation was last updated.

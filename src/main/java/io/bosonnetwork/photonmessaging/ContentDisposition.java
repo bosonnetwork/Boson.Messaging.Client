@@ -26,10 +26,13 @@ import java.net.URLDecoder;
 import java.nio.charset.Charset;
 import java.util.Objects;
 
+import org.jspecify.annotations.NullUnmarked;
+
 /**
  * Represents the Content-Disposition header, which indicates if the content is
  * expected to be displayed inline or as an attachment, potentially with a filename.
  */
+@NullUnmarked
 public class ContentDisposition {
 	/**
 	 * The standard header name for content disposition.

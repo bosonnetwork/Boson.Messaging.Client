@@ -23,6 +23,7 @@
 package io.bosonnetwork.photonmessaging.impl.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Channel;
@@ -31,6 +32,6 @@ public record NewChannelInfo(@JsonProperty(value = "sid", required = true) Id se
                              @JsonProperty(value = "sk", required = true) byte[] sessionKey,
                              @JsonProperty(value = "p", required = true) Channel.Permission permission,
                              @JsonProperty("n") String name,
-                             @JsonProperty("nt") String notice,
+                             @JsonProperty("nt") @Nullable String notice,
                              @JsonProperty("a") boolean announce) {
 }

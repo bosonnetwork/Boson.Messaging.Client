@@ -24,6 +24,7 @@ package io.bosonnetwork.photonmessaging.impl.rpc;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -32,31 +33,32 @@ import java.util.concurrent.atomic.AtomicLong;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.InviteTicket;
 import io.bosonnetwork.photonmessaging.SessionInfo;
 import io.bosonnetwork.photonmessaging.exceptions.rpc.*;
+import io.bosonnetwork.photonmessaging.impl.ContactMutation;
 import io.bosonnetwork.photonmessaging.impl.dto.ChannelInfo;
 import io.bosonnetwork.photonmessaging.impl.dto.ChannelMembersRole;
 import io.bosonnetwork.photonmessaging.impl.dto.ChannelSessionKeyRotation;
-import io.bosonnetwork.photonmessaging.impl.ContactMutation;
 import io.bosonnetwork.photonmessaging.impl.dto.NewChannelInfo;
 
 public class RpcCall<R> {
 	private static final long DEFAULT_TIMEOUT = 30 * 1000; // 30 seconds
 
 	private final RpcRequest request;
-	private RpcResponse response;
+	private @Nullable RpcResponse response;
 	private final long timeout; // in milliseconds
-	private final Promise<R> responsePromise;
+	private final Promise<@Nullable R> responsePromise;
 
 	private static final AtomicLong nextId = new AtomicLong(new Random().nextLong(8192, 65535));
 
 	protected RpcCall(RpcRequest request, long timeout) {
 		this.request = request;
 		this.timeout = timeout;
-		this.responsePromise = Promise.promise();
+		this.responsePromise = Promise.<@Nullable R>promise();
 	}
 
 	protected RpcCall(RpcRequest request) {
@@ -75,7 +77,7 @@ public class RpcCall<R> {
 		return request;
 	}
 
-	public  RpcResponse getResponse() {
+	public @Nullable RpcResponse getResponse() {
 		return response;
 	}
 
@@ -84,6 +86,7 @@ public class RpcCall<R> {
 	}
 
 	public void setResponse(RpcResponse response) {
+		Objects.requireNonNull(response);
 		if (this.response != null)
 			throw new IllegalStateException("Response already set");
 		if (response.getId() != request.getId() || response.getMethod() != request.getMethod())
@@ -101,9 +104,12 @@ public class RpcCall<R> {
 
 	// A timeout <= 0 means "wait indefinitely" (no timeout); a positive timeout fails the
 	// future with RpcTimeoutException after that many milliseconds.
-	public Future<R> getFuture() {
-		return timeout <= 0 ? responsePromise.future() :
-				responsePromise.future().timeout(timeout, TimeUnit.MILLISECONDS)
+	public Future<@Nullable R> getFuture() {
+		Future<@Nullable R> future = responsePromise.future().<@Nullable R>map(r -> r);
+		if (timeout <= 0)
+			return future;
+
+		return future.timeout(timeout, TimeUnit.MILLISECONDS)
 				.recover(err -> {
 					if (err instanceof TimeoutException)
 						return Future.failedFuture(new RpcTimeoutException("RPC call timeout"));

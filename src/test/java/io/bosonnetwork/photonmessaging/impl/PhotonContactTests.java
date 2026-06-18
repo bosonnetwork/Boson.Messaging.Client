@@ -69,7 +69,7 @@ public class PhotonContactTests {
 
 		assertEquals(id, friend.getId());
 		assertEquals(sk, friend.getSessionKey());
-		assertEquals(remark, friend.getRemark());
+		assertEquals(remark, friend.getRemark().orElseThrow());
 		assertEquals(Contact.Type.FRIEND, friend.getType());
 		assertFalse(friend.isMuted());
 		assertFalse(friend.isBlocked());
@@ -84,8 +84,8 @@ public class PhotonContactTests {
 				.build();
 
 		assertEquals(id, modified.getId());
-		assertEquals(newName, modified.getName());
-		assertEquals(newRemark, modified.getRemark());
+		assertEquals(newName, modified.getName().orElseThrow());
+		assertEquals(newRemark, modified.getRemark().orElseThrow());
 		assertTrue(modified.isMuted());
 		assertFalse(modified.isBlocked());
 		assertTrue(modified.getUpdatedAt() >= friend.getUpdatedAt());
@@ -109,8 +109,8 @@ public class PhotonContactTests {
 		assertEquals(sk, channel.getSessionKey());
 		assertEquals(owner, channel.getOwnerId());
 		assertEquals(Channel.Permission.PUBLIC, channel.getPermission());
-		assertEquals(name, channel.getName());
-		assertEquals(notice, channel.getNotice());
+		assertEquals(name, channel.getName().orElseThrow());
+		assertEquals(notice, channel.getNotice().orElseThrow());
 		assertTrue(channel.isAnnounce());
 		assertEquals(Contact.Type.CHANNEL, channel.getType());
 
@@ -125,8 +125,8 @@ public class PhotonContactTests {
 				.build();
 
 		assertEquals(id, modified.getId());
-		assertEquals(newName, modified.getName());
-		assertEquals(newNotice, modified.getNotice());
+		assertEquals(newName, modified.getName().orElseThrow());
+		assertEquals(newNotice, modified.getNotice().orElseThrow());
 		assertEquals(Channel.Permission.MEMBER_INVITE, modified.getPermission());
 		assertFalse(modified.isAnnounce());
 		assertTrue(modified.getUpdatedAt() >= channel.getUpdatedAt());
@@ -136,7 +136,7 @@ public class PhotonContactTests {
 				.setRemark("Channel Remark")
 				.setBlocked(true)
 				.build();
-		assertEquals("Channel Remark", modifiedCommon.getRemark());
+		assertEquals("Channel Remark", modifiedCommon.getRemark().orElseThrow());
 		assertTrue(modifiedCommon.isBlocked());
 
 		// No changes
@@ -153,7 +153,7 @@ public class PhotonContactTests {
 
 		assertEquals(id, auto.getId());
 		assertNull(auto.getSessionKey());
-		assertEquals(name, auto.getName());
+		assertEquals(name, auto.getName().orElseThrow());
 		assertEquals(Contact.Type.AUTO, auto.getType());
 		assertEquals(-1, auto.getRevision());
 
@@ -166,8 +166,8 @@ public class PhotonContactTests {
 				.setBlocked(true).build();
 
 		assertEquals(id, modified.getId());
-		assertEquals(newName, modified.getName());
-		assertEquals(newRemark, modified.getRemark());
+		assertEquals(newName, modified.getName().orElseThrow());
+		assertEquals(newRemark, modified.getRemark().orElseThrow());
 		assertTrue(modified.isBlocked());
 	}
 

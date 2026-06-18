@@ -23,6 +23,7 @@
 package io.bosonnetwork.photonmessaging.impl;
 
 import java.io.IOException;
+import java.util.Optional;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -30,6 +31,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.json.Json;
@@ -51,7 +53,7 @@ public class PhotonMessage<P> implements Message, DeviceOriginated {
 	private final Type type;
 	@JsonProperty(value = "f")
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	private Id from;
+	private @Nullable Id from;
 	@JsonProperty(value = "c")
 	@JsonInclude(JsonInclude.Include.NON_DEFAULT)
 	private final long createdAt;
@@ -60,18 +62,20 @@ public class PhotonMessage<P> implements Message, DeviceOriginated {
 	private final P payload;
 
 	private long rid;
-	private Id conversationId;
+	private @Nullable Id conversationId;
 	private long sentAt;
 	private long receivedAt;
 
-	private volatile Promise<Void> sentPromise;
+	private volatile @Nullable Promise<Void> sentPromise;
 
+	// The 'from' field is required for incoming wire messages but omitted for outgoing ones.
+	// This constructor is used by Jackson for deserialization, where 'from' must be present.
 	@JsonCreator
 	protected PhotonMessage(@JsonProperty(value = "v", required = true) int version,
 	                        @JsonProperty(value = "id", required = true) Id id,
 	                        @JsonProperty(value = "r", required = true) Id recipient,
 	                        @JsonProperty(value = "y", required = true) Type type,
-	                        @JsonProperty(value = "f") Id from,
+	                        @JsonProperty(value = "f", required = true) @Nullable Id from,
 	                        @JsonProperty(value = "c", required = true) long createdAt,
 	                        @JsonProperty(value = "p", required = true) P payload) {
 		// Reject wire messages with an unrecognised version: we cannot correctly interpret them.
@@ -91,7 +95,7 @@ public class PhotonMessage<P> implements Message, DeviceOriginated {
 		this(VERSION, id, recipient, type, null, createAt, payload);
 	}
 
-	protected PhotonMessage(long rid, Id conversationId, int version, Id id, Id recipient, Type type, Id from,
+	protected PhotonMessage(long rid, @Nullable Id conversationId, int version, Id id, Id recipient, Type type, @Nullable Id from,
 	                        long createdAt, P payload, long sentAt, long receivedAt) {
 			this.rid = rid;
 			this.conversationId = conversationId;
@@ -130,7 +134,14 @@ public class PhotonMessage<P> implements Message, DeviceOriginated {
 	}
 
 	@Override
-	public Id getConversationId() {
+	public Optional<Id> getConversationId() {
+		return Optional.ofNullable(conversationId);
+	}
+
+	Id getConversationIdOrThrow() {
+		if (conversationId == null)
+			throw new IllegalStateException("Conversation ID is not set");
+
 		return conversationId;
 	}
 
@@ -149,7 +160,14 @@ public class PhotonMessage<P> implements Message, DeviceOriginated {
 	}
 
 	@Override
-	public Id getFrom() {
+	public Optional<Id> getFrom() {
+		return Optional.ofNullable(from);
+	}
+
+	Id getFromOrThrow() {
+		if (from == null)
+			throw new IllegalStateException("Message sender is not set");
+
 		return from;
 	}
 
@@ -172,7 +190,7 @@ public class PhotonMessage<P> implements Message, DeviceOriginated {
 		return sentAt;
 	}
 
-	public PhotonMessage<P> setFrom(Id from) {
+	public PhotonMessage<P> setFrom(@Nullable Id from) {
 		this.from = from;
 		return this;
 	}
@@ -203,9 +221,6 @@ public class PhotonMessage<P> implements Message, DeviceOriginated {
 
 	@Override
 	public byte[] getPayloadAsBytes() {
-		if (payload == null)
-			return null;
-
 		if (payload instanceof byte[] bytes)
 			return bytes;
 
@@ -232,9 +247,6 @@ public class PhotonMessage<P> implements Message, DeviceOriginated {
 
 	@Override
 	public Content getPayloadAsContent() {
-		if (payload == null)
-			return null;
-
 		if (payload instanceof Content c)
 			return c;
 
@@ -250,21 +262,24 @@ public class PhotonMessage<P> implements Message, DeviceOriginated {
 	}
 
 	protected void sent() {
-		if (sentPromise == null)
+		Promise<Void> promise = sentPromise;
+		if (promise == null)
 			throw new IllegalStateException("Message has not been sent yet");
 		sentAt = System.currentTimeMillis();
-		sentPromise.tryComplete();
+		promise.tryComplete();
 	}
 
 	protected void failed(Throwable e) {
-		if (sentPromise == null)
+		Promise<Void> promise = sentPromise;
+		if (promise == null)
 			throw new IllegalStateException("Message has not been sent yet");
-		sentPromise.tryFail(e);
+		promise.tryFail(e);
 	}
 
 	protected Future<Void> getFuture() {
-		if (sentPromise == null)
+		Promise<Void> promise = sentPromise;
+		if (promise == null)
 			throw new IllegalStateException("Message has not been sent yet");
-		return sentPromise.future();
+		return promise.future();
 	}
 }

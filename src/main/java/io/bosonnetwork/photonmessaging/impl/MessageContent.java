@@ -36,6 +36,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.json.Json;
 import io.bosonnetwork.photonmessaging.Message;
@@ -142,6 +143,8 @@ public class MessageContent implements Message.Content {
 	private static final ObjectReader READER = Json.cborMapper().readerFor(MessageContent.class);
 	private static final ObjectWriter WRITER = Json.cborMapper().writerFor(MessageContent.class);
 
+	public static final MessageContent EMPTY = new MessageContent(null, Format.TEXT, "");
+
 	@JsonProperty("h")
 	@JsonInclude(JsonInclude.Include.NON_EMPTY)
 	private final Map<String, Object> headers;
@@ -161,7 +164,7 @@ public class MessageContent implements Message.Content {
 	})
 	private Object body;
 
-	private transient Object origin;
+	private transient @Nullable Object origin;
 
 	public enum Format {
 		@JsonProperty("t")
@@ -173,7 +176,7 @@ public class MessageContent implements Message.Content {
 	}
 
 	@JsonCreator
-	private MessageContent(@JsonProperty(value = "h") Map<String, Object> headers,
+	private MessageContent(@JsonProperty(value = "h") @Nullable Map<String, Object> headers,
 	                       @JsonProperty(value = "f", required = true) Format format,
 	                       @JsonProperty(value = "b", required = true) Object body) {
 		switch (format) {
@@ -194,12 +197,12 @@ public class MessageContent implements Message.Content {
 		this.body = body;
 	}
 
-	private MessageContent(Map<String, Object> headers, Format format, Object body, Object origin) {
+	private MessageContent(@Nullable Map<String, Object> headers, Format format, Object body, Object origin) {
 		this(headers, format, body);
 		this.origin = origin;
 	}
 
-	public static MessageContent text(Map<String, Object> headers, String text) {
+	public static MessageContent text(@Nullable Map<String, Object> headers, String text) {
 		Objects.requireNonNull(text, "text");
 		return new MessageContent(headers, Format.TEXT, text, text);
 	}
@@ -208,7 +211,7 @@ public class MessageContent implements Message.Content {
 		return text(null, text);
 	}
 
-	public static MessageContent binary(Map<String, Object> headers, byte[] binary) {
+	public static MessageContent binary(@Nullable Map<String, Object> headers, byte[] binary) {
 		Objects.requireNonNull(binary, "binary");
 		// The constructor already defensively clones a binary body, so don't pre-clone here.
 		return new MessageContent(headers, Format.BINARY, binary);
@@ -218,7 +221,7 @@ public class MessageContent implements Message.Content {
 		return binary(null, binary);
 	}
 
-	public static MessageContent object(Map<String, Object> headers, Object object) {
+	public static MessageContent object(@Nullable Map<String, Object> headers, Object object) {
 		Objects.requireNonNull(object, "object");
 		return new MessageContent(headers, Format.OBJECT, Json.cborMapper().valueToTree(object), object);
 	}

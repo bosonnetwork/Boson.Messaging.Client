@@ -33,6 +33,7 @@ import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
 import io.vertx.sqlclient.SqlClient;
 import io.vertx.sqlclient.SqlConnection;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,16 +50,16 @@ public class PostgresDatabase extends Database {
 
 	private final String connectionUri;
 	private final int poolSize;
-	private final String schema;
+	private final @Nullable String schema;
 	private final SqlDialect sqlDialect;
-	private Pool client;
+	private @Nullable Pool client;
 	private static final Logger log = LoggerFactory.getLogger(PostgresDatabase.class);
 
-	public PostgresDatabase(String connectionUri, int poolSize, String schema) {
+	public PostgresDatabase(String connectionUri, int poolSize, @Nullable String schema) {
 		this.connectionUri = connectionUri;
 		this.poolSize = poolSize <= 0 ? DEFAULT_POOL_SIZE : poolSize;
 		// Defense-in-depth: the schema is interpolated into "SET search_path TO ..." in
-		// prepareConnection(), so re-validate it here even though Configuration already does —
+		// prepareConnection(), so re-validate it here even though Configuration already does -
 		// this class must not assume its caller validated the identifier.
 		this.schema = SqlSafety.validateSchema(schema);
 		this.sqlDialect = new PostgresSqlDialect();
@@ -93,12 +94,12 @@ public class PostgresDatabase extends Database {
 	}
 
 	@Override
-	public SqlClient getClient() {
+	public @Nullable SqlClient getClient() {
 		return client;
 	}
 
 	@Override
-	protected String getSchema() {
+	protected @Nullable String getSchema() {
 		return schema;
 	}
 

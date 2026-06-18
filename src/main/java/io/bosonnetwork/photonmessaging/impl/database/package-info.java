@@ -20,33 +20,10 @@
  * SOFTWARE.
  */
 
-package io.bosonnetwork.photonmessaging.impl;
+/**
+ * Contains classes for interacting with the database.
+ */
+@NullMarked
+package io.bosonnetwork.photonmessaging.impl.database;
 
-import java.util.concurrent.CopyOnWriteArrayList;
-
-import org.slf4j.Logger;
-
-import io.bosonnetwork.photonmessaging.SessionInfo;
-import io.bosonnetwork.photonmessaging.SessionListener;
-
-public class SessionListenerArray extends CopyOnWriteArrayList<SessionListener> implements SessionListener {
-	private static final long serialVersionUID = -7777075924791490548L;
-	private final Logger log;
-
-	public SessionListenerArray(SessionListener listener, Logger log) {
-		super();
-		this.log = log;
-		add(listener);
-	}
-
-	@Override
-	public void onNewSession(SessionInfo sessionInfo) {
-		for (SessionListener listener : this) {
-			try {
-				listener.onNewSession(sessionInfo);
-			} catch (Throwable t) {
-				log.error("Error dispatching onNewSession to listener: {}", listener, t);
-			}
-		}
-	}
-}
+import org.jspecify.annotations.NullMarked;

@@ -30,6 +30,7 @@ import io.vertx.jdbcclient.JDBCPool;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
 import io.vertx.sqlclient.SqlClient;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteDataSource;
@@ -47,7 +48,7 @@ public class SqliteDatabase extends Database {
 	private final String connectionUri;
 	private final int poolSize;
 	private final SqlDialect sqlDialect;
-	private Pool client;
+	private @Nullable Pool client;
 	private static final Logger log = LoggerFactory.getLogger(SqliteDatabase.class);
 
 	public SqliteDatabase(String connectionUri, int poolSize) {
@@ -88,7 +89,7 @@ public class SqliteDatabase extends Database {
 	}
 
 	@Override
-	public SqlClient getClient() {
+	public @Nullable SqlClient getClient() {
 		return client;
 	}
 

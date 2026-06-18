@@ -28,6 +28,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonValue;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.photonmessaging.impl.dto.OpaqueContact;
 
@@ -80,8 +81,8 @@ public class ContactSync {
 	@JsonCreator
 	protected ContactSync(@JsonProperty(value = "v", required = true) int revision,
 	                      @JsonProperty(value = "t", required = true) Type type,
-	                      @JsonProperty("d") List<ContactMutation> mutations,
-	                      @JsonProperty("s") List<OpaqueContact> contacts) {
+	                      @JsonProperty("d") @Nullable List<ContactMutation> mutations,
+	                      @JsonProperty("s") @Nullable List<OpaqueContact> contacts) {
 		if ((mutations != null && !mutations.isEmpty()) && (contacts != null && !contacts.isEmpty()))
 			throw new IllegalArgumentException("Mutations and contacts can not be both present");
 
@@ -96,8 +97,8 @@ public class ContactSync {
 
 		this.type = type;
 		this.revision = revision;
-		this.contacts = contacts == null || contacts.isEmpty() ? null : contacts;
-		this.mutations = mutations == null || mutations.isEmpty() ? null : mutations;
+		this.contacts = contacts == null || contacts.isEmpty() ? List.of() : contacts;
+		this.mutations = mutations == null || mutations.isEmpty() ? List.of() : mutations;
 	}
 
 	public static ContactSync upToDate(int revision) {
