@@ -24,10 +24,12 @@ package io.bosonnetwork.photonmessaging;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 
@@ -101,7 +103,7 @@ public interface Message {
 	 *
 	 * @return the conversation ID
 	 */
-	Id getConversationId();
+	Optional<Id> getConversationId();
 
 	/**
 	 * Retrieves the identifier of the message recipient.
@@ -122,7 +124,7 @@ public interface Message {
 	 *
 	 * @return the sender's Id
 	 */
-	Id getFrom();
+	Optional<Id> getFrom();
 
 	/**
 	 * Retrieves the timestamp when the sender created the message.
@@ -190,12 +192,10 @@ public interface Message {
 		 * @return the content disposition, indicating how the content is expected
 		 *         to be displayed (e.g., "inline" or "attachment").
 		 */
-		default ContentDisposition getContentDisposition() {
+		default Optional<ContentDisposition> getContentDisposition() {
 			Object disposition = getHeaders().get(ContentDisposition.HEADER_NAME);
-			if (disposition != null)
-				return ContentDisposition.parse(disposition.toString());
-			else
-				return null;
+			return disposition == null ? Optional.empty() :
+					Optional.of(ContentDisposition.parse(disposition.toString()));
 		}
 
 		/**
@@ -270,7 +270,7 @@ public interface Message {
 		 * @param value the value of the header; a {@code null} value will remove the header
 		 * @return this builder instance
 		 */
-		Builder header(String name, Object value);
+		Builder header(String name, @Nullable Object value);
 
 		/**
 		 * Sets the content type of the message body.

@@ -23,7 +23,10 @@
 package io.bosonnetwork.photonmessaging.impl;
 
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Function;
+
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.photonmessaging.Contact;
 import io.bosonnetwork.photonmessaging.Conversation;
@@ -32,21 +35,24 @@ import io.bosonnetwork.photonmessaging.Message;
 public class PhotonConversation implements Conversation {
 	public static final int MAX_SNIPPET_LENGTH = 128;
 
-	private PhotonContact contact;
-	private Message lastMessage;
-	private transient String preview;
+	private final PhotonContact contact;
+	private final Function<PhotonContact, SessionContext> sessionContextFactory;
 
-	private transient Function<PhotonContact, SessionContext> sessionContextFactory;
-	private transient SessionContext sessionContext;
+	private @Nullable Message lastMessage;
+	private transient @Nullable String preview;
 
-	protected PhotonConversation(PhotonContact contact, Message lastMessage) {
+	private transient @Nullable SessionContext sessionContext;
+
+	protected PhotonConversation(PhotonContact contact, @Nullable Message lastMessage,
+								 Function<PhotonContact, SessionContext> sessionContextFactory) {
 		this.contact = contact;
-		update(lastMessage);
-		sessionContext = null;
+		this.sessionContextFactory = sessionContextFactory;
+		if (lastMessage != null)
+			update(lastMessage);
 	}
 
-	protected PhotonConversation(PhotonContact contact) {
-		this.contact = contact;
+	protected PhotonConversation(PhotonContact contact, Function<PhotonContact, SessionContext> sessionContextFactory) {
+		this(contact, null, sessionContextFactory);
 	}
 
 	@Override
@@ -60,7 +66,7 @@ public class PhotonConversation implements Conversation {
 	}
 
 	@Override
-	public String getPreview() {
+	public Optional<String> getPreview() {
 		String snippet = preview;
 		if (snippet == null && lastMessage != null) {
 			Message.Content content = lastMessage.getPayloadAsContent();
@@ -69,20 +75,22 @@ public class PhotonConversation implements Conversation {
 				String body = content.asText().trim();
 				snippet = body.length() < MAX_SNIPPET_LENGTH ? body : body.substring(0, MAX_SNIPPET_LENGTH - 3) + "...";
 			} else if (contentType.startsWith("image/")) {
-				preview = "(Image)";
+				snippet = "(Image)";
 			} else if (contentType.startsWith("audio/")) {
-				preview = "(Audio)";
+				snippet = "(Audio)";
 			} else if (contentType.startsWith("video/")) {
-				preview = "(Video)";
+				snippet = "(Video)";
 			} else {
-				if (content.getContentDisposition() != null)
-					preview = "(Attachment)";
+				if (content.getContentDisposition().isPresent())
+					snippet = "(Attachment)";
 				else
-					preview = "(Unknown)";
+					snippet = "(Unknown)";
 			}
+
+			preview = snippet;
 		}
 
-		return snippet;
+		return Optional.ofNullable(snippet);
 	}
 
 	@Override
@@ -90,6 +98,7 @@ public class PhotonConversation implements Conversation {
 		return lastMessage != null ? lastMessage.getReceivedAt() : 0;
 	}
 
+	/*/
 	protected void updateParticipant(PhotonContact contact) {
 		Objects.requireNonNull(contact, "contact");
 		if (!contact.getId().equals(this.contact.getId()))
@@ -97,26 +106,27 @@ public class PhotonConversation implements Conversation {
 
 		this.contact = contact;
 	}
+	 */
 
 	protected void update(Message message) {
 		Objects.requireNonNull(message, "message");
-		if (!message.getConversationId().equals(contact.getId()))
+		if (message.getConversationId().map(convId -> !convId.equals(contact.getId())).orElse(true))
 			throw new IllegalArgumentException("Message does not match the conversation");
 
 		this.lastMessage = message;
 		this.preview = null;
 	}
 
+	/*/
 	void setSessionContextFactory(Function<PhotonContact, SessionContext> factory) {
 		this.sessionContextFactory = factory;
 	}
 
+	 */
+
 	protected SessionContext getSessionContext() {
 		SessionContext ctx = sessionContext;
 		if (ctx == null) {
-			if (sessionContextFactory == null)
-				throw new IllegalStateException("INTERNAL ERROR: Session context factory not set");
-
 			ctx = sessionContextFactory.apply(contact);
 			sessionContext = ctx;
 		}

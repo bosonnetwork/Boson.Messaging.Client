@@ -33,6 +33,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.json.Json;
@@ -87,11 +88,11 @@ public class RpcResponse {
 			@JsonSubTypes.Type(value = Void.class, name = "cl"),
 			@JsonSubTypes.Type(value = ChannelInfo.class, name = "ci")
 	})
-	private final Object result;
+	private final @Nullable Object result;
 
 	@JsonProperty("e")
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	private final RpcError error;
+	private final @Nullable RpcError error;
 
 	/**
 	 * Creates an RPC response.
@@ -101,8 +102,8 @@ public class RpcResponse {
 	@JsonCreator
 	protected RpcResponse(@JsonProperty(value = "id", required = true) long id,
 						  @JsonProperty(value = "m", required = true) RpcMethod method,
-						  @JsonProperty(value = "r") Object result,
-						  @JsonProperty(value = "e") RpcError error)  {
+						  @JsonProperty(value = "r") @Nullable Object result,
+						  @JsonProperty(value = "e") @Nullable RpcError error)  {
 		if (result != null && error != null)
 			throw new IllegalArgumentException("Cannot have both result and error");
 
@@ -129,11 +130,11 @@ public class RpcResponse {
 	}
 
 	@SuppressWarnings("unchecked")
-	public <T> T getResult() {
+	public <T> @Nullable T getResult() {
 		return (T) result;
 	}
 
-	public RpcError getError() {
+	public @Nullable RpcError getError() {
 		return error;
 	}
 
@@ -241,7 +242,7 @@ public class RpcResponse {
 		return new RpcResponse(id, method, null, error);
 	}
 
-	public static RpcResponse error(long id, RpcMethod method, int errorCode, String errorMessage, String errorData) {
+	public static RpcResponse error(long id, RpcMethod method, int errorCode, String errorMessage, @Nullable String errorData) {
 		return error(id, method, new RpcError(errorCode, errorMessage, errorData));
 	}
 

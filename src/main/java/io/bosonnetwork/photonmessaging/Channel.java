@@ -23,11 +23,13 @@
 package io.bosonnetwork.photonmessaging;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.impl.ChannelMember;
@@ -241,7 +243,7 @@ public interface Channel extends Contact {
 		 *
 		 * @return the {@code Contact} object associated with this member, or null if not available.
 		 */
-		Contact getContact();
+		Optional<Contact> getContact();
 
 		/**
 		 * Retrieves the display name associated with this member.
@@ -296,7 +298,7 @@ public interface Channel extends Contact {
 	 *
 	 * @return a string representing the current notice of the channel
 	 */
-	String getNotice();
+	Optional<String> getNotice();
 
 	/**
 	 * Checks if the channel is configured to be announced to the network.
@@ -311,9 +313,9 @@ public interface Channel extends Contact {
 	 * regular users, moderators, and the channel owner, and will be updated based on the
 	 * most recent state of the channel.
 	 *
-* @return a {@code CompletableFuture<Void>} that completes once the member-loading process is finished.
+	 * @return a {@code CompletableFuture<Void>} that completes once the member-loading process is finished.
 	 */
-	public CompletableFuture<Void> loadMembers();
+	CompletableFuture<Void> loadMembers();
 
 	/**
 	 * Retrieves the total number of members in the channel.
@@ -351,7 +353,7 @@ public interface Channel extends Contact {
 	 * @return the {@code ChannelMember} object corresponding to the specified identifier,
 	 *         or {@code null} if no member with the given identifier exists in the channel
 	 */
-	Member getMember(Id memberId);
+	Optional<Member> getMember(Id memberId);
 
 	/**
 	 * Checks if a member with the specified identifier is part of the channel.
@@ -404,7 +406,7 @@ public interface Channel extends Contact {
 		 * @param notice the channel notice
 		 * @return this builder instance
 		 */
-		Editor setNotice(String notice);
+		Editor setNotice(@Nullable String notice);
 
 		/**
 		 * Sets whether the channel is announced to the network.

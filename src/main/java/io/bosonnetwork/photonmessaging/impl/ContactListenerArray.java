@@ -26,7 +26,6 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Contact;
@@ -34,10 +33,11 @@ import io.bosonnetwork.photonmessaging.ContactListener;
 
 public class ContactListenerArray extends CopyOnWriteArrayList<ContactListener> implements ContactListener {
 	private static final long serialVersionUID = -6724210075837468138L;
-	private static final Logger log = LoggerFactory.getLogger(ContactListenerArray.class);
+	private final Logger log;
 
-	public ContactListenerArray(ContactListener listener) {
+	public ContactListenerArray(ContactListener listener, Logger log) {
 		super();
+		this.log = log;
 		add(listener);
 	}
 

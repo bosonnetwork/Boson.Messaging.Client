@@ -25,10 +25,12 @@ package io.bosonnetwork.photonmessaging;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.Identity;
@@ -56,7 +58,7 @@ public class InviteTicket {
 	@JsonProperty(value = "i", required = true)
 	private final Id inviter;
 	@JsonProperty(value = "ie")
-	private final Id invitee;
+	private final @Nullable Id invitee;
 	@JsonProperty(value = "e", required = true)
 	@JsonInclude(JsonInclude.Include.NON_DEFAULT)
 	private final long expiration;
@@ -81,7 +83,7 @@ public class InviteTicket {
 	protected InviteTicket(@JsonProperty(value = "c", required = true) Id channelId,
 	                    @JsonProperty(value = "sid", required = true) Id sessionId,
 	                    @JsonProperty(value = "i", required = true) Id inviter,
-	                    @JsonProperty(value = "ie") Id invitee,
+	                    @JsonProperty(value = "ie") @Nullable Id invitee,
 	                    @JsonProperty(value = "e") long expiration,
 	                    @JsonProperty(value = "sig", required = true) byte[] sig,
 	                    @JsonProperty(value = "sk", required = true) byte[] sessionKey) {
@@ -91,7 +93,7 @@ public class InviteTicket {
 		this.invitee = invitee;
 		this.expiration = expiration;
 		this.sig = Objects.requireNonNull(sig, "sig").clone();
-		this.sessionKey = sessionKey == null || sessionKey.length == 0 ? null : sessionKey.clone();
+		this.sessionKey = Objects.requireNonNull(sessionKey, "sessionKey").clone();
 	}
 
 	/**
@@ -126,8 +128,8 @@ public class InviteTicket {
 	 *
 	 * @return the invitee identifier, or {@code null} for a bearer ticket
 	 */
-	public Id getInvitee() {
-		return invitee;
+	public Optional<Id> getInvitee() {
+		return Optional.ofNullable(invitee);
 	}
 
 	/**
@@ -154,7 +156,7 @@ public class InviteTicket {
 	 * @return the session key, or {@code null} if none was provided
 	 */
 	public byte[] getSessionKey() {
-		return sessionKey != null ? sessionKey.clone() : null;
+		return sessionKey.clone();
 	}
 
 	/**
@@ -205,7 +207,7 @@ public class InviteTicket {
 	 * @param sessionKey the session key associated with this ticket, or {@code null} if none is provided
 	 * @return a new {@code InviteTicket} instance containing the provided details and a signature
 	 */
-	public static InviteTicket create(Identity inviter, Id channelId, Id sessionId, Id invitee,
+	public static InviteTicket create(Identity inviter, Id channelId, Id sessionId, @Nullable Id invitee,
 									   long expiration, byte[] sessionKey) {
 		MessageDigest sha256 = Hash.sha256();
 		sha256.reset();
@@ -234,7 +236,7 @@ public class InviteTicket {
 				(invitee != null ? (", invitee=" + invitee) : "") +
 				", expiration=" + expiration +
 				", sig=" + Hex.encode(sig) +
-				(sessionKey != null ? ", sessionKey=****" : "") +
+				", sessionKey=****" +
 				'}';
 	}
 }

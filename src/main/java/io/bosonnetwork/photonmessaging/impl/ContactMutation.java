@@ -29,6 +29,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.json.Json;
@@ -150,7 +151,7 @@ public class ContactMutation {
 			@JsonSubTypes.Type(value = IdList.class, name = "r"),
 			@JsonSubTypes.Type(value = Void.class, name = "c")
 	})
-	private final Object data;
+	private final @Nullable Object data;
 
 	public enum Op {
 		@JsonProperty("a")
@@ -180,7 +181,7 @@ public class ContactMutation {
 	@JsonCreator
 	private ContactMutation(@JsonProperty(value = "v", required = true) int revision,
 	                        @JsonProperty(value = "op", required = true) Op op,
-	                        @JsonProperty(value = "d") Object data) {
+	                        @JsonProperty(value = "d") @Nullable Object data) {
 		this.revision = revision;
 		this.op = op;
 		this.data = data;
@@ -195,11 +196,11 @@ public class ContactMutation {
 	}
 
 	@SuppressWarnings("unchecked")
-	public <T> T getData() {
+	public <T> @Nullable T getData() {
 		return (T) data;
 	}
 
-	public byte[] getDataAsBytes() {
+	public byte @Nullable [] getDataAsBytes() {
 		if (data == null)
 			return null;
 

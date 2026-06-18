@@ -25,6 +25,8 @@ package io.bosonnetwork.photonmessaging.impl;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.jspecify.annotations.Nullable;
+
 import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.Identity;
@@ -36,8 +38,8 @@ public abstract class SessionContext {
 	protected final Identity userIdentity;
 	protected final CryptoIdentity sessionIdentity;
 
-	private CryptoContext rxCryptoContext;
-	private CryptoContext txCryptoContext;
+	private @Nullable CryptoContext rxCryptoContext;
+	private @Nullable CryptoContext txCryptoContext;
 
 	protected SessionContext(Id userId, Identity userIdentity, CryptoIdentity sessionIdentity) {
 		this.contactId = userId;
@@ -86,7 +88,7 @@ public abstract class SessionContext {
 			this.txCryptoContext = ctx;
 		}
 
-		return txCryptoContext;
+		return ctx;
 	}
 
 	public CryptoContext getRxCryptoContext() throws CryptoException {

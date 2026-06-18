@@ -31,6 +31,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.json.Json;
@@ -57,7 +58,7 @@ public class Handshake {
 	})
 	private final Object body;
 
-	private transient Id from;
+	private transient @Nullable Id from;
 
 	public enum Type {
 		@JsonProperty("fr")
@@ -81,7 +82,7 @@ public class Handshake {
 	@JsonCreator
 	protected Handshake(@JsonProperty(value = "t", required = true) long timestamp,
 	                    @JsonProperty(value = "y", required = true) Type type,
-	                    @JsonProperty(value = "b") Object body) {
+	                    @JsonProperty(value = "b", required = true) Object body) {
 		this.timestamp = timestamp;
 		this.type = type;
 		this.body = body;
@@ -95,11 +96,17 @@ public class Handshake {
 		return type;
 	}
 
-	public Id getFrom() {
+	public @Nullable Id getFrom() {
 		return from;
 	}
 
-	protected void setFrom(Id from) {
+	Id getFromOrThrow() {
+		if (from == null)
+			throw new IllegalStateException("Handshake sender is not set");
+		return from;
+	}
+
+	protected void setFrom(@Nullable Id from) {
 		this.from = from;
 	}
 

@@ -26,6 +26,7 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Channel;
@@ -33,10 +34,10 @@ import io.bosonnetwork.photonmessaging.Channel;
 public record ChannelInfo(@JsonProperty(value = "id", required = true) Id channelId,
                           @JsonProperty(value = "o", required = true) Id ownerId,
                           @JsonProperty(value = "sid", required = true) Id sessionId,
-                          @JsonProperty(value = "sk") @JsonInclude(JsonInclude.Include.NON_EMPTY) byte[] sessionKey,
+                          @JsonProperty(value = "sk") @JsonInclude(JsonInclude.Include.NON_EMPTY) byte @Nullable [] sessionKey,
                           @JsonProperty(value = "p", required = true) Channel.Permission permission,
                           @JsonProperty(value = "n") @JsonInclude(JsonInclude.Include.NON_NULL) String name,
-                          @JsonProperty(value = "nt") @JsonInclude(JsonInclude.Include.NON_EMPTY) String notice,
+                          @JsonProperty(value = "nt") @JsonInclude(JsonInclude.Include.NON_EMPTY) @Nullable String notice,
                           @JsonProperty(value = "a") @JsonInclude(JsonInclude.Include.NON_DEFAULT) boolean announce,
                           @JsonProperty(value = "c") long createdAt,
                           @JsonProperty(value = "u") long updateAt,

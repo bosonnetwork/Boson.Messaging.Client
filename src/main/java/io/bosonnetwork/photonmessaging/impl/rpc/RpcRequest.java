@@ -36,6 +36,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.json.Json;
@@ -81,24 +82,24 @@ public class RpcRequest {
 			@JsonSubTypes.Type(value = Void.class, name = "cl"),
 			@JsonSubTypes.Type(value = Void.class, name = "ci")
 	})
-	protected final Object params;
+	protected final @Nullable Object params;
 
 	@JsonProperty("c")
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	protected final byte[] cookie;
+	protected final byte @Nullable [] cookie;
 
 	@JsonCreator
 	protected RpcRequest(@JsonProperty(value = "id", required = true) long id,
 						 @JsonProperty(value = "m", required = true) RpcMethod method,
-						 @JsonProperty(value = "p") Object params,
-						 @JsonProperty(value = "c") byte[] cookie) {
+						 @JsonProperty(value = "p") @Nullable Object params,
+						 @JsonProperty(value = "c") byte @Nullable [] cookie) {
 		this.id = id;
 		this.method = method;
 		this.params = params;
 		this.cookie = cookie == null ? null : cookie.clone();
 	}
 
-	protected RpcRequest(long id, RpcMethod method, Object params) {
+	protected RpcRequest(long id, RpcMethod method, @Nullable Object params) {
 		this(id, method, params, null);
 	}
 
@@ -111,7 +112,7 @@ public class RpcRequest {
 	}
 
 	@SuppressWarnings("unchecked")
-	public <T> T getParams() {
+	public <T> @Nullable T getParams() {
 		return (T) params;
 	}
 
@@ -120,7 +121,7 @@ public class RpcRequest {
 	 *
 	 * @return a defensive copy of the cookie bytes, or {@code null} if no cookie is present
 	 */
-	public byte[] getCookie() {
+	public byte @Nullable [] getCookie() {
 		return cookie == null ? null : cookie.clone();
 	}
 

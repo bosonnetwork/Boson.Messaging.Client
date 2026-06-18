@@ -26,7 +26,6 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Channel;
@@ -34,10 +33,11 @@ import io.bosonnetwork.photonmessaging.ChannelListener;
 
 public class ChannelListenerArray extends CopyOnWriteArrayList<ChannelListener> implements ChannelListener {
 	private static final long serialVersionUID = -6049409118596156775L;
-	private static final Logger log = LoggerFactory.getLogger(ChannelListenerArray.class);
+	private final Logger log;
 
-	public ChannelListenerArray(ChannelListener listener) {
+	public ChannelListenerArray(ChannelListener listener, Logger log) {
 		super();
+		this.log = log;
 		add(listener);
 	}
 

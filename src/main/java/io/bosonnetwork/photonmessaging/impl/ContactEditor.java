@@ -29,9 +29,11 @@ import java.util.Map;
 import java.util.Objects;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import org.jspecify.annotations.NullUnmarked;
 
 import io.bosonnetwork.photonmessaging.Contact;
 
+@NullUnmarked
 public class ContactEditor implements Contact.Editor {
 	private byte[] sessionKey;
 	private String name;
@@ -48,9 +50,9 @@ public class ContactEditor implements Contact.Editor {
 	protected ContactEditor(PhotonContact contact) {
 		this.origin = contact;
 		this.sessionKey = contact.getSessionKey();
-		this.name = contact.getName();
-		this.remark = contact.getRemark();
-		this.tags = contact.getTags();
+		this.name = contact.getName().orElse(null);
+		this.remark = contact.getRemark().orElse(null);
+		this.tags = contact.getTags().orElse(null);
 		this.muted = contact.isMuted();
 		this.blocked = contact.isBlocked();
 		this.updatedAt = contact.getUpdatedAt();
@@ -166,14 +168,14 @@ public class ContactEditor implements Contact.Editor {
 			return origin;
 
 		if (origin instanceof Friend)
-			return new Friend(origin.getId(), sessionKey, name, origin.getAvatar(), remark, tags,
+			return new Friend(origin.getId(), sessionKey, name, origin.getAvatar().orElse(null), remark, tags,
 					muted, blocked, origin.getCreatedAt(), updatedAt, revision);
 		else if (origin instanceof PhotonChannel channel)
 			return new PhotonChannel(channel.getId(), sessionKey, channel.getOwnerId(), channel.getPermission(),
-					name, channel.getNotice(), channel.isAnnounce(), remark, tags,
+					name, channel.getNotice().orElse(null), channel.isAnnounce(), remark, tags,
 					muted, blocked, channel.getCreatedAt(), updatedAt, revision);
 		else
-			return new AutoContact(origin.getId(), name, origin.getAvatar(), remark, tags,
+			return new AutoContact(origin.getId(), name, origin.getAvatar().orElse(null), remark, tags,
 					muted, blocked, origin.getCreatedAt(), updatedAt);
 	}
 }

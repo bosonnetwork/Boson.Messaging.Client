@@ -23,18 +23,22 @@
 package io.bosonnetwork.photonmessaging.impl;
 
 import java.time.Instant;
+import java.util.Objects;
+
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 
 public class Friend extends PhotonContact {
-	protected Friend(Id id, byte[] sessionKey, String name, String avatar, String remark, String tags, boolean muted,
-					 boolean blocked, long createdAt, long updatedAt, int revision) {
-		super(id, sessionKey, name, avatar, remark, tags, muted, blocked, createdAt, updatedAt, revision);
+	protected Friend(Id id, byte[] sessionKey, @Nullable String name, @Nullable String avatar, @Nullable String remark,
+					 @Nullable String tags, boolean muted, boolean blocked, long createdAt, long updatedAt, int revision) {
+		super(id, Objects.requireNonNull(sessionKey, "sessionKey"),
+				name, avatar, remark, tags, muted, blocked, createdAt, updatedAt, revision);
 	}
 
-	public Friend(Id id, byte[] sessionKey, String remark) {
-		this(id, sessionKey, null, null, remark, null, false, false,
-				System.currentTimeMillis(), 0, 0);
+	public Friend(Id id, byte[] sessionKey, @Nullable String remark) {
+		this(id, Objects.requireNonNull(sessionKey, "sessionKey"),
+				null, null, remark, null, false, false, System.currentTimeMillis(), 0, 0);
 	}
 
 	@Override
@@ -63,15 +67,9 @@ public class Friend extends PhotonContact {
 		StringBuilder repr = new StringBuilder(256);
 
 		repr.append("Friend: ").append(getId().toBase58String());
-
-		if (getName() != null)
-			repr.append(", name=").append(getName());
-
-		if (getRemark() != null)
-			repr.append(", remark=").append(getRemark());
-
-		if (getTags() != null)
-			repr.append(", tags=").append(getTags());
+		getName().ifPresent(name -> repr.append(", name=").append(name));
+		getRemark().ifPresent(remark -> repr.append(", remark=").append(remark));
+		getTags().ifPresent(tags -> repr.append(", tags=").append(tags));
 
 		if (isMuted())
 			repr.append(", muted");

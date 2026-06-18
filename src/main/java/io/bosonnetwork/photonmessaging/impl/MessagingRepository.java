@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Objects;
 
 import io.vertx.core.Future;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Channel;
@@ -124,7 +125,7 @@ interface MessagingRepository {
 	 * @return a Future containing the friend request associated with the given user ID,
 	 *         or a completed Future with no result if no request is found
 	 */
-	Future<FriendRequest> getFriendRequest(Id userId);
+	Future<@Nullable FriendRequest> getFriendRequest(Id userId);
 
 	/**
 	 * Retrieves the list of friend requests for the current user.
@@ -169,7 +170,7 @@ interface MessagingRepository {
 	 * @param conversationId the ID of the conversation
 	 * @return a Future with the conversation, or null if not found
 	 */
-	Future<Conversation> getConversation(Id conversationId);
+	Future<@Nullable Conversation> getConversation(Id conversationId);
 
 	/**
 	 * Retrieves all conversations from the repository.
@@ -273,7 +274,7 @@ interface MessagingRepository {
 	 * @param contactId the ID of the contact
 	 * @return a Future with the contact, or null if not found
 	 */
-	Future<Contact> getContact(Id contactId);
+	Future<@Nullable Contact> getContact(Id contactId);
 
 	/**
 	 * Retrieves multiple contacts by their IDs.
@@ -297,7 +298,7 @@ interface MessagingRepository {
 	 * @return a Future returning true if the contact exists, false otherwise
 	 */
 	default Future<Boolean> existsContact(Id contactId) {
-		return getContact(contactId).map(Objects::nonNull);
+		return getContact(contactId).map(contact -> contact != null);
 	}
 
 	/**
@@ -353,7 +354,7 @@ interface MessagingRepository {
 	 * @param memberId the unique identifier of the member within the channel
 	 * @return a Future representing the asynchronous operation, which resolves to the Channel.Member object if found
 	 */
-	Future<Channel.Member> getChannelMember(Id channelId, Id memberId);
+	Future<Channel.@Nullable Member> getChannelMember(Id channelId, Id memberId);
 
 	/**
 	 * Retrieves the list of members for a specific channel based on the provided channel ID and an optional list of member IDs.

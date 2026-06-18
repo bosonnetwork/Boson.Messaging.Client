@@ -25,9 +25,11 @@ package io.bosonnetwork.photonmessaging;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import io.vertx.core.Vertx;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.Node;
@@ -98,7 +100,7 @@ public interface MessagingClient {
 	 *
 	 * @return the service endpoint URI.
 	 */
-	String getServiceEndpoint();
+	Optional<String> getServiceEndpoint();
 
 	/**
 	 * Retrieves the data directory used by the client.
@@ -264,7 +266,7 @@ public interface MessagingClient {
 	 * @param recipient the identifier of the recipient.
 	 * @return a new message builder.
 	 */
-	Message.Builder message(Id recipient);
+	Message.Builder message(@Nullable Id recipient);
 
 	/**
 	 * Retrieves a specific conversation by its identifier.
@@ -272,7 +274,7 @@ public interface MessagingClient {
 	 * @param conversationId the identifier of the conversation.
 	 * @return a {@link CompletableFuture} that will be completed with the {@link Conversation}.
 	 */
-	CompletableFuture<Conversation> getConversation(Id conversationId);
+	CompletableFuture<Optional<Conversation>> getConversation(Id conversationId);
 
 	/**
 	 * Retrieves all conversations for the local user.
@@ -410,7 +412,7 @@ public interface MessagingClient {
 	 * @param id the identifier of the user associated with the request.
 	 * @return a {@link CompletableFuture} that will be completed with the {@link FriendRequest}.
 	 */
-	CompletableFuture<FriendRequest> getFriendRequest(Id id);
+	CompletableFuture<Optional<FriendRequest>> getFriendRequest(Id id);
 
 	/**
 	 * Retrieves all friend requests.
@@ -465,7 +467,7 @@ public interface MessagingClient {
 	 * @param remark an optional remark or alias for the friend.
 	 * @return a {@link CompletableFuture} that will be completed with the created {@link Contact}.
 	 */
-	CompletableFuture<Contact> addFriend(Id id, byte[] sessionKey, String remark);
+	CompletableFuture<Contact> addFriend(Id id, byte[] sessionKey, @Nullable String remark);
 
 	////////////////////////////////////////////////////////////////////////////
 	// channel APIs
@@ -500,7 +502,7 @@ public interface MessagingClient {
 	 * @param announce whether to announce the channel to the network.
 	 * @return a {@link CompletableFuture} that will be completed with the created {@link Channel}.
 	 */
-	CompletableFuture<Channel> createChannel(Channel.Permission permission, String name, String notice, boolean announce);
+	CompletableFuture<Channel> createChannel(Channel.Permission permission, String name, @Nullable String notice, boolean announce);
 
 	/**
 	 * Removes a channel. Only the owner can remove a channel.
@@ -547,7 +549,7 @@ public interface MessagingClient {
 	 * @param invitee the identifier of the target user.
 	 * @return a {@link CompletableFuture} that will be completed with the {@link InviteTicket}.
 	 */
-	CompletableFuture<InviteTicket> createInviteTicket(Id channelId, Id invitee);
+	CompletableFuture<InviteTicket> createInviteTicket(Id channelId, @Nullable Id invitee);
 
 	/**
 	 * Transfers the ownership of a channel to another user.
@@ -631,7 +633,7 @@ public interface MessagingClient {
 	 * @param contactId the identifier of the contact.
 	 * @return a {@link CompletableFuture} that will be completed with the {@link Contact}.
 	 */
-	CompletableFuture<Contact> getContact(Id contactId);
+	CompletableFuture<Optional<Contact>> getContact(Id contactId);
 
 	/**
 	 * Retrieves all generic contacts.
@@ -685,7 +687,7 @@ public interface MessagingClient {
 	 * @param config the {@link Configuration} settings for the client.
 	 * @return a new {@link MessagingClient} instance.
 	 */
-	static MessagingClient create(Vertx vertx, Node node, Configuration config) {
+	static MessagingClient create(@Nullable Vertx vertx, @Nullable Node node, Configuration config) {
 		return new PhotonMessagingClient(vertx, node, config);
 	}
 
@@ -697,7 +699,7 @@ public interface MessagingClient {
 	 * @param config the {@link Configuration} settings for the client.
 	 * @return a new {@link MessagingClient} instance.
 	 */
-	static MessagingClient create(Node node, Configuration config) {
+	static MessagingClient create(@Nullable Node node, Configuration config) {
 		return new PhotonMessagingClient(null, node, config);
 	}
 }

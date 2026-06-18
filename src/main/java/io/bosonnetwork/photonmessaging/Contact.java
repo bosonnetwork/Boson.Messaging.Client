@@ -22,9 +22,12 @@
 
 package io.bosonnetwork.photonmessaging;
 
+import java.util.Optional;
+
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.impl.ContactBuilder;
@@ -108,21 +111,21 @@ public interface Contact extends Comparable<Contact> {
 	 *
 	 * @return the contact name
 	 */
-	String getName();
+	Optional<String> getName();
 
 	/**
 	 * Returns the local remark/alias for the contact.
 	 *
 	 * @return the remark string
 	 */
-	String getRemark();
+	Optional<String> getRemark();
 
 	/**
 	 * Returns the tags associated with the contact.
 	 *
 	 * @return the tags string
 	 */
-	String getTags();
+	Optional<String> getTags();
 
 	/**
 	 * Returns whether the contact is muted.
@@ -164,7 +167,7 @@ public interface Contact extends Comparable<Contact> {
 	 *
 	 * @return a string representing the avatar URL or identifier
 	 */
-	String getAvatar();
+	Optional<String> getAvatar();
 
 	/**
 	 * Checks if the contact has an avatar associated with it.
@@ -172,7 +175,7 @@ public interface Contact extends Comparable<Contact> {
 	 * @return true if the avatar is not null, false otherwise
 	 */
 	default boolean hasAvatar() {
-		return getAvatar() != null;
+		return getAvatar().isPresent();
 	}
 
 	/**
@@ -218,7 +221,7 @@ public interface Contact extends Comparable<Contact> {
 		 * @param remark the contact remark
 		 * @return this builder instance
 		 */
-		Editor setRemark(String remark);
+		Editor setRemark(@Nullable String remark);
 
 		/**
 		 * Sets the tags associated with the contact.
@@ -226,7 +229,7 @@ public interface Contact extends Comparable<Contact> {
 		 * @param tags the contact tags
 		 * @return this builder instance
 		 */
-		Editor setTags(String tags);
+		Editor setTags(@Nullable String tags);
 
 		/**
 		 * Sets whether the contact is muted.

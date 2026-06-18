@@ -29,6 +29,7 @@ import java.util.Objects;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.photonmessaging.exceptions.rpc.RpcException;
 
@@ -40,7 +41,7 @@ public class RpcError {
 	@JsonProperty(value = "m", required = true)
 	private final String message;
 	@JsonProperty(value = "d")
-	private final String data;
+	private final @Nullable String data;
 
 	public static final RpcError RpcInternalError = new RpcError(RpcErrorCode.RPC_INTERNAL_ERROR, "Super node internal error");
 	public static final RpcError MalformedRequest = new RpcError(RpcErrorCode.MALFORMED_REQUEST, "Malformed RPC request");
@@ -62,7 +63,7 @@ public class RpcError {
 	@JsonCreator
 	public RpcError(@JsonProperty(value = "c", required = true) int code,
 					@JsonProperty(value = "m", required = true) String message,
-					@JsonProperty(value = "d") String data) {
+					@JsonProperty(value = "d") @Nullable String data) {
 		this.code = code;
 		this.message = message;
 		this.data = data;
@@ -74,7 +75,7 @@ public class RpcError {
 
 	public RpcError(Throwable cause) {
 		this.code = cause instanceof RpcException re ? re.getCode() : RpcErrorCode.RPC_INTERNAL_ERROR;
-		this.message = cause.getMessage();
+		this.message = cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
 		if (INCLUDE_STACKTRACE_IN_ERROR) {
 			try (StringWriter sw = new StringWriter(); PrintWriter pw = new PrintWriter(sw)) {
 				cause.printStackTrace(pw);
@@ -94,7 +95,7 @@ public class RpcError {
 		return message;
 	}
 
-	public String getData() {
+	public @Nullable String getData() {
 		return data;
 	}
 

@@ -24,8 +24,11 @@ package io.bosonnetwork.photonmessaging.impl;
 
 import java.time.Instant;
 
+import org.jspecify.annotations.NullUnmarked;
+
 import io.bosonnetwork.Id;
 
+@NullUnmarked
 public class AutoContact extends PhotonContact {
 	protected AutoContact(Id id) {
 		this(id, null, null, null, null, false, false, 0, 0);
@@ -62,15 +65,9 @@ public class AutoContact extends PhotonContact {
 		StringBuilder repr = new StringBuilder(256);
 
 		repr.append("AUTO: ").append(getId().toBase58String());
-
-		if (getName() != null)
-			repr.append(", name=").append(getName());
-
-		if (getRemark() != null)
-			repr.append(", remark=").append(getRemark());
-
-		if (getTags() != null)
-			repr.append(", tags=").append(getTags());
+		getName().ifPresent(name -> repr.append(", name=").append(name));
+		getRemark().ifPresent(remark -> repr.append(", remark=").append(remark));
+		getTags().ifPresent(tags -> repr.append(", tags=").append(tags));
 
 		if (isMuted())
 			repr.append(", muted");

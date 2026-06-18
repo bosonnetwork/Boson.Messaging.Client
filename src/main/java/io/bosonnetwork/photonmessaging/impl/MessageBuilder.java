@@ -26,6 +26,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
+import org.jspecify.annotations.Nullable;
+
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.ContentDisposition;
 import io.bosonnetwork.photonmessaging.ContentType;
@@ -34,12 +36,12 @@ import io.bosonnetwork.vertx.ContextualFuture;
 
 public class MessageBuilder implements Message.Builder {
 	private final PhotonMessagingClient client;
-	private Id recipient;
+	private @Nullable Id recipient;
 	private final Map<String, Object> headers;
-	MessageContent.Format format;
-	private Object content;
+	private MessageContent.@Nullable Format format;
+	private @Nullable Object content;
 
-	protected MessageBuilder(PhotonMessagingClient client, Id recipient) {
+	protected MessageBuilder(PhotonMessagingClient client, @Nullable Id recipient) {
 		this.client = client;
 		this.headers = new HashMap<>();
 		this.recipient = recipient;
@@ -53,7 +55,7 @@ public class MessageBuilder implements Message.Builder {
 	}
 
 	@Override
-	public MessageBuilder header(String name, Object value) {
+	public MessageBuilder header(String name, @Nullable Object value) {
 		Objects.requireNonNull(name, "name");
 		if (value != null)
 			headers.put(name, value);
@@ -123,7 +125,7 @@ public class MessageBuilder implements Message.Builder {
 		long now = System.currentTimeMillis();
 		Id messageId = DeviceOriginated.generateId(client.getDeviceId(), now);
 
-		if (content == null)
+		if (content == null || format == null)
 			throw new IllegalStateException("content not set");
 
 		MessageContent payload = switch (format) {

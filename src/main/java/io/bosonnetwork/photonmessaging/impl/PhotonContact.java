@@ -24,11 +24,13 @@ package io.bosonnetwork.photonmessaging.impl;
 
 import java.util.Comparator;
 import java.util.Objects;
+import java.util.Optional;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.CryptoContext;
 import io.bosonnetwork.Id;
@@ -55,27 +57,27 @@ public abstract class PhotonContact implements Contact {
 
 	@JsonProperty("sk")
 	@JsonInclude(Include.NON_EMPTY)
-	private final byte[] sessionKey;
+	private final byte @Nullable [] sessionKey;
 
 	@JsonProperty("n")
 	@JsonInclude(Include.NON_EMPTY)
-	private final String name;
+	private final @Nullable String name;
 
 	@JsonProperty("r")
 	@JsonInclude(Include.NON_EMPTY)
-	private final String remark;
+	private final @Nullable String remark;
 
 	@JsonProperty("ts")
 	@JsonInclude(Include.NON_EMPTY)
-	private String tags;
+	private final @Nullable String tags;
 
 	@JsonProperty("m")
 	@JsonInclude(Include.NON_DEFAULT)
-	private boolean muted;
+	private final boolean muted;
 
 	@JsonProperty("b")
 	@JsonInclude(Include.NON_DEFAULT)
-	private boolean blocked;
+	private final boolean blocked;
 
 	@JsonProperty("c")
 	private final long createdAt;
@@ -86,9 +88,9 @@ public abstract class PhotonContact implements Contact {
 	@JsonProperty("v")
 	private final int revision;
 
-	private final String avatar;
+	private final @Nullable String avatar;
 
-	private transient String displayName;
+	private transient @Nullable String displayName;
 	private transient long lastRefresh;
 
 	/**
@@ -105,7 +107,8 @@ public abstract class PhotonContact implements Contact {
 	 * @param updatedAt the timestamp of the last update
 	 * @param revision the synchronization revision number
 	 */
-	protected PhotonContact(Id id, byte[] sessionKey, String name, String avatar, String remark, String tags,
+	protected PhotonContact(Id id, byte @Nullable [] sessionKey, @Nullable String name, @Nullable String avatar,
+							@Nullable String remark, @Nullable String tags,
 	                        boolean muted, boolean blocked, long createdAt, long updatedAt, int revision) {
 		this.id = id;
 		this.name = name;
@@ -121,7 +124,7 @@ public abstract class PhotonContact implements Contact {
 		this.sessionKey = checkSessionKey(sessionKey);
 	}
 
-	private static byte[] checkSessionKey(byte[] key) {
+	private static byte @Nullable [] checkSessionKey(byte @Nullable [] key) {
 		if (key == null || key.length == 0)
 			return null;
 
@@ -154,7 +157,7 @@ public abstract class PhotonContact implements Contact {
 	 *
 	 * @return the session key bytes
 	 */
-	public byte[] getSessionKey() {
+	protected byte @Nullable [] getSessionKey() {
 		return sessionKey;
 	}
 
@@ -172,8 +175,8 @@ public abstract class PhotonContact implements Contact {
 	 *
 	 * @return the contact name
 	 */
-	public String getName() {
-		return name;
+	public Optional<String> getName() {
+		return Optional.ofNullable(name);
 	}
 
 	/**
@@ -181,8 +184,8 @@ public abstract class PhotonContact implements Contact {
 	 *
 	 * @return the remark string
 	 */
-	public String getRemark() {
-		return remark;
+	public Optional<String> getRemark() {
+		return Optional.ofNullable(remark);
 	}
 
 	/**
@@ -190,8 +193,8 @@ public abstract class PhotonContact implements Contact {
 	 *
 	 * @return the tag string
 	 */
-	public String getTags() {
-		return tags;
+	public Optional<String> getTags() {
+		return Optional.ofNullable(tags);
 	}
 
 	/**
@@ -244,8 +247,8 @@ public abstract class PhotonContact implements Contact {
 	 *
 	 * @return a string representing the avatar URL or identifier
 	 */
-	public String getAvatar() {
-		return avatar;
+	public Optional<String> getAvatar() {
+		return Optional.ofNullable(avatar);
 	}
 
 	/**

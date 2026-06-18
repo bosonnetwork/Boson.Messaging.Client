@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Objects;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Channel;
@@ -35,7 +36,7 @@ public class ChannelEditor implements Channel.Editor {
 	private Id ownerId;
 	private Channel.Permission permission;
 	private String name;
-	private String notice;
+	private @Nullable String notice;
 	private boolean announce;
 
 	private final PhotonChannel origin;
@@ -45,8 +46,8 @@ public class ChannelEditor implements Channel.Editor {
 		this.origin = channel;
 		this.ownerId = channel.getOwnerId();
 		this.permission = channel.getPermission();
-		this.name = channel.getName();
-		this.notice = channel.getNotice();
+		this.name = channel.getName().orElseThrow();
+		this.notice = channel.getNotice().orElse(null);
 		this.announce = channel.isAnnounce();
 		this.modified = false;
 	}
@@ -78,7 +79,7 @@ public class ChannelEditor implements Channel.Editor {
 	}
 
 	@Override
-	public ChannelEditor setNotice(String notice) {
+	public ChannelEditor setNotice(@Nullable String notice) {
 		if (!Objects.equals(this.notice, notice)) {
 			this.notice = notice;
 			this.modified = true;
@@ -116,7 +117,7 @@ public class ChannelEditor implements Channel.Editor {
 		this.ownerId = channel.getOwnerId();
 		this.permission = channel.getPermission();
 		// this.name = channel.getName();
-		this.notice = channel.getNotice();
+		this.notice = channel.getNotice().orElse(null);
 		this.announce = channel.isAnnounce();
 		this.modified = true;
 		return this;
@@ -128,7 +129,7 @@ public class ChannelEditor implements Channel.Editor {
 			return origin;
 
 		return new PhotonChannel(origin.getId(), origin.getSessionKey(), ownerId, permission,
-				name, notice, announce, origin.getRemark(), origin.getTags(),
+				name, notice, announce, origin.getRemark().orElse(null), origin.getTags().orElse(null),
 				origin.isMuted(), origin.isBlocked(), origin.getCreatedAt(), System.currentTimeMillis(),
 				origin.getRevision());
 	}
