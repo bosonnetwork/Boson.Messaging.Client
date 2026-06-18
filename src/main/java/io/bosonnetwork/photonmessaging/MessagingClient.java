@@ -98,7 +98,8 @@ public interface MessagingClient {
 	/**
 	 * Retrieves the endpoint of the messaging service.
 	 *
-	 * @return the service endpoint URI.
+	 * @return an {@link Optional} holding the service endpoint URI as a string, or an empty
+	 *         {@code Optional} if no endpoint has been configured or resolved yet.
 	 */
 	Optional<String> getServiceEndpoint();
 
@@ -272,7 +273,9 @@ public interface MessagingClient {
 	 * Retrieves a specific conversation by its identifier.
 	 *
 	 * @param conversationId the identifier of the conversation.
-	 * @return a {@link CompletableFuture} that will be completed with the {@link Conversation}.
+	 * @return a {@link CompletableFuture} that completes with an {@link Optional} holding the
+	 *         {@link Conversation}, or an empty {@code Optional} if no conversation exists for
+	 *         the given identifier.
 	 */
 	CompletableFuture<Optional<Conversation>> getConversation(Id conversationId);
 
@@ -410,7 +413,9 @@ public interface MessagingClient {
 	 * Retrieves the details of a specific friend request.
 	 *
 	 * @param id the identifier of the user associated with the request.
-	 * @return a {@link CompletableFuture} that will be completed with the {@link FriendRequest}.
+	 * @return a {@link CompletableFuture} that completes with an {@link Optional} holding the
+	 *         {@link FriendRequest}, or an empty {@code Optional} if no friend request exists
+	 *         for the given user.
 	 */
 	CompletableFuture<Optional<FriendRequest>> getFriendRequest(Id id);
 
@@ -631,7 +636,9 @@ public interface MessagingClient {
 	 * Retrieves a generic contact (friend or channel) by its identifier.
 	 *
 	 * @param contactId the identifier of the contact.
-	 * @return a {@link CompletableFuture} that will be completed with the {@link Contact}.
+	 * @return a {@link CompletableFuture} that completes with an {@link Optional} holding the
+	 *         {@link Contact}, or an empty {@code Optional} if no contact exists for the given
+	 *         identifier.
 	 */
 	CompletableFuture<Optional<Contact>> getContact(Id contactId);
 
@@ -682,22 +689,34 @@ public interface MessagingClient {
 	/**
 	 * Creates a new {@link MessagingClient} instance.
 	 *
-	 * @param vertx the {@link Vertx} instance to use for asynchronous operations.
-	 * @param node the {@link Node} instance representing the local DHT node.
+	 * <p>A Vert.x instance is mandatory: it is taken from {@code vertx} when non-null,
+	 * otherwise from {@code node}, otherwise from the current Vert.x context. If none of
+	 * these can supply a Vert.x instance, construction fails fast with an
+	 * {@link IllegalArgumentException}.
+	 *
+	 * @param vertx the {@link Vertx} instance to use for asynchronous operations, or
+	 *        {@code null} to derive one from {@code node} or the current Vert.x context.
+	 * @param node the {@link Node} instance representing the local DHT node, or {@code null}
+	 *        when the {@link Configuration} carries a fixed service endpoint.
 	 * @param config the {@link Configuration} settings for the client.
 	 * @return a new {@link MessagingClient} instance.
+	 * @throws IllegalArgumentException if no Vert.x instance can be resolved.
 	 */
 	static MessagingClient create(@Nullable Vertx vertx, @Nullable Node node, Configuration config) {
 		return new PhotonMessagingClient(vertx, node, config);
 	}
 
 	/**
-	 * Creates a new {@link MessagingClient} instance without an external Vertx.
-	 * An internal Vertx instance may be created by the implementation if needed.
+	 * Creates a new {@link MessagingClient} instance without an explicit Vertx.
+	 *
+	 * <p>The Vert.x instance is derived from {@code node} (or the current Vert.x context); a
+	 * usable Vert.x source is therefore required. Construction fails fast with an
+	 * {@link IllegalArgumentException} if none is available.
 	 *
 	 * @param node the {@link Node} instance representing the local DHT node.
 	 * @param config the {@link Configuration} settings for the client.
 	 * @return a new {@link MessagingClient} instance.
+	 * @throws IllegalArgumentException if no Vert.x instance can be resolved.
 	 */
 	static MessagingClient create(@Nullable Node node, Configuration config) {
 		return new PhotonMessagingClient(null, node, config);

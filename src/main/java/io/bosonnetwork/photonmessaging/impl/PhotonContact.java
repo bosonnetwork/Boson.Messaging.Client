@@ -153,9 +153,10 @@ public abstract class PhotonContact implements Contact {
 	public abstract Contact.Type getType();
 
 	/**
-	 * Returns the session private key.
+	 * Returns the (encrypted) session key bytes. Implementation-internal accessor; not part of
+	 * the public {@link Contact} API.
 	 *
-	 * @return the session key bytes
+	 * @return the session key bytes, or {@code null} if this contact has no session key
 	 */
 	protected byte @Nullable [] getSessionKey() {
 		return sessionKey;

@@ -126,7 +126,8 @@ public class InviteTicket {
 	/**
 	 * Returns the invitee identifier if this is a named ticket.
 	 *
-	 * @return the invitee identifier, or {@code null} for a bearer ticket
+	 * @return an {@link Optional} holding the invitee identifier, or an empty {@code Optional}
+	 *         for a bearer ticket
 	 */
 	public Optional<Id> getInvitee() {
 		return Optional.ofNullable(invitee);
@@ -151,9 +152,9 @@ public class InviteTicket {
 	}
 
 	/**
-	 * Returns the session key included with this ticket, if any.
+	 * Returns a defensive copy of the session key included with this ticket.
 	 *
-	 * @return the session key, or {@code null} if none was provided
+	 * @return a clone of the session key; never {@code null}
 	 */
 	public byte[] getSessionKey() {
 		return sessionKey.clone();
@@ -204,7 +205,7 @@ public class InviteTicket {
 	 * @param sessionId the unique identifier of the session associated with this ticket
 	 * @param invitee the unique identifier of the invitee, or {@code null} for a bearer ticket
 	 * @param expiration the expiration time in milliseconds since the epoch
-	 * @param sessionKey the session key associated with this ticket, or {@code null} if none is provided
+	 * @param sessionKey the session key associated with this ticket; must not be {@code null}
 	 * @return a new {@code InviteTicket} instance containing the provided details and a signature
 	 */
 	public static InviteTicket create(Identity inviter, Id channelId, Id sessionId, @Nullable Id invitee,

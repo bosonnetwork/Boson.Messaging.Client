@@ -114,6 +114,18 @@ public class PhotonMessagingListeners implements ConnectionListener, MessageList
 		}
 	}
 
+	@Override
+	public void onDisconnected() {
+		ConnectionListener listener = connectionListener;
+		if (listener != null) {
+			try {
+				listener.onDisconnected();
+			} catch (Throwable t) {
+				log.error("Error dispatching onDisconnected to listener: {}", listener, t);
+			}
+		}
+	}
+
 	public void addMessageListener(MessageListener listener) {
 		Objects.requireNonNull(listener, "listener");
 		synchronized (listenersLock) {

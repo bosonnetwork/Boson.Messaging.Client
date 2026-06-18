@@ -241,7 +241,8 @@ public interface Channel extends Contact {
 		 * Retrieves the contact information associated with this channel member.
 		 * The contact provides details such as identity, type, and contact-specific attributes.
 		 *
-		 * @return the {@code Contact} object associated with this member, or null if not available.
+		 * @return an {@link Optional} holding the {@code Contact} associated with this member,
+		 *         or an empty {@code Optional} if no contact information is available.
 		 */
 		Optional<Contact> getContact();
 
@@ -296,7 +297,8 @@ public interface Channel extends Contact {
 	/**
 	 * Retrieves the notice associated with the channel.
 	 *
-	 * @return a string representing the current notice of the channel
+	 * @return an {@link Optional} holding the current notice of the channel, or an empty
+	 *         {@code Optional} if no notice is set.
 	 */
 	Optional<String> getNotice();
 
@@ -350,8 +352,9 @@ public interface Channel extends Contact {
 	 * Retrieves a specific member of the channel based on their unique identifier.
 	 *
 	 * @param memberId the unique identifier of the member to retrieve
-	 * @return the {@code ChannelMember} object corresponding to the specified identifier,
-	 *         or {@code null} if no member with the given identifier exists in the channel
+	 * @return an {@link Optional} holding the {@code Member} corresponding to the specified
+	 *         identifier, or an empty {@code Optional} if no member with the given identifier
+	 *         exists in the channel
 	 */
 	Optional<Member> getMember(Id memberId);
 
