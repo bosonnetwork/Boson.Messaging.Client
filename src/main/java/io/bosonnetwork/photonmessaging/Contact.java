@@ -109,21 +109,24 @@ public interface Contact extends Comparable<Contact> {
 	/**
 	 * Returns the name of the contact.
 	 *
-	 * @return the contact name
+	 * @return an {@link Optional} holding the contact name, or an empty {@code Optional} if
+	 *         no name is set.
 	 */
 	Optional<String> getName();
 
 	/**
 	 * Returns the local remark/alias for the contact.
 	 *
-	 * @return the remark string
+	 * @return an {@link Optional} holding the remark, or an empty {@code Optional} if no
+	 *         remark is set.
 	 */
 	Optional<String> getRemark();
 
 	/**
 	 * Returns the tags associated with the contact.
 	 *
-	 * @return the tags string
+	 * @return an {@link Optional} holding the tags, or an empty {@code Optional} if no tags
+	 *         are set.
 	 */
 	Optional<String> getTags();
 
@@ -165,7 +168,8 @@ public interface Contact extends Comparable<Contact> {
 	/**
 	 * Retrieves the avatar URL associated with the contact.
 	 *
-	 * @return a string representing the avatar URL or identifier
+	 * @return an {@link Optional} holding the avatar URL or identifier, or an empty
+	 *         {@code Optional} if no avatar is set.
 	 */
 	Optional<String> getAvatar();
 

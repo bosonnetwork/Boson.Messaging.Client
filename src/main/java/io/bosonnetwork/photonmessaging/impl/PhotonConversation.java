@@ -98,16 +98,6 @@ public class PhotonConversation implements Conversation {
 		return lastMessage != null ? lastMessage.getReceivedAt() : 0;
 	}
 
-	/*/
-	protected void updateParticipant(PhotonContact contact) {
-		Objects.requireNonNull(contact, "contact");
-		if (!contact.getId().equals(this.contact.getId()))
-			throw new IllegalArgumentException("Contact does not match the conversation");
-
-		this.contact = contact;
-	}
-	 */
-
 	protected void update(Message message) {
 		Objects.requireNonNull(message, "message");
 		if (message.getConversationId().map(convId -> !convId.equals(contact.getId())).orElse(true))
@@ -116,13 +106,6 @@ public class PhotonConversation implements Conversation {
 		this.lastMessage = message;
 		this.preview = null;
 	}
-
-	/*/
-	void setSessionContextFactory(Function<PhotonContact, SessionContext> factory) {
-		this.sessionContextFactory = factory;
-	}
-
-	 */
 
 	protected SessionContext getSessionContext() {
 		SessionContext ctx = sessionContext;

@@ -101,7 +101,9 @@ public interface Message {
 	/**
 	 * Retrieves the identifier of the conversation this message belongs to.
 	 *
-	 * @return the conversation ID
+	 * @return an {@link Optional} holding the conversation ID, or an empty {@code Optional} if
+	 *         the message is not yet associated with a conversation (e.g. an outgoing message
+	 *         before it is dispatched).
 	 */
 	Optional<Id> getConversationId();
 
@@ -122,7 +124,9 @@ public interface Message {
 	/**
 	 * Retrieves the identifier of the sender.
 	 *
-	 * @return the sender's Id
+	 * @return an {@link Optional} holding the sender's Id, or an empty {@code Optional} if the
+	 *         sender is not set (e.g. a locally-originated message before it is stamped with a
+	 *         sender).
 	 */
 	Optional<Id> getFrom();
 
@@ -189,8 +193,9 @@ public interface Message {
 		/**
 		 * Retrieves the content disposition of the message.
 		 *
-		 * @return the content disposition, indicating how the content is expected
-		 *         to be displayed (e.g., "inline" or "attachment").
+		 * @return an {@link Optional} holding the content disposition, indicating how the
+		 *         content is expected to be displayed (e.g., "inline" or "attachment"), or an
+		 *         empty {@code Optional} if no disposition header is present.
 		 */
 		default Optional<ContentDisposition> getContentDisposition() {
 			Object disposition = getHeaders().get(ContentDisposition.HEADER_NAME);

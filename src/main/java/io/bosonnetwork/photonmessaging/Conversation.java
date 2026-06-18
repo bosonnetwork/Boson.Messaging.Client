@@ -51,7 +51,8 @@ public interface Conversation extends Comparable<Conversation> {
 	/**
 	 * Returns the avatar URI or identifier associated with the conversation.
 	 *
-	 * @return the avatar string
+	 * @return an {@link Optional} holding the avatar of the conversation's contact, or an
+	 *         empty {@code Optional} if no avatar is set.
 	 */
 	default Optional<String> getAvatar() {
 		return getContact().getAvatar();
@@ -74,7 +75,8 @@ public interface Conversation extends Comparable<Conversation> {
 	/**
 	 * Returns a short text preview of the most recent message or activity in the conversation.
 	 *
-	 * @return the preview text
+	 * @return an {@link Optional} holding the preview text, or an empty {@code Optional} if the
+	 *         conversation has no message to preview yet.
 	 */
 	Optional<String> getPreview();
 
