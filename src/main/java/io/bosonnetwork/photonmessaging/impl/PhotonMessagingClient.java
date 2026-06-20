@@ -42,6 +42,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import io.netty.handler.codec.mqtt.MqttQoS;
+import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -143,12 +144,16 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private static final Logger log = LoggerFactory.getLogger(PhotonMessagingClient.class);
 
 	public PhotonMessagingClient(@Nullable Vertx vertx, @Nullable Node node, Configuration config) {
-		Vertx v = vertx != null ? vertx :
-				(node != null ? node.unwrap(Vertx.class) :
-				 (Vertx.currentContext() != null ? Vertx.currentContext().owner() : null));
+		// Resolve the Vert.x instance: use the provided one, the current context, or the node's instance
+		Vertx v = vertx;
+		if (v == null) {
+			Context currentContext = Vertx.currentContext();
+			v = currentContext != null ? currentContext.owner() : null;
+		}
 		if (v == null)
-			throw new IllegalArgumentException("No Vert.x context available");
-		this.vertx = v;
+			v = node != null ? node.unwrap(Vertx.class).orElse(null) : null;
+
+		this.vertx = Objects.requireNonNull(v, "No Vertx instance available: provide a Vertx, or a Node that exposes one");
 		this.config = Objects.requireNonNull(config, "config");
 		this.node = config.getServiceEndpoint() == null ? Objects.requireNonNull(node, "node") : node;
 
@@ -1308,6 +1313,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		msg.setFrom(getUserId());
 
 		Promise<Message> promise = Promise.promise();
+		Context vertxContext = Objects.requireNonNull(this.vertxContext, "vertxContext");
 		vertxContext.runOnContext(v ->
 				repository.putMessage(msg).compose(vv -> sendMessageInternal(msg))
 						.compose(packetId -> msg.getFuture())
