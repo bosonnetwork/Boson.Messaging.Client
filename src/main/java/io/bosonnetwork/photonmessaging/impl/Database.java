@@ -125,6 +125,13 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		return schemaVersion;
 	}
 
+	// close() is declared by both VertxDatabase (default) and MessagingRepository (abstract);
+	// resolve the diamond explicitly by delegating to the VertxDatabase implementation.
+	@Override
+	public Future<Void> close() {
+		return VertxDatabase.super.close();
+	}
+
 	////////////////////////////////////////////////////////////////////////////
 	// MessagingRepository - Contacts
 	////////////////////////////////////////////////////////////////////////////

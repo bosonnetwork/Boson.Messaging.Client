@@ -25,8 +25,10 @@ package io.bosonnetwork.photonmessaging.impl;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Function;
 
 import io.vertx.core.Future;
+import io.vertx.core.Vertx;
 import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
@@ -40,6 +42,23 @@ import io.bosonnetwork.photonmessaging.FriendRequest;
  * conversations, contacts, and channel members.
  */
 interface MessagingRepository {
+	/**
+	 * Initializes the repository (opens the backend, runs any schema preparation) and wires the
+	 * factory used to build session contexts for conversations.
+	 *
+	 * @param vertx the Vert.x instance
+	 * @param sessionContextFactory factory that produces a session context for a contact
+	 * @return a Future with the current schema version
+	 */
+	Future<Integer> initialize(Vertx vertx, Function<PhotonContact, SessionContext> sessionContextFactory);
+
+	/**
+	 * Closes the repository and releases its resources.
+	 *
+	 * @return a Future that completes when the repository is closed
+	 */
+	Future<Void> close();
+
 	/**
 	 * Saves a single message to the repository.
 	 *
