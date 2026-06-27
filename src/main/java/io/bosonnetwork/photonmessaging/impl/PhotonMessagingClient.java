@@ -33,14 +33,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.time.Duration;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import io.netty.handler.codec.mqtt.MqttQoS;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
@@ -79,6 +78,7 @@ import io.bosonnetwork.photonmessaging.InviteTicket;
 import io.bosonnetwork.photonmessaging.Message;
 import io.bosonnetwork.photonmessaging.MessageListener;
 import io.bosonnetwork.photonmessaging.MessagingClient;
+import io.bosonnetwork.photonmessaging.MessagingStore;
 import io.bosonnetwork.photonmessaging.SessionInfo;
 import io.bosonnetwork.photonmessaging.SessionListener;
 import io.bosonnetwork.photonmessaging.exceptions.AlreadyMemberException;
@@ -99,7 +99,6 @@ import io.bosonnetwork.photonmessaging.impl.rpc.RpcResponse;
 import io.bosonnetwork.utils.Base58;
 import io.bosonnetwork.vertx.BosonVerticle;
 import io.bosonnetwork.vertx.ContextualFuture;
-import io.bosonnetwork.vertx.VertxCaffeine;
 
 @SuppressWarnings("CodeBlock2Expr")
 public class PhotonMessagingClient extends BosonVerticle implements MessagingClient {
@@ -117,11 +116,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private @Nullable MqttClient mqttClient;
 	private int failures;
 	private final PhotonMessagingListeners listeners;
-	private final Database repository;
+	private final MessagingRepository repository;
 
 	private volatile int contactsRevision;
-	private final AsyncLoadingCache<Id, PhotonContact> contactCache;
-	private final AsyncLoadingCache<Id, PhotonConversation> conversationCache;
+	private final AsyncCache<Id, PhotonContact> contactCache;
+	private final AsyncCache<Id, PhotonConversation> conversationCache;
 	// Thread-confinement invariant: these maps are accessed ONLY on this verticle's
 	// event-loop context (from sendMessageInternal/sendRpcCall, which public methods reach
 	// via runOnContext, and from the MQTT publish/response handlers which run on the same
@@ -177,33 +176,34 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		try {
 			Files.createDirectories(config.getDataDir());
 
-			String databaseUri = config.getDatabaseUri();
-			// fix the sqlite database file location
-			if (databaseUri.startsWith(SqliteDatabase.CONNECTION_URI_PREFIX)) {
-				Path dbFile = Path.of(databaseUri.substring(SqliteDatabase.CONNECTION_URI_PREFIX.length()));
-				if (!dbFile.isAbsolute())
-					databaseUri = SqliteDatabase.CONNECTION_URI_PREFIX + config.getDataDir().resolve(dbFile).toAbsolutePath();
-				else
-					Files.createDirectories(dbFile.getParent());
-			}
+			MessagingStore store = config.getStore();
+			if (store != null) {
+				// Platform-supplied persistence backend (e.g. Android androidx.sqlite); the JDBC/SQL
+				// backend and database URI are not used.
+				this.repository = new StoreBackedRepository(store);
+			} else {
+				String databaseUri = config.getDatabaseUri();
+				// fix the sqlite database file location
+				if (databaseUri.startsWith(SqliteDatabase.CONNECTION_URI_PREFIX)) {
+					Path dbFile = Path.of(databaseUri.substring(SqliteDatabase.CONNECTION_URI_PREFIX.length()));
+					if (!dbFile.isAbsolute())
+						databaseUri = SqliteDatabase.CONNECTION_URI_PREFIX + config.getDataDir().resolve(dbFile).toAbsolutePath();
+					else
+						Files.createDirectories(dbFile.getParent());
+				}
 
-			this.repository = Database.create(databaseUri, config.getDatabasePoolSize(), config.getDatabaseSchemaName());
+				this.repository = Database.create(databaseUri, config.getDatabasePoolSize(), config.getDatabaseSchemaName());
+			}
 		} catch (IOException e) {
 			throw new IllegalStateException("Failed to prepare the client data directory", e);
 		}
 
-		this.contactCache = VertxCaffeine.newBuilder(this.vertx)
-				.maximumSize(512)
-				.expireAfterAccess(5, TimeUnit.MINUTES)
-				.buildAsync((id, executor) ->
-						ContextualFuture.of(repository.getContact(id).map(c -> (PhotonContact) c)));
+		this.contactCache = new AsyncCache<>(512, Duration.ofMinutes(5),
+				(id, executor) -> ContextualFuture.of(repository.getContact(id).map(c -> (PhotonContact) c)));
 
-		this.conversationCache = VertxCaffeine.newBuilder(this.vertx)
-				.maximumSize(512)
-				.expireAfterAccess(5, TimeUnit.MINUTES)
-				.buildAsync((id, executor) ->
-						ContextualFuture.of(repository.getConversation(id)
-								.map(c -> (PhotonConversation) c)));
+		this.conversationCache = new AsyncCache<>(512, Duration.ofMinutes(5),
+				(id, executor) -> ContextualFuture.of(repository.getConversation(id)
+						.map(c -> (PhotonConversation) c)));
 
 		this.listeners = new PhotonMessagingListeners();
 		this.connected = false;
@@ -1564,8 +1564,8 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					.setClientId(getDeviceId().toBase58String())
 					.setUsername(getUserId().toBase58String())
 					.setPassword(getPassword() + "?contactsRevision=" + revision)
-					.setMaxMessageSize(16 * 1024)
-					.setReceiveBufferSize(18 * 1024)
+					.setMaxMessageSize(32 * 1024)
+					.setReceiveBufferSize(34 * 1024)
 					.setKeepAliveInterval(60)
 					.setHostnameVerificationAlgorithm("")
 					.setCleanSession(false);

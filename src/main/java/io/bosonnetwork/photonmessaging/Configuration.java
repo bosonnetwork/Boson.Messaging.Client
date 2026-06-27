@@ -58,6 +58,7 @@ public class Configuration {
 	private final String databaseUri;
 	private final int databasePoolSize;
 	private final @Nullable String databaseSchemaName;
+	private final @Nullable MessagingStore store;
 
 	private Configuration(Builder builder) {
 		this.servicePeerId = Objects.requireNonNull(builder.servicePeerId, "servicePeerId must be set");
@@ -68,6 +69,7 @@ public class Configuration {
 		this.databaseUri = Objects.requireNonNull(builder.databaseUri, "databaseUri must be set");
 		this.databasePoolSize = builder.databasePoolSize;
 		this.databaseSchemaName = builder.databaseSchemaName;
+		this.store = builder.store;
 	}
 
 	/**
@@ -233,6 +235,16 @@ public class Configuration {
 	}
 
 	/**
+	 * Retrieves the platform-supplied persistence backend, if any. When set, the client uses this
+	 * store instead of the built-in JDBC/Vert.x SQL backend (and the database URI is ignored).
+	 *
+	 * @return the {@link MessagingStore}, or {@code null} to use the built-in backend.
+	 */
+	public @Nullable MessagingStore getStore() {
+		return store;
+	}
+
+	/**
 	 * Creates a new {@link Builder} instance for constructing a {@link Configuration}.
 	 *
 	 * @return a new {@link Builder} instance.
@@ -257,6 +269,7 @@ public class Configuration {
 		private String databaseUri;
 		private int databasePoolSize;
 		private String databaseSchemaName;
+		private @Nullable MessagingStore store;
 
 		private Builder() {
 			dataDir = FileUtils.getUserDataDir().resolve( "boson/client/photon-messaging");
@@ -521,6 +534,19 @@ public class Configuration {
 		 */
 		public Builder databaseSchemaName(String schema) {
 			this.databaseSchemaName = SqlSafety.validateSchema(schema);
+			return this;
+		}
+
+		/**
+		 * Supplies a platform persistence backend. When set, the client uses this store instead of
+		 * the built-in JDBC/Vert.x SQL backend, and the database URI is not required. Intended for
+		 * platforms (such as Android) where the JDBC backend is unavailable.
+		 *
+		 * @param store the {@link MessagingStore} implementation.
+		 * @return this builder instance.
+		 */
+		public Builder store(MessagingStore store) {
+			this.store = Objects.requireNonNull(store, "store");
 			return this;
 		}
 
