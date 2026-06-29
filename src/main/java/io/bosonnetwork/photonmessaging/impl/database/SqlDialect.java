@@ -252,7 +252,8 @@ public class SqlDialect {
 					m.rid as last_message_rid, m.id as last_message_id,
 					m.conversation_id as last_message_conversation_id, m.version as last_message_version,
 					m.recipient as last_message_recipient, m.type as last_message_type, m.from_id as last_message_from_id,
-					m.created_at as last_message_created_at, m.payload as last_message_payload,
+					m.created_at as last_message_created_at, m.content_type as last_message_content_type,
+					m.content_disposition as last_message_content_disposition, m.payload as last_message_payload,
 					m.sent_at as last_message_sent_at, m.received_at as last_message_received_at
 				FROM contacts c
 				LEFT JOIN channels ch ON c.id = ch.id
@@ -271,7 +272,8 @@ public class SqlDialect {
 					m.rid as last_message_rid, m.id as last_message_id,
 					m.conversation_id as last_message_conversation_id, m.version as last_message_version,
 					m.recipient as last_message_recipient, m.type as last_message_type, m.from_id as last_message_from_id,
-					m.created_at as last_message_created_at, m.payload as last_message_payload,
+					m.created_at as last_message_created_at, m.content_type as last_message_content_type,
+					m.content_disposition as last_message_content_disposition, m.payload as last_message_payload,
 					m.sent_at as last_message_sent_at, m.received_at as last_message_received_at
 				FROM contacts c
 				LEFT JOIN channels ch ON c.id = ch.id

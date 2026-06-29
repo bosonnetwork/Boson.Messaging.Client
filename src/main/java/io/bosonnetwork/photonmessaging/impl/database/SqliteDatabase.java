@@ -35,13 +35,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteDataSource;
 
-import io.bosonnetwork.photonmessaging.impl.Database;
+import io.bosonnetwork.photonmessaging.impl.DatabaseStore;
 import io.bosonnetwork.utils.FileUtils;
 
 /**
  * SQLite implementation of PhotonMessaging Client database.
  */
-public class SqliteDatabase extends Database {
+public class SqliteDatabase extends DatabaseStore {
 	public static final String CONNECTION_URI_PREFIX = "jdbc:sqlite:";
 	private static final int DEFAULT_POOL_SIZE = 1;
 

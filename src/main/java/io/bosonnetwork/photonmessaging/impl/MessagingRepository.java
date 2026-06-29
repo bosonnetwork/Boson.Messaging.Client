@@ -26,6 +26,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -34,391 +35,378 @@ import org.jspecify.annotations.Nullable;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Channel;
 import io.bosonnetwork.photonmessaging.Contact;
+import io.bosonnetwork.photonmessaging.ContentDisposition;
 import io.bosonnetwork.photonmessaging.Conversation;
 import io.bosonnetwork.photonmessaging.FriendRequest;
+import io.bosonnetwork.photonmessaging.Message;
+import io.bosonnetwork.photonmessaging.MessagingStore;
+import io.bosonnetwork.photonmessaging.MessagingStore.StoredChannel;
+import io.bosonnetwork.photonmessaging.MessagingStore.StoredChannelMember;
+import io.bosonnetwork.photonmessaging.MessagingStore.StoredContact;
+import io.bosonnetwork.photonmessaging.MessagingStore.StoredConversation;
+import io.bosonnetwork.photonmessaging.MessagingStore.StoredFriendRequest;
+import io.bosonnetwork.photonmessaging.MessagingStore.StoredMessage;
 
 /**
- * Interface for a persistent storage repository of messaging data, including messages,
- * conversations, contacts, and channel members.
+ * The internal messaging repository, expressed in impl domain types. It is implemented by adapting a
+ * {@link MessagingStore} (expressed in plain data records): every operation translates the impl types
+ * to/from the store's records. Because this class lives in the {@code impl} package, it can construct
+ * the impl domain types and holds the {@code sessionContextFactory} needed to build conversations.
+ *
+ * <p>The same instance backs both supported store flavors: a platform-supplied {@link MessagingStore}
+ * and the built-in {@link DatabaseStore}. The record &lt;-&gt; impl mapping mirrors {@code DatabaseStore}'s
+ * {@code rowToX}/{@code paramsFromX} helpers exactly, so the two backends are behaviorally interchangeable.
  */
-interface MessagingRepository {
-	/**
-	 * Initializes the repository (opens the backend, runs any schema preparation) and wires the
-	 * factory used to build session contexts for conversations.
-	 *
-	 * @param vertx the Vert.x instance
-	 * @param sessionContextFactory factory that produces a session context for a contact
-	 * @return a Future with the current schema version
-	 */
-	Future<Integer> initialize(Vertx vertx, Function<PhotonContact, SessionContext> sessionContextFactory);
+class MessagingRepository {
+	private final MessagingStore store;
+	private @Nullable Function<PhotonContact, SessionContext> sessionContextFactory;
 
-	/**
-	 * Closes the repository and releases its resources.
-	 *
-	 * @return a Future that completes when the repository is closed
-	 */
-	Future<Void> close();
-
-	/**
-	 * Saves a single message to the repository.
-	 *
-	 * @param message the message to save
-	 * @return a Future that completes when the message is saved
-	 */
-	Future<Void> putMessage(PhotonMessage<MessageContent> message);
-
-	/**
-	 * Updates the sent time of the specified message in the repository.
-	 *
-	 * @param message the message whose sent time needs to be updated
-	 * @return a Future that completes when the message's sent time is updated
-	 */
-	Future<Void> updateMessageSentTime(PhotonMessage<MessageContent> message);
-
-	/**
-	 * Retrieves messages for a specific conversation within a time range.
-	 *
-	 * @param conversationId the ID of the conversation
-	 * @param begin the start timestamp (inclusive)
-	 * @param end the end timestamp (exclusive)
-	 * @return a Future with the list of messages found
-	 */
-	Future<List<PhotonMessage<MessageContent>>> getMessagesInRange(Id conversationId, long begin, long end);
-
-	/**
-	 * Retrieves messages for a specific conversation with pagination.
-	 *
-	 * @param conversationId the ID of the conversation
-	 * @param until the timestamp (in milliseconds) indicating the upper bound for message retrieval (inclusive)
-	 * @param limit the maximum number of messages to return
-	 * @param offset the number of messages to skip
-	 * @return a Future with the list of messages found
-	 */
-	Future<List<PhotonMessage<MessageContent>>> getMessagesBefore(Id conversationId, long until, int limit, int offset);
-
-	/**
-	 * Removes a single message from the repository by its ID.
-	 *
-	 * @param id the unique ID of the message
-	 * @return a Future that completes when the message is removed
-	 */
-	default Future<Boolean> removeMessage(long id) {
-		return removeMessages(List.of(id));
+	MessagingRepository(MessagingStore store) {
+		this.store = Objects.requireNonNull(store, "store");
 	}
 
-	/**
-	 * Removes multiple messages from the repository by their repository IDs.
-	 *
-	 * @param rids the collection of message rids to remove
-	 * @return a Future that completes when the messages are removed
-	 */
-	Future<Boolean> removeMessages(Collection<Long> rids);
-
-	/**
-	 * Removes all messages associated with a specific conversation.
-	 *
-	 * @param conversationId the ID of the conversation
-	 * @return a Future that completes when the messages are removed
-	 */
-	Future<Boolean> removeMessages(Id conversationId);
-
-	/**
-	 * Clears all messages from the system or designated storage.
-	 *
-	 * @return a Future representing the completion of the clear operation.
-	 */
-	Future<Void> clearMessages();
-
-	/**
-	 * Sends a friend request to the repository.
-	 *
-	 * @param friendRequest the friend request to send
-	 * @return a Future that completes when the friend request is successfully stored
-	 */
-	Future<Void> putFriendRequest(FriendRequest friendRequest);
-
-	/**
-	 * Retrieves the friend request for the specified user ID.
-	 *
-	 * @param userId the unique identifier of the user whose friend request is to be retrieved
-	 * @return a Future containing the friend request associated with the given user ID,
-	 *         or a completed Future with no result if no request is found
-	 */
-	Future<@Nullable FriendRequest> getFriendRequest(Id userId);
-
-	/**
-	 * Retrieves the list of friend requests for the current user.
-	 *
-	 * @return a Future containing a List of FriendRequest objects representing the pending friend requests.
-	 */
-	Future<List<FriendRequest>> getFriendRequests();
-
-	/**
-	 * Removes the friend request for a specific user.
-	 *
-	 * @param userId the unique identifier of the user from whom the friend request is to be removed
-	 * @return a future containing a boolean value, where true indicates the friend request was successfully removed,
-	 *         and false indicates the removal was unsuccessful
-	 */
-	Future<Boolean> removeFriendRequest(Id userId);
-
-	/**
-	 * Removes friend requests for the specified collection of user IDs.
-	 *
-	 * @param userIds A collection of user IDs whose friend requests should be removed.
-	 * @return A Future containing a Boolean value. Returns true if the friend requests
-	 *         were successfully removed, or false if the operation failed.
-	 */
-	Future<Boolean> removeFriendRequests(Collection<Id> userIds);
-
-	/**
-	 * Clears all pending friend requests for the current user.
-	 * <p>
-	 * This method removes all friend request entries from the system or database
-	 * that are associated with the user. It ensures that there are no remaining
-	 * pending friend requests to process.
-	 *
-	 * @return a Future representing the asynchronous operation, completing with
-	 *         {@code null} when all friend requests have been successfully cleared.
-	 */
-	Future<Void> clearFriendRequests();
-
-	/**
-	 * Retrieves a conversation by its ID.
-	 *
-	 * @param conversationId the ID of the conversation
-	 * @return a Future with the conversation, or null if not found
-	 */
-	Future<@Nullable Conversation> getConversation(Id conversationId);
-
-	/**
-	 * Retrieves all conversations from the repository.
-	 *
-	 * @return a Future with the list of all conversations
-	 */
-	Future<List<Conversation>> getAllConversations();
-
-	/**
-	 * Removes a single conversation and its associated data.
-	 *
-	 * @param conversationId the ID of the conversation to remove
-	 * @return a Future that completes when the conversation is removed
-	 */
-	Future<Boolean> removeConversation(Id conversationId);
-
-	/**
-	 * Removes multiple conversations and their associated data.
-	 *
-	 * @param conversationIds the collection of conversation IDs to remove
-	 * @return a Future that completes when the conversations are removed
-	 */
-	Future<Boolean> removeConversations(Collection<Id> conversationIds);
-
-	/**
-	 * Stores the given contact in the local storage asynchronously.
-	 * If the contact already exists, it is updated. Otherwise, it is added.
-	 * <p>
-	 * This method will not affect the contactsRevision.
-	 *
-	 * @param contact the contact object to be stored locally
-	 * @return a Future representing the pending completion of the operation
-	 */
-	Future<Void> putContactLocally(Contact contact);
-
-	/**
-	 * Removes a contact from the local storage based on the provided contact ID.
-	 * <p>
-	 * This method will not affect the contactsRevision.
-	 *
-	 * @param contactId The unique identifier of the contact to be removed.
-	 * @return A Future representing the result of the operation, which resolves to
-	 *         true if the contact was successfully removed, or false otherwise.
-	 */
-	Future<Boolean> removeContactLocally(Id contactId);
-
-	/**
-	 * Returns the current local revision of the contact list.
-	 *
-	 * @return a Future with the current revision number
-	 */
-	Future<Integer> getContactsRevision();
-
-	/**
-	 * Adds or updates contact and updates the local contacts revision atomically.
-	 *
-	 * @param revision the revision number of the contact being updated or inserted
-	 * @param contact the {@code Contact} object containing the details of the contact
-	 * @return a {@code Future<Void>} indicating the completion of the operation
-	 */
-	Future<Void> putContact(int revision, Contact contact);
-
-	/**
-	 * Adds or updates contacts and updates the local contacts revision atomically.
-	 *
-	 * @param revision the new revision number
-	 * @param updated the collection of contacts to add or update
-	 * @return a Future that completes when the update is finished
-	 */
-	Future<Void> putContacts(int revision, Collection<Contact> updated);
-
-	/**
-	 * Removes a contact and updates the local contacts revision atomically.
-	 *
-	 * @param revision  the new revision number
-	 * @param contactId the unique identifier of the contact to be removed
-	 * @return a Future containing a Boolean indicating whether the contact was successfully removed
-	 */
-	Future<Boolean> removeContacts(int revision, Id contactId);
-
-	/**
-	 * Removes contacts and updates the local contacts revision atomically.
-	 *
-	 * @param revision the new revision number
-	 * @param contactIds the IDs of the contacts to remove
-	 * @return a Future that completes when the removal is finished
-	 */
-	Future<Boolean> removeContacts(int revision, Collection<Id> contactIds);
-
-	/**
-	 * Clears all contacts and updates the local contacts revision atomically.
-	 *
-	 * @param revision the new revision number
-	 * @return a Future that completes when the operation is finished
-	 */
-	Future<Void> clearContacts(int revision);
-
-	/**
-	 * Retrieves a contact by its ID.
-	 *
-	 * @param contactId the ID of the contact
-	 * @return a Future with the contact, or null if not found
-	 */
-	Future<@Nullable Contact> getContact(Id contactId);
-
-	/**
-	 * Retrieves multiple contacts by their IDs.
-	 *
-	 * @param contactIds the collection of contact IDs
-	 * @return a Future with the list of found contacts
-	 */
-	Future<List<Contact>> getContacts(Collection<Id> contactIds);
-
-	/**
-	 * Retrieves all contacts from the repository.
-	 *
-	 * @return a Future with the list of all contacts
-	 */
-	Future<List<Contact>> getAllContacts();
-
-	/**
-	 * Checks if a contact exists in the repository.
-	 *
-	 * @param contactId the ID of the contact
-	 * @return a Future returning true if the contact exists, false otherwise
-	 */
-	default Future<Boolean> existsContact(Id contactId) {
-		return getContact(contactId).map(contact -> contact != null);
+	public Future<Integer> initialize(Vertx vertx, Function<PhotonContact, SessionContext> sessionContextFactory) {
+		this.sessionContextFactory = Objects.requireNonNull(sessionContextFactory);
+		if (store instanceof DatabaseStore dbStore)
+			return dbStore.open(vertx);
+		else
+			return store.open().map(v -> 1);
 	}
 
-	/**
-	 * Updates the ownership of a specified channel by transferring it from the current owner to a new owner.
-	 * <p>
-	 * The implementation should ensure make the following changes atomically:
-	 * <ul>
-	 *   <li>update the channel owner column</li>
-	 *   <li>update the older owner's role to Channel.Role.MEMBER</li>
-	 *   <li>update the new owner's role to Channel.Role.OWNER</li>
-	 * </ul
-	 *
-	 * @param channelId   the unique identifier of the channel whose ownership is being updated
-	 * @param oldOwnerId  the unique identifier of the current owner of the channel
-	 * @param newOwnerId  the unique identifier of the new owner to whom the ownership is being transferred
-	 * @return a Future representing the result of the ownership update operation; completes with void if successful
-	 */
-	Future<Void> updateChannelOwnership(Id channelId, Id oldOwnerId, Id newOwnerId);
-
-	/**
-	 * Adds or updates a single member in a channel.
-	 *
-	 * @param channelId the ID of the channel
-	 * @param member the member to add or update
-	 * @return a Future that completes when the operation is finished
-	 */
-	default Future<Void> putChannelMember(Id channelId, Channel.Member member) {
-		return putChannelMembers(channelId, List.of(member));
+	public Future<Void> close() {
+		return store.close();
 	}
 
-	/**
-	 * Adds or updates multiple members in a channel.
-	 *
-	 * @param channelId the ID of the channel
-	 * @param members the collection of members to add or update
-	 * @return a Future that completes when the operation is finished
-	 */
-	Future<Void> putChannelMembers(Id channelId, Collection<Channel.Member> members);
+	// ------------------------------------------------------------------------
+	// Messages
+	// ------------------------------------------------------------------------
 
-	/**
-	 * Replaces all members in a channel with the provided collection.
-	 *
-	 * @param channelId the ID of the channel
-	 * @param members the new collection of members
-	 * @return a Future that completes when the operation is finished
-	 */
-	Future<Void> refillChannelMembers(Id channelId, Collection<Channel.Member> members);
-
-	/**
-	 * Retrieves a specific member of a channel based on the provided channel and member identifiers.
-	 *
-	 * @param channelId the unique identifier of the channel
-	 * @param memberId the unique identifier of the member within the channel
-	 * @return a Future representing the asynchronous operation, which resolves to the Channel.Member object if found
-	 */
-	Future<Channel.@Nullable Member> getChannelMember(Id channelId, Id memberId);
-
-	/**
-	 * Retrieves the list of members for a specific channel based on the provided channel ID and an optional list of member IDs.
-	 *
-	 * @param channelId The unique identifier of the channel whose members are to be fetched.
-	 * @param memberIds A collection of unique identifiers for specific members. If provided, only members matching these IDs will be retrieved.
-	 * @return A future representing the asynchronous computation of a list of members in the specified channel, filtered by the provided member IDs if applicable.
-	 */
-	Future<List<Channel.Member>> getChannelMembers(Id channelId, Collection<Id> memberIds);
-
-	/**
-	 * Retrieves the list of all members for a specific channel.
-	 *
-	 * @param channelId The unique identifier of the channel whose members are to be fetched.
-	 * @return A future representing the asynchronous computation of a list of all members in the specified channel.
-	 */
-	Future<List<Channel.Member>> getAllChannelMembers(Id channelId);
-
-	/**
-	 * Sets the role for multiple members in a channel.
-	 *
-	 * @param channelId the ID of the channel
-	 * @param memberIds the collection of member IDs
-	 * @param role the new role to assign to all specified members
-	 * @return a Future that completes when the roles are updated
-	 */
-	Future<Boolean> updateChannelMembersRole(Id channelId, Collection<Id> memberIds, Channel.Role role);
-
-	/**
-	 * Removes a single member from a channel.
-	 *
-	 * @param channelId the ID of the channel
-	 * @param memberId the ID of the member to remove
-	 * @return a Future that completes when the member is removed
-	 */
-	default Future<Boolean> removeChannelMember(Id channelId, Id memberId) {
-		return removeChannelMembers(channelId, List.of(memberId));
+	public Future<Void> putMessage(PhotonMessage<MessageContent> message) {
+		return store.putMessage(toRecord(message)).map(rid -> {
+			message.setRid(rid);
+			return null;
+		});
 	}
 
-	/**
-	 * Removes multiple members from a channel.
-	 *
-	 * @param channelId the ID of the channel
-	 * @param memberIds the collection of member IDs to remove
-	 * @return a Future that completes when the members are removed
-	 */
-	Future<Boolean> removeChannelMembers(Id channelId, Collection<Id> memberIds);
+	public Future<Void> updateMessageSentTime(PhotonMessage<MessageContent> message) {
+		return store.updateMessageSentTime(message.getId(), message.getSentAt());
+	}
+
+	public Future<List<PhotonMessage<MessageContent>>> getMessagesInRange(Id conversationId, long begin, long end) {
+		return store.getMessagesInRange(conversationId, begin, end).map(this::toMessages);
+	}
+
+	public Future<List<PhotonMessage<MessageContent>>> getMessagesBefore(Id conversationId, long until, int limit, int offset) {
+		return store.getMessagesBefore(conversationId, until, limit, offset).map(this::toMessages);
+	}
+
+	public Future<Boolean> removeMessage(long id) {
+		return store.removeMessage(id);
+	}
+
+	public Future<Boolean> removeMessages(Collection<Long> rids) {
+		return store.removeMessages(rids);
+	}
+
+	public Future<Boolean> removeMessagesByConversation(Id conversationId) {
+		return store.removeMessagesByConversation(conversationId);
+	}
+
+	public Future<Void> clearMessages() {
+		return store.clearMessages();
+	}
+
+	// ------------------------------------------------------------------------
+	// Friend requests
+	// ------------------------------------------------------------------------
+
+	public Future<Void> putFriendRequest(FriendRequest friendRequest) {
+		return store.putFriendRequest(toRecord((PhotonFriendRequest) friendRequest));
+	}
+
+	public Future<@Nullable FriendRequest> getFriendRequest(Id userId) {
+		return store.getFriendRequest(userId).<@Nullable FriendRequest>map(r -> r == null ? null : toFriendRequest(r));
+	}
+
+	public Future<List<FriendRequest>> getFriendRequests() {
+		return store.getFriendRequests()
+				.map(list -> list.stream().<FriendRequest>map(this::toFriendRequest).collect(Collectors.toList()));
+	}
+
+	public Future<Boolean> removeFriendRequest(Id userId) {
+		return store.removeFriendRequest(userId);
+	}
+
+	public Future<Boolean> removeFriendRequests(Collection<Id> userIds) {
+		return store.removeFriendRequests(userIds);
+	}
+
+	public Future<Void> clearFriendRequests() {
+		return store.clearFriendRequests();
+	}
+
+	// ------------------------------------------------------------------------
+	// Conversations
+	// ------------------------------------------------------------------------
+
+	public Future<@Nullable Conversation> getConversation(Id conversationId) {
+		return store.getConversation(conversationId).<@Nullable Conversation>map(r -> r == null ? null : toConversation(r));
+	}
+
+	public Future<List<Conversation>> getAllConversations() {
+		return store.getAllConversations()
+				.map(list -> list.stream().<Conversation>map(this::toConversation).collect(Collectors.toList()));
+	}
+
+	public Future<Boolean> removeConversation(Id conversationId) {
+		return store.removeConversation(conversationId);
+	}
+
+	public Future<Boolean> removeConversations(Collection<Id> conversationIds) {
+		return store.removeConversations(conversationIds);
+	}
+
+	// ------------------------------------------------------------------------
+	// Contacts
+	// ------------------------------------------------------------------------
+
+	public Future<Integer> getContactsRevision() {
+		return store.getContactsRevision();
+	}
+
+	public Future<Void> putContactLocally(Contact contact) {
+		return store.putContactLocally(toRecord(contact))
+				.andThen(ar -> wireMembersLoader(contact));
+	}
+
+	public Future<Boolean> removeContactLocally(Id contactId) {
+		return store.removeContactLocally(contactId);
+	}
+
+	public Future<Void> putContact(int revision, Contact contact) {
+		return store.putContact(revision, toRecord(contact))
+				.andThen(ar -> wireMembersLoader(contact));
+	}
+
+	public Future<Void> putContacts(int revision, Collection<Contact> updated) {
+		return store.putContacts(revision, updated.stream().map(this::toRecord).collect(Collectors.toList()))
+				.andThen(ar -> updated.forEach(this::wireMembersLoader));
+	}
+
+	public Future<Boolean> removeContact(int revision, Id contactId) {
+		return store.removeContact(revision, contactId);
+	}
+
+	public Future<Boolean> removeContacts(int revision, Collection<Id> contactIds) {
+		return store.removeContacts(revision, contactIds);
+	}
+
+	public Future<Void> clearContacts(int revision) {
+		return store.clearContacts(revision);
+	}
+
+	public Future<@Nullable Contact> getContact(Id contactId) {
+		return store.getContact(contactId).<@Nullable Contact>map(r -> r == null ? null : toContact(r));
+	}
+
+	public Future<List<Contact>> getContacts(Collection<Id> contactIds) {
+		return store.getContacts(contactIds)
+				.map(list -> list.stream().<Contact>map(this::toContact).collect(Collectors.toList()));
+	}
+
+	public Future<List<Contact>> getAllContacts() {
+		return store.getAllContacts()
+				.map(list -> list.stream().<Contact>map(this::toContact).collect(Collectors.toList()));
+	}
+
+	public Future<Boolean> existsContact(Id contactId) {
+		return store.existsContact(contactId);
+	}
+
+	// ------------------------------------------------------------------------
+	// Channel members
+	// ------------------------------------------------------------------------
+
+	public Future<Void> updateChannelOwnership(Id channelId, Id oldOwnerId, Id newOwnerId) {
+		return store.updateChannelOwnership(channelId, oldOwnerId, newOwnerId);
+	}
+
+	public Future<Void> putChannelMember(Id channelId, Channel.Member member) {
+		return store.putChannelMember(channelId, toMemberRecord(channelId, member));
+	}
+
+	public Future<Void> putChannelMembers(Id channelId, Collection<Channel.Member> members) {
+		return store.putChannelMembers(channelId, toMemberRecords(channelId, members));
+	}
+
+	public Future<Void> refillChannelMembers(Id channelId, Collection<Channel.Member> members) {
+		return store.refillChannelMembers(channelId, toMemberRecords(channelId, members));
+	}
+
+	public Future<Channel.@Nullable Member> getChannelMember(Id channelId, Id memberId) {
+		return store.getChannelMember(channelId, memberId).<Channel.@Nullable Member>map(r -> r == null ? null : toMember(r));
+	}
+
+	public Future<List<Channel.Member>> getChannelMembers(Id channelId, Collection<Id> memberIds) {
+		return store.getChannelMembers(channelId, memberIds)
+				.map(list -> list.stream().<Channel.Member>map(this::toMember).collect(Collectors.toList()));
+	}
+
+	public Future<List<Channel.Member>> getAllChannelMembers(Id channelId) {
+		return store.getAllChannelMembers(channelId)
+				.map(list -> list.stream().<Channel.Member>map(this::toMember).collect(Collectors.toList()));
+	}
+
+	public Future<Boolean> updateChannelMembersRole(Id channelId, Collection<Id> memberIds, Channel.Role role) {
+		return store.updateChannelMembersRole(channelId, memberIds, role.value());
+	}
+
+	public Future<Boolean> removeChannelMember(Id channelId, Id memberId) {
+		return store.removeChannelMember(channelId, memberId);
+	}
+
+	public Future<Boolean> removeChannelMembers(Id channelId, Collection<Id> memberIds) {
+		return store.removeChannelMembers(channelId, memberIds);
+	}
+
+	// ------------------------------------------------------------------------
+	// Mapping: impl -> record
+	// ------------------------------------------------------------------------
+
+	private StoredMessage toRecord(PhotonMessage<MessageContent> message) {
+		MessageContent content = message.getPayload();
+		return new StoredMessage(
+				message.getRid(),
+				message.getId(),
+				message.getConversationId().orElseThrow(
+						() -> new IllegalArgumentException("Message has no conversation id")),
+				message.getVersion(),
+				message.getRecipient(),
+				message.getType().value(),
+				message.getFrom().orElse(null),
+				message.getCreatedAt(),
+				content.getContentType(),
+				content.getContentDisposition().map(ContentDisposition::getValue).orElse(null),
+				content.serialize(),
+				message.getSentAt(),
+				message.getReceivedAt());
+	}
+
+	private StoredContact toRecord(Contact contact) {
+		StoredChannel channelRecord = null;
+		if (contact instanceof Channel channel) {
+			channelRecord = new StoredChannel(
+					channel.getId(),
+					channel.getOwnerId(),
+					channel.getPermission().value(),
+					channel.getNotice().orElse(null),
+					channel.isAnnounce());
+		}
+		byte[] sessionKey = contact instanceof PhotonContact pc ? pc.getSessionKey() : null;
+		return new StoredContact(
+				contact.getId(),
+				contact.getType().value(),
+				sessionKey,
+				contact.getName().orElse(null),
+				contact.getAvatar().orElse(null),
+				contact.getRemark().orElse(null),
+				contact.getTags().orElse(null),
+				contact.isMuted(),
+				contact.isBlocked(),
+				contact.getRevision(),
+				contact.getCreatedAt(),
+				contact.getUpdatedAt(),
+				channelRecord);
+	}
+
+	private StoredFriendRequest toRecord(PhotonFriendRequest request) {
+		return new StoredFriendRequest(
+				request.getUserId(),
+				request.getInitiatorId(),
+				request.getHello(),
+				request.getCreatedAt(),
+				request.getUpdatedAt(),
+				request.isAccepted(),
+				request.getAcceptedAt());
+	}
+
+	private StoredChannelMember toMemberRecord(Id channelId, Channel.Member member) {
+		return new StoredChannelMember(member.getId(), channelId, member.getRole().value(), member.getJoined());
+	}
+
+	private List<StoredChannelMember> toMemberRecords(Id channelId, Collection<Channel.Member> members) {
+		return members.stream()
+				.map(m -> toMemberRecord(channelId, m))
+				.collect(Collectors.toList());
+	}
+
+	// ------------------------------------------------------------------------
+	// Mapping: record -> impl
+	// ------------------------------------------------------------------------
+
+	private List<PhotonMessage<MessageContent>> toMessages(List<StoredMessage> records) {
+		return records.stream().map(this::toMessage).collect(Collectors.toList());
+	}
+
+	private PhotonMessage<MessageContent> toMessage(StoredMessage r) {
+		MessageContent content = r.payload() == null ? MessageContent.EMPTY : MessageContent.parse(r.payload());
+		return new PhotonMessage<>(r.rid(), r.conversationId(), r.version(), r.id(), r.recipient(),
+				Message.Type.valueOf(r.type()), r.from(), r.createdAt(), content, r.sentAt(), r.receivedAt());
+	}
+
+	// Several contact column values (name/avatar/remark/tags/notice) are nullable in the schema, but a
+	// few impl constructors do not annotate those parameters @Nullable; the nulls are valid and stored
+	// as-is. Mirrors DatabaseStore.rowToContact, which relied on Vert.x's non-null-typed Row accessors.
+	@SuppressWarnings("NullAway")
+	private Contact toContact(StoredContact r) {
+		Contact.Type type = Contact.Type.valueOf(r.type());
+		return switch (type) {
+			case FRIEND -> new Friend(r.id(), Objects.requireNonNull(r.sessionKey()), r.name(), r.avatar(),
+					r.remark(), r.tags(), r.muted(), r.blocked(), r.createdAt(), r.updatedAt(), r.revision());
+			case CHANNEL -> {
+				StoredChannel ch = Objects.requireNonNull(r.channel(), "channel record missing for CHANNEL contact");
+				PhotonChannel channel = new PhotonChannel(r.id(), Objects.requireNonNull(r.sessionKey()),
+						ch.owner(), Channel.Permission.valueOf(ch.permission()), r.name(), ch.notice(), ch.announce(),
+						r.remark(), r.tags(), r.muted(), r.blocked(), r.createdAt(), r.updatedAt(), r.revision());
+				channel.setMembersLoader(this::loadMembers);
+				yield channel;
+			}
+			case AUTO -> new AutoContact(r.id(), r.name(), r.avatar(), r.remark(), r.tags(),
+					r.muted(), r.blocked(), r.createdAt(), r.updatedAt());
+		};
+	}
+
+	// hello is a nullable column; the ctor parameter is not annotated @Nullable but accepts null.
+	@SuppressWarnings("NullAway")
+	private PhotonFriendRequest toFriendRequest(StoredFriendRequest r) {
+		return new PhotonFriendRequest(r.id(), r.initiator(), r.hello(), r.createdAt(), r.updatedAt(),
+				r.accepted(), r.acceptedAt());
+	}
+
+	private ChannelMember toMember(StoredChannelMember r) {
+		return new ChannelMember(r.id(), Channel.Role.valueOf(r.role()), r.joined());
+	}
+
+	private Conversation toConversation(StoredConversation r) {
+		Function<PhotonContact, SessionContext> factory = Objects.requireNonNull(sessionContextFactory,
+				"INTERNAL ERROR: sessionContextFactory is null");
+		PhotonContact contact = (PhotonContact) toContact(r.contact());
+		StoredMessage last = r.lastMessage();
+		PhotonMessage<MessageContent> lastMessage = last == null ? null : toMessage(last);
+		return new PhotonConversation(contact, lastMessage, factory);
+	}
+
+	// Wires the lazy members loader on a channel contact so callers holding the supplied instance can
+	// resolve its members on demand. Done unconditionally (like the legacy Database, which wired it
+	// while building the upsert params): the loader merely enables lazy reads and is harmless even if
+	// the underlying write failed.
+	private void wireMembersLoader(Contact contact) {
+		if (contact instanceof PhotonChannel pc)
+			pc.setMembersLoader(this::loadMembers);
+	}
+
+	private Future<List<ChannelMember>> loadMembers(Id channelId) {
+		return store.getAllChannelMembers(channelId)
+				.map(list -> list.stream().map(this::toMember).collect(Collectors.toList()));
+	}
 }
