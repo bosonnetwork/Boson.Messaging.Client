@@ -125,9 +125,13 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	// event-loop context (from sendMessageInternal/sendRpcCall, which public methods reach
 	// via runOnContext, and from the MQTT publish/response handlers which run on the same
 	// context). They are therefore intentionally plain HashMaps, not concurrent maps. Do not
-	// touch them from any other thread without marshalling onto vertxContext first.
+	// touch them from any other thread without marshaling onto vertxContext first.
 	private final Map<Integer, PhotonMessage<?>> inflightMessages;
 	private final Map<Long, RpcCall<?>> inflightRpcCalls;
+
+	// -1 means "no maintenance timer scheduled". Vert.x timer ids are non-negative and start at 0,
+	// so 0 is a valid id and cannot be used as the unset sentinel.
+	private long periodicTimer = -1;
 
 	private volatile boolean connected;
 	private volatile boolean ready;
@@ -141,6 +145,12 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private final AtomicBoolean running = new AtomicBoolean(false);
 
 	private static final Logger log = LoggerFactory.getLogger(PhotonMessagingClient.class);
+
+	// Cadence of the cache maintenance timer (proactive expiry/eviction). The caches are already
+	// bounded by maximumSize and expire lazily on access, so this only releases entries that expire
+	// and are never touched again; it does not need to be frequent (and a tight loop wastes wakeups,
+	// notably on Android). The 5-minute access TTL makes a 1-minute sweep more than adequate.
+	private static final long CACHE_MAINTENANCE_INTERVAL_MS = Duration.ofMinutes(1).toMillis();
 
 	public PhotonMessagingClient(@Nullable Vertx vertx, @Nullable Node node, Configuration config) {
 		// Resolve the Vert.x instance: use the provided one, the current context, or the node's instance
@@ -178,7 +188,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 			MessagingStore store = config.getStore();
 			if (store != null) {
-				// Platform-supplied persistence backend (e.g. Android androidx.sqlite); the JDBC/SQL
+				// Platform-supplied persistence backend (e.g., Android androidx.sqlite); the JDBC/SQL
 				// backend and database URI are not used.
 				this.repository = new StoreBackedRepository(store);
 			} else {
@@ -198,12 +208,15 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			throw new IllegalStateException("Failed to prepare the client data directory", e);
 		}
 
-		this.contactCache = new AsyncCache<>(512, Duration.ofMinutes(5),
-				(id, executor) -> ContextualFuture.of(repository.getContact(id).map(c -> (PhotonContact) c)));
+		this.contactCache = AsyncCache.<Id, PhotonContact>newBuilder()
+				.maximumSize(512)
+				.expireAfterAccess(Duration.ofMinutes(5))
+				.build(id -> repository.getContact(id).map(c -> (PhotonContact) c));
 
-		this.conversationCache = new AsyncCache<>(512, Duration.ofMinutes(5),
-				(id, executor) -> ContextualFuture.of(repository.getConversation(id)
-						.map(c -> (PhotonConversation) c)));
+		this.conversationCache = AsyncCache.<Id, PhotonConversation>newBuilder()
+				.maximumSize(512)
+				.expireAfterAccess(Duration.ofMinutes(5))
+				.build(id -> repository.getConversation(id).map(c -> (PhotonConversation) c));
 
 		this.listeners = new PhotonMessagingListeners();
 		this.connected = false;
@@ -357,7 +370,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	public ContextualFuture<Optional<Conversation>> getConversation(Id conversationId) {
 		Objects.requireNonNull(conversationId, "conversationId");
 		runningCheck();
-		return ContextualFuture.of(conversationCache.get(conversationId).thenApply(Optional::ofNullable));
+		return ContextualFuture.of(conversationCache.get(conversationId).map(Optional::ofNullable));
 	}
 
 	@Override
@@ -370,7 +383,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			for (Conversation c : convs) {
 				PhotonConversation cached = conversationCache.synchronous().asMap()
 						.compute(c.getId(), (k, cc) -> cc != null ? cc : (PhotonConversation) c);
-				conversations.put(c.getId(), cached);
+				conversations.put(c.getId(), Objects.requireNonNull(cached));
 			}
 
 			// Return a **mutable** list
@@ -1089,11 +1102,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	public ContextualFuture<Optional<Contact>> getContact(Id contactId) {
 		Objects.requireNonNull(contactId, "contactId");
 		runningCheck();
-		return ContextualFuture.of(contactCache.get(contactId).thenCompose(c -> {
+		return ContextualFuture.of(contactCache.get(contactId).compose(c -> {
 			if (c instanceof PhotonChannel ch)
-				return ch.loadMembers().thenApply(v -> Optional.of(ch));
+				return Future.fromCompletionStage(ch.loadMembers()).map(v -> Optional.of(ch));
 
-			return ContextualFuture.succeededFuture(Optional.ofNullable(c));
+			return Future.succeededFuture(Optional.ofNullable(c));
 		}));
 	}
 
@@ -1106,7 +1119,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			for (Contact c : contacts) {
 				PhotonContact cached = contactCache.synchronous().asMap()
 						.compute(c.getId(), (k, cc) -> cc != null ? cc : (PhotonContact) c);
-				result.put(c.getId(), cached);
+				result.put(c.getId(), Objects.requireNonNull(cached));
 			}
 
 			// Return a **mutable** list
@@ -1227,16 +1240,28 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		this.connected = false;
 		this.ready = false;
 
-		return repository.initialize(vertx, this::sessionContextFactory).compose(v -> connect());
+		return repository.initialize(vertx, this::sessionContextFactory)
+				.compose(v -> connect())
+				.onSuccess(v -> { periodicTimer = vertx.setPeriodic(CACHE_MAINTENANCE_INTERVAL_MS, this::periodicCheck); });
 	}
 
 	@Override
 	protected Future<Void> undeploy() {
+		if (periodicTimer >= 0) {
+			vertx.cancelTimer(periodicTimer);
+			periodicTimer = -1;
+		}
+
 		return disconnect().compose(v -> repository.close());
 	}
 
+	private void periodicCheck(long timer) {
+		contactCache.cleanUp();
+		conversationCache.cleanUp();
+	}
+
 	private Future<PhotonConversation> getOrCreateConversation(Id id) {
-		return Future.fromCompletionStage(conversationCache.get(id)).compose(conv -> {
+		return conversationCache.get(id).compose(conv -> {
 			if (conv != null)
 				return Future.<PhotonConversation>succeededFuture(conv);
 			else
@@ -1260,11 +1285,11 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	}
 
 	private Future<@Nullable PhotonContact> contact(Id id) {
-		return Future.fromCompletionStage(contactCache.get(id)).<@Nullable PhotonContact>map(contact -> contact);
+		return contactCache.get(id).<@Nullable PhotonContact>map(contact -> contact);
 	}
 
 	private Future<@Nullable PhotonChannel> channel(Id id) {
-		return Future.fromCompletionStage(contactCache.get(id))
+		return contactCache.get(id)
 				.<@Nullable PhotonChannel>map(contact -> contact instanceof PhotonChannel channel ? channel : null);
 	}
 
