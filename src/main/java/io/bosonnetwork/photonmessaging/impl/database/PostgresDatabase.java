@@ -38,13 +38,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.bosonnetwork.database.SqlSafety;
-import io.bosonnetwork.photonmessaging.impl.Database;
+import io.bosonnetwork.photonmessaging.impl.DatabaseStore;
 import io.bosonnetwork.utils.FileUtils;
 
 /**
  * PostgreSQL implementation of PhotonMessaging Client database.
  */
-public class PostgresDatabase extends Database {
+public class PostgresDatabase extends DatabaseStore {
 	public static final String CONNECTION_URI_PREFIX = "postgresql://";
 	private static final int DEFAULT_POOL_SIZE = 4;
 

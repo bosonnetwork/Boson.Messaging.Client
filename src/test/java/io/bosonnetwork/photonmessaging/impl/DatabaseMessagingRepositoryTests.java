@@ -40,13 +40,13 @@ import io.bosonnetwork.utils.FileUtils;
 
 @ExtendWith(VertxExtension.class)
 @SuppressWarnings("CodeBlock2Expr")
-public class DatabaseTests {
+public class DatabaseMessagingRepositoryTests {
 	private static final Path testRoot = Path.of(System.getProperty("java.io.tmpdir"), "boson");
-	private static final Path testDir = testRoot.resolve("photon-messaging-client").resolve("DatabaseTests");
+	private static final Path testDir = testRoot.resolve("photon-messaging-client").resolve("DatabaseMessagingRepositoryTests");
 
 	private static PostgresqlServer pgServer;
-	private static Database postgres;
-	private static Database sqlite;
+	private static MessagingRepository postgres;
+	private static MessagingRepository sqlite;
 	private static final Faker faker = new Faker();
 
 	private static final List<Arguments> dbs = new ArrayList<>();
@@ -69,7 +69,8 @@ public class DatabaseTests {
 		}
 
 		if (pgServer != null) {
-			postgres = new PostgresDatabase(pgServer.getDatabaseUri(), 4, "photon_test");
+			DatabaseStore pgStore = new PostgresDatabase(pgServer.getDatabaseUri(), 4, "photon_test");
+			postgres = new MessagingRepository(pgStore);
 			f1 = postgres.initialize(vertx, c -> null)
 					.onSuccess(v -> dbs.add(Arguments.of("postgres", postgres)));
 		} else {
@@ -78,7 +79,8 @@ public class DatabaseTests {
 
 		// Initialize SQLite
 		String sqliteUri = "jdbc:sqlite:" + testDir.resolve("client.db");
-		Database sqlite = new SqliteDatabase(sqliteUri, 1);
+		DatabaseStore sqliteStore = new SqliteDatabase(sqliteUri, 1);
+		sqlite = new MessagingRepository(sqliteStore);
 		Future<Integer> f2 = sqlite.initialize(vertx, c -> null)
 				.onSuccess(v -> dbs.add(Arguments.of("sqlite", sqlite)));
 
@@ -106,10 +108,10 @@ public class DatabaseTests {
 	void clearDatabase(Vertx vertx, VertxTestContext context) {
 		List<Future<Void>> futures = new ArrayList<>();
 		for (Arguments arg : dbs) {
-			Database db = (Database) arg.get()[1];
-			futures.add(db.clearContacts(0)
-					.compose(v -> db.clearFriendRequests())
-					.compose(v -> db.clearMessages()));
+			MessagingRepository repo = (MessagingRepository) arg.get()[1];
+			futures.add(repo.clearContacts(0)
+					.compose(v -> repo.clearFriendRequests())
+					.compose(v -> repo.clearMessages()));
 		}
 		Future.all(futures).onComplete(context.succeedingThenComplete());
 	}
@@ -117,11 +119,11 @@ public class DatabaseTests {
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("databaseProvider")
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
-	void testContactsRevision(String name, Database db, VertxTestContext context) {
-		db.getContactsRevision().onComplete(context.succeeding(rev -> {
+	void testContactsRevision(String name, MessagingRepository repo, VertxTestContext context) {
+		repo.getContactsRevision().onComplete(context.succeeding(rev -> {
 			context.verify(() -> assertEquals(0, rev));
-			db.putContacts(123, List.of()).onComplete(context.succeeding(v -> {
-				db.getContactsRevision().onComplete(context.succeeding(rev2 -> {
+			repo.putContacts(123, List.of()).onComplete(context.succeeding(v -> {
+				repo.getContactsRevision().onComplete(context.succeeding(rev2 -> {
 					context.verify(() -> assertEquals(123, rev2));
 					context.completeNow();
 				}));
@@ -132,22 +134,22 @@ public class DatabaseTests {
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("databaseProvider")
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
-	void testFriendLifecycle(String name, Database db, VertxTestContext context) {
+	void testFriendLifecycle(String name, MessagingRepository repo, VertxTestContext context) {
 		Id friendId = Id.random();
 		Friend friend = new Friend(friendId, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES),
 				"Alice", null, "Remark", null, false, false,
 				System.currentTimeMillis(), System.currentTimeMillis(), 1);
 
-		db.putContactLocally(friend).onComplete(context.succeeding(v1 -> {
-			db.getContact(friendId).onComplete(context.succeeding(c -> {
+		repo.putContactLocally(friend).onComplete(context.succeeding(v1 -> {
+			repo.getContact(friendId).onComplete(context.succeeding(c -> {
 				context.verify(() -> {
 					assertNotNull(c);
 					assertTrue(c instanceof Friend);
 					assertEquals("Alice", c.getName().orElseThrow());
 				});
 
-				db.removeContactLocally(friendId).onComplete(context.succeeding(v2 -> {
-					db.getContact(friendId).onComplete(context.succeeding(c2 -> {
+				repo.removeContactLocally(friendId).onComplete(context.succeeding(v2 -> {
+					repo.getContact(friendId).onComplete(context.succeeding(c2 -> {
 						context.verify(() -> assertNull(c2));
 						context.completeNow();
 					}));
@@ -159,7 +161,7 @@ public class DatabaseTests {
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("databaseProvider")
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
-	void testChannelAndMembers(String name, Database db, VertxTestContext context) {
+	void testChannelAndMembers(String name, MessagingRepository repo, VertxTestContext context) {
 		Id channelId = Id.random();
 		PhotonChannel channel = new PhotonChannel(channelId, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES),
 				Id.random(), Channel.Permission.PUBLIC, "Channel 1", "Notice", false,
@@ -170,14 +172,14 @@ public class DatabaseTests {
 		Channel.Member member1 = new ChannelMember(m1, Channel.Role.MEMBER, System.currentTimeMillis());
 		Channel.Member member2 = new ChannelMember(m2, Channel.Role.MEMBER, System.currentTimeMillis());
 
-		db.putContactLocally(channel)
-				.compose(v -> db.putChannelMembers(channelId, List.of(member1, member2)))
-				.compose(v -> db.getAllChannelMembers(channelId))
+		repo.putContactLocally(channel)
+				.compose(v -> repo.putChannelMembers(channelId, List.of(member1, member2)))
+				.compose(v -> repo.getAllChannelMembers(channelId))
 				.onComplete(context.succeeding(members -> {
 					context.verify(() -> assertEquals(2, members.size()));
 					
-					db.refillChannelMembers(channelId, List.of(member1))
-							.compose(v -> db.getAllChannelMembers(channelId))
+					repo.refillChannelMembers(channelId, List.of(member1))
+							.compose(v -> repo.getAllChannelMembers(channelId))
 							.onComplete(context.succeeding(members2 -> {
 								context.verify(() -> assertEquals(1, members2.size()));
 								context.completeNow();
@@ -188,7 +190,7 @@ public class DatabaseTests {
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("databaseProvider")
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
-	void testMessageHistory(String name, Database db, VertxTestContext context) {
+	void testMessageHistory(String name, MessagingRepository repo, VertxTestContext context) {
 		Id convId = Id.random();
 		long baseTime = System.currentTimeMillis();
 
@@ -199,11 +201,11 @@ public class DatabaseTests {
 			MessageContent content = MessageContent.text("Msg " + i);
 			PhotonMessage<MessageContent> msg = new PhotonMessage<>(mid, Id.random(), Message.Type.CONTENT_MESSAGE, baseTime, content);
 			msg.setConversationId(convId);
-			futures.add(db.putMessage(msg));
+			futures.add(repo.putMessage(msg));
 		}
 
 		Future.all(futures)
-				.compose(v -> db.getMessagesBefore(convId, System.currentTimeMillis(), 10, 0))
+				.compose(v -> repo.getMessagesBefore(convId, System.currentTimeMillis(), 10, 0))
 				.onComplete(context.succeeding(messages -> {
 					context.verify(() -> {
 						assertEquals(3, messages.size());
@@ -218,7 +220,7 @@ public class DatabaseTests {
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("databaseProvider")
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
-	void testConversationJoin(String name, Database db, VertxTestContext context) {
+	void testConversationJoin(String name, MessagingRepository repo, VertxTestContext context) {
 		Id contactId = Id.random();
 		Friend friend = new Friend(contactId, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES),
 				"Bob", null, null, null, false, false,
@@ -229,9 +231,9 @@ public class DatabaseTests {
 		PhotonMessage<MessageContent> msg = new PhotonMessage<>(msgId, Id.random(), Message.Type.CONTENT_MESSAGE, System.currentTimeMillis(), content);
 		msg.setConversationId(contactId);
 
-		db.putContactLocally(friend)
-				.compose(v -> db.putMessage(msg))
-				.compose(v -> db.getConversation(contactId))
+		repo.putContactLocally(friend)
+				.compose(v -> repo.putMessage(msg))
+				.compose(v -> repo.getConversation(contactId))
 				.onComplete(context.succeeding(conv -> {
 					context.verify(() -> {
 						assertNotNull(conv);
@@ -245,7 +247,7 @@ public class DatabaseTests {
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("databaseProvider")
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
-	void testCascadeDelete(String name, Database db, VertxTestContext context) {
+	void testCascadeDelete(String name, MessagingRepository repo, VertxTestContext context) {
 		Id channelId = Id.random();
 		PhotonChannel channel = new PhotonChannel(channelId, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES),
 				Id.random(), Channel.Permission.PUBLIC, "Cascade", "Notice", false,
@@ -253,24 +255,24 @@ public class DatabaseTests {
 		Id m1 = Id.random();
 		Channel.Member member1 = new ChannelMember(m1, Channel.Role.MEMBER, System.currentTimeMillis());
 
-		db.putContactLocally(channel)
-				.compose(v -> db.putChannelMembers(channelId, List.of(member1)))
+		repo.putContactLocally(channel)
+				.compose(v -> repo.putChannelMembers(channelId, List.of(member1)))
 				.compose(v -> {
 					PhotonMessage<MessageContent> msg = randomMessage(channelId);
-					return db.putMessage(msg);
+					return repo.putMessage(msg);
 				})
 				.compose(v -> {
 					// Verify members and messages exist
-					return db.getAllChannelMembers(channelId).compose(members -> {
+					return repo.getAllChannelMembers(channelId).compose(members -> {
 						assertEquals(1, members.size());
-						return db.getMessagesBefore(channelId, System.currentTimeMillis(), 10, 0);
+						return repo.getMessagesBefore(channelId, System.currentTimeMillis(), 10, 0);
 					}).onSuccess(messages -> assertEquals(1, messages.size()));
 				})
-				.compose(v -> db.removeContactLocally(channelId))
-				.compose(v -> db.getAllChannelMembers(channelId))
+				.compose(v -> repo.removeContactLocally(channelId))
+				.compose(v -> repo.getAllChannelMembers(channelId))
 				.compose(members -> {
 					context.verify(() -> assertEquals(0, members.size(), "Channel members should be Cascaded deleted"));
-					return db.getMessagesBefore(channelId, System.currentTimeMillis(), 10, 0);
+					return repo.getMessagesBefore(channelId, System.currentTimeMillis(), 10, 0);
 				})
 				.onComplete(context.succeeding(messages -> {
 					context.verify(() -> assertEquals(0, messages.size(), "Messages should be Cascaded deleted"));
@@ -281,39 +283,39 @@ public class DatabaseTests {
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("databaseProvider")
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
-	void testMessageManagement(String name, Database db, VertxTestContext context) {
+	void testMessageManagement(String name, MessagingRepository repo, VertxTestContext context) {
 		Id convId = Id.random();
 		PhotonMessage<MessageContent> m1 = randomMessage(convId);
 		PhotonMessage<MessageContent> m2 = randomMessage(convId);
 		PhotonMessage<MessageContent> m3 = randomMessage(convId);
 
-		db.putMessage(m1)
-				.compose(v -> db.putMessage(m2))
-				.compose(v -> db.putMessage(m3))
+		repo.putMessage(m1)
+				.compose(v -> repo.putMessage(m2))
+				.compose(v -> repo.putMessage(m3))
 				.compose(v -> {
 					m1.setSentAt(System.currentTimeMillis() + 1000);
-					return db.updateMessageSentTime(m1);
+					return repo.updateMessageSentTime(m1);
 				})
-				.compose(v -> db.getMessagesBefore(convId, System.currentTimeMillis(), 10, 0))
+				.compose(v -> repo.getMessagesBefore(convId, System.currentTimeMillis(), 10, 0))
 				.compose(messages -> {
 					context.verify(() -> {
 						assertEquals(3, messages.size());
 						Message sentM1 = messages.stream().filter(m -> m.getId().equals(m1.getId())).findFirst().orElseThrow();
 						assertEquals(m1.getSentAt(), sentM1.getSentAt());
 					});
-					return db.removeMessages(List.of(m1.getRid()));
+					return repo.removeMessages(List.of(m1.getRid()));
 				})
 				.compose(removed -> {
 					context.verify(() -> assertTrue(removed));
-					return db.getMessagesBefore(convId, System.currentTimeMillis(), 10, 0);
+					return repo.getMessagesBefore(convId, System.currentTimeMillis(), 10, 0);
 				})
 				.compose(messages -> {
 					context.verify(() -> assertEquals(2, messages.size()));
-					return db.removeMessages(convId);
+					return repo.removeMessagesByConversation(convId);
 				})
 				.compose(removed -> {
 					context.verify(() -> assertTrue(removed));
-					return db.getMessagesBefore(convId, System.currentTimeMillis(), 10, 0);
+					return repo.getMessagesBefore(convId, System.currentTimeMillis(), 10, 0);
 				})
 				.onComplete(context.succeeding(messages -> {
 					context.verify(() -> assertEquals(0, messages.size()));
@@ -324,19 +326,19 @@ public class DatabaseTests {
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("databaseProvider")
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
-	void testChannelManagement(String name, Database db, Vertx vertx, VertxTestContext context) {
+	void testChannelManagement(String name, MessagingRepository repo, Vertx vertx, VertxTestContext context) {
 		PhotonChannel channel = randomChannel();
 		Id c1Id = Id.random();
 		Id c2Id = Id.random();
 		Channel.Member m1 = new ChannelMember(c1Id, Channel.Role.MEMBER, System.currentTimeMillis());
 		Channel.Member m2 = new ChannelMember(c2Id, Channel.Role.MEMBER, System.currentTimeMillis());
 
-		db.putContactLocally(channel)
-				.compose(v -> db.putChannelMembers(channel.getId(), List.of(m1, m2)))
-				.compose(v -> db.updateChannelMembersRole(channel.getId(), List.of(c1Id), Channel.Role.MODERATOR))
+		repo.putContactLocally(channel)
+				.compose(v -> repo.putChannelMembers(channel.getId(), List.of(m1, m2)))
+				.compose(v -> repo.updateChannelMembersRole(channel.getId(), List.of(c1Id), Channel.Role.MODERATOR))
 				.compose(success -> {
 					context.verify(() -> assertTrue(success));
-					return db.getChannelMember(channel.getId(), c1Id);
+					return repo.getChannelMember(channel.getId(), c1Id);
 				})
 				.compose(member -> {
 					context.verify(() -> {
@@ -344,19 +346,19 @@ public class DatabaseTests {
 						assertEquals(Channel.Role.MODERATOR, member.getRole());
 					});
 					Id newOwner = Id.random();
-					return db.updateChannelOwnership(channel.getId(), channel.getOwnerId(), newOwner);
+					return repo.updateChannelOwnership(channel.getId(), channel.getOwnerId(), newOwner);
 				})
-				.compose(v -> db.getContact(channel.getId()))
+				.compose(v -> repo.getContact(channel.getId()))
 				.compose(c -> {
 					context.verify(() -> {
 						assertNotNull(c);
 						assertEquals(Channel.Permission.PUBLIC, ((Channel) c).getPermission());
 					});
-					return db.removeChannelMembers(channel.getId(), List.of(c2Id));
+					return repo.removeChannelMembers(channel.getId(), List.of(c2Id));
 				})
 				.compose(success -> {
 					context.verify(() -> assertTrue(success));
-					return db.getAllChannelMembers(channel.getId());
+					return repo.getAllChannelMembers(channel.getId());
 				})
 				.onComplete(context.succeeding(members -> {
 					context.verify(() -> {
@@ -369,32 +371,32 @@ public class DatabaseTests {
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("databaseProvider")
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
-	void testConversationManagement(String name, Database db, VertxTestContext context) {
+	void testConversationManagement(String name, MessagingRepository repo, VertxTestContext context) {
 		Id c1Id = Id.random();
 		Id c2Id = Id.random();
 		Friend f1 = new Friend(c1Id, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Alice", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
 		Friend f2 = new Friend(c2Id, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Bob", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
 
-		db.putContactLocally(f1)
-				.compose(v -> db.putContactLocally(f2))
-				.compose(v -> db.putMessage(randomMessage(c1Id)))
-				.compose(v -> db.putMessage(randomMessage(c2Id)))
-				.compose(v -> db.getAllConversations())
+		repo.putContactLocally(f1)
+				.compose(v -> repo.putContactLocally(f2))
+				.compose(v -> repo.putMessage(randomMessage(c1Id)))
+				.compose(v -> repo.putMessage(randomMessage(c2Id)))
+				.compose(v -> repo.getAllConversations())
 				.compose(conversations -> {
 					context.verify(() -> assertEquals(2, conversations.size()));
-					return db.removeConversations(List.of(c1Id));
+					return repo.removeConversations(List.of(c1Id));
 				})
 				.compose(success -> {
 					context.verify(() -> assertTrue(success));
-					return db.getConversation(c1Id);
+					return repo.getConversation(c1Id);
 				})
 				.compose(conv -> {
 					context.verify(() -> assertNull(conv));
-					return db.removeConversation(c2Id);
+					return repo.removeConversation(c2Id);
 				})
 				.compose(success -> {
 					context.verify(() -> assertTrue(success));
-					return db.getAllConversations();
+					return repo.getAllConversations();
 				})
 				.onComplete(context.succeeding(conversations -> {
 					context.verify(() -> assertEquals(0, conversations.size()));
@@ -405,22 +407,22 @@ public class DatabaseTests {
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("databaseProvider")
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
-	void testChannelMemberRetrieval(String name, Database db, VertxTestContext context) {
+	void testChannelMemberRetrieval(String name, MessagingRepository repo, VertxTestContext context) {
 		PhotonChannel channel = randomChannel();
 		Id m1Id = Id.random();
 		Id m2Id = Id.random();
 		Channel.Member m1 = new ChannelMember(m1Id, Channel.Role.MEMBER, System.currentTimeMillis());
 		Channel.Member m2 = new ChannelMember(m2Id, Channel.Role.MEMBER, System.currentTimeMillis());
 
-		db.putContactLocally(channel)
-				.compose(v -> db.putChannelMembers(channel.getId(), List.of(m1, m2)))
-				.compose(v -> db.getChannelMember(channel.getId(), m1Id))
+		repo.putContactLocally(channel)
+				.compose(v -> repo.putChannelMembers(channel.getId(), List.of(m1, m2)))
+				.compose(v -> repo.getChannelMember(channel.getId(), m1Id))
 				.compose(member -> {
 					context.verify(() -> {
 						assertNotNull(member);
 						assertEquals(m1Id, member.getId());
 					});
-					return db.getChannelMembers(channel.getId(), List.of(m2Id));
+					return repo.getChannelMembers(channel.getId(), List.of(m2Id));
 				})
 				.onComplete(context.succeeding(members -> {
 					context.verify(() -> {
@@ -434,15 +436,15 @@ public class DatabaseTests {
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("databaseProvider")
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
-	void testConversationUpdateOnMessage(String name, Database db, VertxTestContext context) {
+	void testConversationUpdateOnMessage(String name, MessagingRepository repo, VertxTestContext context) {
 		Id convId = Id.random();
 		Friend friend = new Friend(convId, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Alice", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
 		PhotonMessage<MessageContent> m1 = randomMessage(convId);
 		long time1 = m1.getReceivedAt();
 
-		db.putContactLocally(friend)
-				.compose(v -> db.putMessage(m1))
-				.compose(v -> db.getConversation(convId))
+		repo.putContactLocally(friend)
+				.compose(v -> repo.putMessage(m1))
+				.compose(v -> repo.getConversation(convId))
 				.compose(conv -> {
 					context.verify(() -> {
 						assertNotNull(conv);
@@ -450,9 +452,9 @@ public class DatabaseTests {
 					});
 					PhotonMessage<MessageContent> m2 = randomMessage(convId);
 					m2.received(time1 + 5000);
-					return db.putMessage(m2).map(m2.getReceivedAt());
+					return repo.putMessage(m2).map(m2.getReceivedAt());
 				})
-				.compose(time2 -> db.getConversation(convId).map(conv -> Map.entry(time2, conv)))
+				.compose(time2 -> repo.getConversation(convId).map(conv -> Map.entry(time2, conv)))
 				.onComplete(context.succeeding(entry -> {
 					context.verify(() -> {
 						assertEquals(entry.getKey(), entry.getValue().getUpdatedAt());
@@ -464,17 +466,17 @@ public class DatabaseTests {
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("databaseProvider")
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
-	void testFullContactSyncScenario(String name, Database db, VertxTestContext context) {
+	void testFullContactSyncScenario(String name, MessagingRepository repo, VertxTestContext context) {
 		Friend f1 = randomFriend();
 		PhotonChannel c1 = randomChannel();
 		List<Contact> contacts = List.of(f1, c1);
 		int newRevision = 10;
 
-		db.putContacts(newRevision, contacts)
-				.compose(v -> db.getContactsRevision())
+		repo.putContacts(newRevision, contacts)
+				.compose(v -> repo.getContactsRevision())
 				.compose(rev -> {
 					context.verify(() -> assertEquals(newRevision, rev));
-					return db.getAllContacts();
+					return repo.getAllContacts();
 				})
 				.onComplete(context.succeeding(all -> {
 					context.verify(() -> {
@@ -493,13 +495,13 @@ public class DatabaseTests {
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("databaseProvider")
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
-	void testFriendRequestAcceptanceFlow(String name, Database db, VertxTestContext context) {
+	void testFriendRequestAcceptanceFlow(String name, MessagingRepository repo, VertxTestContext context) {
 		Id userId = Id.random();
 		Id initiatorId = Id.random();
 		FriendRequest request = new PhotonFriendRequest(userId, initiatorId, faker.lorem().sentence());
 
-		db.putFriendRequest(request)
-				.compose(v -> db.getFriendRequest(userId))
+		repo.putFriendRequest(request)
+				.compose(v -> repo.getFriendRequest(userId))
 				.compose(fr -> {
 					context.verify(() -> {
 						assertNotNull(fr);
@@ -507,13 +509,13 @@ public class DatabaseTests {
 					});
 					PhotonFriendRequest fri = (PhotonFriendRequest) fr;
 					fri.accept();
-					return db.putFriendRequest(fri);
+					return repo.putFriendRequest(fri);
 				})
 				.compose(v -> {
 					Friend friend = new Friend(userId, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Alice", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
-					return db.putContacts(2, List.of(friend));
+					return repo.putContacts(2, List.of(friend));
 				})
-				.compose(v -> db.getContact(userId))
+				.compose(v -> repo.getContact(userId))
 				.onComplete(context.succeeding(contact -> {
 					context.verify(() -> {
 						assertNotNull(contact);
@@ -527,17 +529,17 @@ public class DatabaseTests {
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("databaseProvider")
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
-	void testChannelLifecycleScenario(String name, Database db, VertxTestContext context) {
+	void testChannelLifecycleScenario(String name, MessagingRepository repo, VertxTestContext context) {
 		PhotonChannel channel = randomChannel();
 		Channel.Member owner = new ChannelMember(channel.getOwnerId(), Channel.Role.OWNER, System.currentTimeMillis());
 
-		db.putContactLocally(channel)
-				.compose(v -> db.putChannelMembers(channel.getId(), List.of(owner)))
+		repo.putContactLocally(channel)
+				.compose(v -> repo.putChannelMembers(channel.getId(), List.of(owner)))
 				.compose(v -> {
 					PhotonMessage<MessageContent> msg = randomMessage(channel.getId());
-					return db.putMessage(msg);
+					return repo.putMessage(msg);
 				})
-				.compose(v -> db.getConversation(channel.getId()))
+				.compose(v -> repo.getConversation(channel.getId()))
 				.onComplete(context.succeeding(conv -> {
 					context.verify(() -> {
 						assertNotNull(conv);

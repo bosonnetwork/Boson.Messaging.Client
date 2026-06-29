@@ -187,11 +187,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			Files.createDirectories(config.getDataDir());
 
 			MessagingStore store = config.getStore();
-			if (store != null) {
-				// Platform-supplied persistence backend (e.g., Android androidx.sqlite); the JDBC/SQL
-				// backend and database URI are not used.
-				this.repository = new StoreBackedRepository(store);
-			} else {
+			if (store == null) {
 				String databaseUri = config.getDatabaseUri();
 				// fix the sqlite database file location
 				if (databaseUri.startsWith(SqliteDatabase.CONNECTION_URI_PREFIX)) {
@@ -202,8 +198,10 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 						Files.createDirectories(dbFile.getParent());
 				}
 
-				this.repository = Database.create(databaseUri, config.getDatabasePoolSize(), config.getDatabaseSchemaName());
+				store = DatabaseStore.create(databaseUri, config.getDatabasePoolSize(), config.getDatabaseSchemaName());
 			}
+
+			this.repository = new MessagingRepository(store);
 		} catch (IOException e) {
 			throw new IllegalStateException("Failed to prepare the client data directory", e);
 		}
@@ -437,7 +435,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	public ContextualFuture<Boolean> removeMessages(Id conversationId) {
 		Objects.requireNonNull(conversationId, "conversationId");
 		runningCheck();
-		return ContextualFuture.of(repository.removeMessages(conversationId));
+		return ContextualFuture.of(repository.removeMessagesByConversation(conversationId));
 	}
 
 	@Override

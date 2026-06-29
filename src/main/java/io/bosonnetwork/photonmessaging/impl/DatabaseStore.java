@@ -30,7 +30,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Function;
 
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -50,18 +49,14 @@ import io.bosonnetwork.database.VersionedSchema;
 import io.bosonnetwork.database.VertxDatabase;
 import io.bosonnetwork.photonmessaging.Channel;
 import io.bosonnetwork.photonmessaging.Contact;
-import io.bosonnetwork.photonmessaging.ContentDisposition;
-import io.bosonnetwork.photonmessaging.Conversation;
-import io.bosonnetwork.photonmessaging.FriendRequest;
-import io.bosonnetwork.photonmessaging.Message;
+import io.bosonnetwork.photonmessaging.MessagingStore;
 import io.bosonnetwork.photonmessaging.exceptions.RepositoryException;
 import io.bosonnetwork.photonmessaging.impl.database.PostgresDatabase;
 import io.bosonnetwork.photonmessaging.impl.database.SqlDialect;
 import io.bosonnetwork.photonmessaging.impl.database.SqliteDatabase;
 
-public abstract class Database implements VertxDatabase, MessagingRepository {
+public abstract class DatabaseStore implements VertxDatabase, MessagingStore {
 	private int schemaVersion;
-	private @Nullable Function<PhotonContact, SessionContext> sessionContextFactory;
 
 	protected abstract Logger getLogger();
 
@@ -80,7 +75,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 				uri.startsWith(PostgresDatabase.CONNECTION_URI_PREFIX);
 	}
 
-	public static Database create(String uri, int poolSize, @Nullable String schema) {
+	public static DatabaseStore create(String uri, int poolSize, @Nullable String schema) {
 		Objects.requireNonNull(uri, "uri");
 
 		if (uri.startsWith(SqliteDatabase.CONNECTION_URI_PREFIX))
@@ -91,11 +86,11 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		throw new IllegalArgumentException("Unsupported database: " + uri);
 	}
 
-	public static Database create(String uri, int poolSize) {
+	public static DatabaseStore create(String uri, int poolSize) {
 		return create(uri, poolSize, null);
 	}
 
-	public static Database create(String uri) {
+	public static DatabaseStore create(String uri) {
 		return create(uri, 0, null);
 	}
 
@@ -103,29 +98,33 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		return Objects.requireNonNull(getClient(), "Client is not initialized");
 	}
 
-	public Future<Integer> initialize(Vertx vertx, Function<PhotonContact, SessionContext> sessionContextFactory) {
+	@Override
+	public Future<Void> open() {
+		throw new UnsupportedOperationException("open() is not supported for DatabaseStore, use open(Vertx) instead");
+	}
+
+	public Future<Integer> open(Vertx vertx) {
 		init(vertx);
-		this.sessionContextFactory = Objects.requireNonNull(sessionContextFactory);
 
 		VersionedSchema schema = VersionedSchema.init(vertx, getClientOrThrow(), getSchema(), getMigrationPath());
 		return schema.migrate().andThen(ar -> {
 					if (ar.succeeded()) {
 						schemaVersion = schema.getCurrentVersion().version();
-						getLogger().info("Database is ready, current schema version: {}", schemaVersion);
+						getLogger().info("DatabaseStore is ready, current schema version: {}", schemaVersion);
 					} else {
 						getLogger().error("Schema migration failed, current schema version: {}",
 								schema.getCurrentVersion().version(), ar.cause());
 					}
 				})
 				.map(v -> schema.getCurrentVersion().version())
-				.recover(e -> Future.failedFuture(new RepositoryException("Database operation failed", e)));
+				.recover(e -> Future.failedFuture(new RepositoryException("DatabaseStore operation failed", e)));
 	}
 
 	public int getSchemaVersion() {
 		return schemaVersion;
 	}
 
-	// close() is declared by both VertxDatabase (default) and MessagingRepository (abstract);
+	// close() is declared by both VertxDatabase (default) and MessagingStore (abstract);
 	// resolve the diamond explicitly by delegating to the VertxDatabase implementation.
 	@Override
 	public Future<Void> close() {
@@ -149,14 +148,15 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	@Override
-	public Future<Void> putContact(int revision, Contact contact) {
+	public Future<Void> putContact(int revision, StoredContact contact) {
 		return withTransaction(c -> {
 			Future<?> future = forUpdate(c, getDialect().upsertContact())
 						.execute(paramsFromContact(contact));
 
-			if (contact instanceof Channel ch) {
+			if (contact.type() == Contact.Type.CHANNEL.value()) {
+				StoredChannel channel = Objects.requireNonNull(contact.channel());
 				future = future.compose(v -> forUpdate(c, getDialect().upsertChannel())
-						.execute(paramsFromChannel(ch)));
+						.execute(paramsFromChannel(channel)));
 			}
 
 			return future.compose(na ->
@@ -170,16 +170,17 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	@Override
-	public Future<Void> putContacts(int revision, Collection<Contact> updated) {
+	public Future<Void> putContacts(int revision, Collection<StoredContact> updated) {
 		return withTransaction(c -> {
 			List<Future<?>> futures = new ArrayList<>();
-			for (Contact contact : updated) {
+			for (StoredContact contact : updated) {
 				Future<?> future = forUpdate(c, getDialect().upsertContact())
 						.execute(paramsFromContact(contact));
 
-				if (contact instanceof Channel ch) {
+				if (contact.type() == Contact.Type.CHANNEL.value()) {
+					StoredChannel channel = Objects.requireNonNull(contact.channel());
 					future = future.compose(v -> forUpdate(c, getDialect().upsertChannel())
-							.execute(paramsFromChannel(ch)));
+							.execute(paramsFromChannel(channel)));
 				}
 
 				futures.add(future);
@@ -196,18 +197,20 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	@Override
-	public Future<Void> putContactLocally(Contact contact) {
+	public Future<Void> putContactLocally(StoredContact contact) {
 		return withTransaction(c -> {
 			Future<?> future = forUpdate(c, getDialect().upsertContact())
 					.execute(paramsFromContact(contact));
 
-			if (contact instanceof Channel ci)
+			if (contact.type() == Contact.Type.CHANNEL.value()) {
+				StoredChannel channel = Objects.requireNonNull(contact.channel());
 				future = future.compose(v -> forUpdate(c, getDialect().upsertChannel())
-						.execute(paramsFromChannel(ci)));
+						.execute(paramsFromChannel(channel)));
+			}
 
 			return future.<Void>mapEmpty();
 		}).recover(e -> {
-			getLogger().error("Failed to put contact locally {}", contact.getId(), e);
+			getLogger().error("Failed to put contact locally {}", contact.id(), e);
 			return Future.failedFuture(new RepositoryException(e));
 		});
 	}
@@ -229,7 +232,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	@Override
-	public Future<Boolean> removeContacts(int revision, Id contactId) {
+	public Future<Boolean> removeContact(int revision, Id contactId) {
 		return removeContacts(revision, List.of(contactId));
 	}
 
@@ -278,19 +281,19 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	@Override
-	public Future<@Nullable Contact> getContact(Id contactId) {
+	public Future<@Nullable StoredContact> getContact(Id contactId) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectContact())
 						.execute(Map.of("id", contactId.bytesUnsafe()))
-						.<@Nullable Contact>map(rs -> findUnique(rs, this::rowToContact))
+						.map(rs -> findUnique(rs, this::rowToContact))
 		).recover(e -> {
 			getLogger().error("Failed to get contact {}", contactId, e);
 			return Future.failedFuture(new RepositoryException(e));
-		}).<@Nullable Contact>map(contact -> contact);
+		}).<@Nullable StoredContact>map(contact -> contact);
 	}
 
 	@Override
-	public Future<List<Contact>> getContacts(Collection<Id> contactIds) {
+	public Future<List<StoredContact>> getContacts(Collection<Id> contactIds) {
 		if (contactIds.isEmpty())
 			return Future.succeededFuture(List.of());
 
@@ -307,7 +310,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	@Override
-	public Future<List<Contact>> getAllContacts() {
+	public Future<List<StoredContact>> getAllContacts() {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectAllContacts())
 						.execute(Map.of())
@@ -323,35 +326,31 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	////////////////////////////////////////////////////////////////////////////
 
 	@Override
-	public Future<Void> putMessage(PhotonMessage<MessageContent> message) {
+	public Future<Long> putMessage(StoredMessage message) {
 		return withTransaction(c ->
 				forQuery(c, getDialect().insertMessage())
 						.execute(paramsFromMessage(message))
-						.map(rs -> {
-							long rid = findLong(rs);
-							message.setRid(rid);
-							return (Void) null;
-						})
+						.map(this::findLong)
 		).recover(e -> {
-			getLogger().error("Failed to put message {}", message.getId(), e);
+			getLogger().error("Failed to put message {}", message.id(), e);
 			return Future.failedFuture(new RepositoryException(e));
 		});
 	}
 
 	@Override
-	public Future<Void> updateMessageSentTime(PhotonMessage<MessageContent> message) {
+	public Future<Void> updateMessageSentTime(Id messageId, long sentAt) {
 		return withTransaction(c ->
 				forUpdate(c, getDialect().updateMessageSentTime())
-						.execute(Map.of("id", message.getId().bytesUnsafe(), "sentAt", message.getSentAt()))
+						.execute(Map.of("id", messageId.bytesUnsafe(), "sentAt",sentAt))
 						.<Void>mapEmpty()
 		).recover(e -> {
-			getLogger().error("Failed to update message sent time for {}", message.getId(), e);
+			getLogger().error("Failed to update message sent time for {}", messageId, e);
 			return Future.failedFuture(new RepositoryException(e));
 		});
 	}
 
 	@Override
-	public Future<List<PhotonMessage<MessageContent>>> getMessagesInRange(Id conversationId, long begin, long end) {
+	public Future<List<StoredMessage>> getMessagesInRange(Id conversationId, long begin, long end) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectMessagesByTimeRange())
 						.execute(Map.of("conversationId", conversationId.bytesUnsafe(),
@@ -365,7 +364,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	@Override
-	public Future<List<PhotonMessage<MessageContent>>> getMessagesBefore(Id conversationId, long until, int limit, int offset) {
+	public Future<List<StoredMessage>> getMessagesBefore(Id conversationId, long until, int limit, int offset) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectMessagesWithPagination())
 						.execute(Map.of("conversationId", conversationId.bytesUnsafe(),
@@ -396,7 +395,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	@Override
-	public Future<Boolean> removeMessages(Id conversationId) {
+	public Future<Boolean> removeMessagesByConversation(Id conversationId) {
 		return withTransaction(c ->
 				forUpdate(c, getDialect().deleteMessagesByConversation())
 						.execute(Map.of("conversationId", conversationId.bytesUnsafe()))
@@ -407,7 +406,8 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		});
 	}
 
-	public Future<Boolean> removeMessagesByConversations(Collection<Id> conversationIds) {
+	// Internal helper used by removeContacts/removeConversations; not part of the MessagingStore contract.
+	Future<Boolean> removeMessagesByConversations(Collection<Id> conversationIds) {
 		if (conversationIds.isEmpty())
 			return Future.succeededFuture(true);
 
@@ -441,31 +441,31 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	////////////////////////////////////////////////////////////////////////////
 
 	@Override
-	public Future<Void> putFriendRequest(FriendRequest friendRequest) {
+	public Future<Void> putFriendRequest(StoredFriendRequest friendRequest) {
 		return withTransaction(c ->
 				forUpdate(c, getDialect().upsertFriendRequest())
-						.execute(paramsFromFriendRequest((PhotonFriendRequest) friendRequest))
+						.execute(paramsFromFriendRequest(friendRequest))
 						.<Void>mapEmpty()
 		).recover(e -> {
-			getLogger().error("Failed to put friend request for {}", friendRequest.getUserId(), e);
+			getLogger().error("Failed to put friend request for {}", friendRequest.id(), e);
 			return Future.failedFuture(new RepositoryException(e));
 		});
 	}
 
 	@Override
-	public Future<@Nullable FriendRequest> getFriendRequest(Id userId) {
+	public Future<@Nullable StoredFriendRequest> getFriendRequest(Id userId) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectFriendRequest())
 						.execute(Map.of("id", userId.bytesUnsafe()))
-						.<@Nullable FriendRequest>map(rs -> findUnique(rs, this::rowToFriendRequest))
+						.<@Nullable StoredFriendRequest>map(rs -> findUnique(rs, this::rowToFriendRequest))
 		).recover(e -> {
 			getLogger().error("Failed to get friend request for {}", userId, e);
 			return Future.failedFuture(new RepositoryException(e));
-		}).<@Nullable FriendRequest>map(friendRequest -> friendRequest);
+		}).<@Nullable StoredFriendRequest>map(friendRequest -> friendRequest);
 	}
 
 	@Override
-	public Future<List<FriendRequest>> getFriendRequests() {
+	public Future<List<StoredFriendRequest>> getFriendRequests() {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectAllFriendRequests())
 						.execute(Map.of())
@@ -521,19 +521,19 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	////////////////////////////////////////////////////////////////////////////
 
 	@Override
-	public Future<@Nullable Conversation> getConversation(Id conversationId) {
+	public Future<@Nullable StoredConversation> getConversation(Id conversationId) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectConversation())
 						.execute(Map.of("contactId", conversationId.bytesUnsafe()))
-						.<@Nullable Conversation>map(rs -> findUnique(rs, this::rowToConversation))
+						.<@Nullable StoredConversation>map(rs -> findUnique(rs, this::rowToConversation))
 		).recover(e -> {
 			getLogger().error("Failed to get conversation {}", conversationId, e);
 			return Future.failedFuture(new RepositoryException(e));
-		}).<@Nullable Conversation>map(conversation -> conversation);
+		}).<@Nullable StoredConversation>map(conversation -> conversation);
 	}
 
 	@Override
-	public Future<List<Conversation>> getAllConversations() {
+	public Future<List<StoredConversation>> getAllConversations() {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectAllConversations())
 						.execute(Map.of())
@@ -546,7 +546,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 
 	@Override
 	public Future<Boolean> removeConversation(Id conversationId) {
-		return removeMessages(conversationId);
+		return removeMessagesByConversation(conversationId);
 	}
 
 	@Override
@@ -580,7 +580,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	@Override
-	public Future<Void> putChannelMembers(Id channelId, Collection<Channel.Member> members) {
+	public Future<Void> putChannelMembers(Id channelId, Collection<StoredChannelMember> members) {
 		if (members.isEmpty())
 			return Future.succeededFuture();
 
@@ -599,7 +599,7 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	@Override
-	public Future<Void> refillChannelMembers(Id channelId, Collection<Channel.Member> members) {
+	public Future<Void> refillChannelMembers(Id channelId, Collection<StoredChannelMember> members) {
 		return withTransaction(c ->
 				forUpdate(c, getDialect().clearChannelMembers())
 						.execute(Map.of("channelId", channelId.bytesUnsafe()))
@@ -620,19 +620,19 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	@Override
-	public Future<Channel.@Nullable Member> getChannelMember(Id channelId, Id memberId) {
+	public Future<@Nullable StoredChannelMember> getChannelMember(Id channelId, Id memberId) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectChannelMember())
 						.execute(Map.of("channelId", channelId.bytesUnsafe(), "id", memberId.bytesUnsafe()))
-						.<Channel.@Nullable Member>map(rs -> findUnique(rs, this::rowToChannelMember))
+						.<@Nullable StoredChannelMember>map(rs -> findUnique(rs, this::rowToChannelMember))
 		).recover(e -> {
 			getLogger().error("Failed to get channel member {} for channel {}", memberId, channelId, e);
 			return Future.failedFuture(new RepositoryException(e));
-		}).<Channel.@Nullable Member>map(member -> member);
+		}).<@Nullable StoredChannelMember>map(channelMember -> channelMember);
 	}
 
 	@Override
-	public Future<List<Channel.Member>> getChannelMembers(Id channelId, @Nullable Collection<Id> memberId) {
+	public Future<List<StoredChannelMember>> getChannelMembers(Id channelId, @Nullable Collection<Id> memberId) {
 		if (memberId == null || memberId.isEmpty())
 			return Future.succeededFuture(Collections.emptyList());
 
@@ -650,19 +650,8 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		});
 	}
 
-	public Future<List<ChannelMember>> _getAllChannelMembers(Id channelId) {
-		return withConnection(c ->
-				forQuery(c, getDialect().selectAllChannelMembers())
-						.execute(Map.of("channelId", channelId.bytesUnsafe()))
-						.map(rs -> findMany(rs, r -> (ChannelMember) rowToChannelMember(r)))
-		).recover(e -> {
-			getLogger().error("Failed to get all channel members for channel {}", channelId, e);
-			return Future.failedFuture(new RepositoryException(e));
-		});
-	}
-
 	@Override
-	public Future<List<Channel.Member>> getAllChannelMembers(Id channelId) {
+	public Future<List<StoredChannelMember>> getAllChannelMembers(Id channelId) {
 		return withConnection(c ->
 				forQuery(c, getDialect().selectAllChannelMembers())
 						.execute(Map.of("channelId", channelId.bytesUnsafe()))
@@ -674,14 +663,14 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	}
 
 	@Override
-	public Future<Boolean> updateChannelMembersRole(Id channelId, Collection<Id> memberIds, Channel.Role role) {
+	public Future<Boolean> updateChannelMembersRole(Id channelId, Collection<Id> memberIds, int role) {
 		if (memberIds.isEmpty())
 			return Future.succeededFuture(true);
 
 		CollectionParameter<byte[]> idsParam = new CollectionParameter<>("id", memberIds.stream().map(Id::bytesUnsafe).toList());
 		Map<String, Object> params = idsParam.getParams();
 		params.put("channelId", channelId.bytesUnsafe());
-		params.put("role", role.value());
+		params.put("role", role);
 
 		return withTransaction(c ->
 				forUpdate(c, getDialect().updateChannelMembersRole(idsParam))
@@ -716,58 +705,58 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 	// Mapping & Parameter Helpers
 	////////////////////////////////////////////////////////////////////////////
 
-	private Map<String, @Nullable Object> paramsFromMessage(PhotonMessage<MessageContent> message) {
+	private Map<String, @Nullable Object> paramsFromMessage(StoredMessage message) {
 		Map<String, @Nullable Object> params = new HashMap<>();
-		params.put("id", message.getId().bytesUnsafe());
-		params.put("conversationId", message.getConversationId().map(Id::bytesUnsafe).orElse(null));
-		params.put("version", message.getVersion());
-		params.put("recipient", message.getRecipient().bytesUnsafe());
-		params.put("type", message.getType().value());
-		params.put("fromId", message.getFrom().map(Id::bytesUnsafe).orElse(null));
-		params.put("createdAt", message.getCreatedAt());
-		params.put("sentAt", message.getSentAt());
-		params.put("receivedAt", message.getReceivedAt());
+		params.put("id", message.id().bytesUnsafe());
+		params.put("conversationId", message.conversationId() != null ? message.conversationId().bytesUnsafe() : null);
+		params.put("version", message.version());
+		params.put("recipient", message.recipient().bytesUnsafe());
+		params.put("type", message.type());
+		params.put("fromId", message.from() != null ? message.from().bytesUnsafe() : null);
+		params.put("createdAt", message.createdAt());
+		params.put("sentAt", message.sentAt());
+		params.put("receivedAt", message.receivedAt());
 
-		MessageContent content = message.getPayload();
-		params.put("contentType", content.getContentType());
-		params.put("contentDisposition", content.getContentDisposition().map(ContentDisposition::getValue).orElse(null));
-		params.put("payload", content.serialize());
+		params.put("contentType", message.contentType());
+		params.put("contentDisposition", message.contentDisposition());
+		params.put("payload", message.payload());
 		return params;
 	}
 
-	private PhotonMessage<MessageContent> rowToMessage(Row row) {
+	private StoredMessage rowToMessage(Row row) {
 		long rid = row.getLong("rid");
-		Id conversationId = getId(row, "conversation_id");
+		Id conversationId = Objects.requireNonNull(getId(row, "conversation_id"));
 		int version = row.getInteger("version");
 		Id id = Objects.requireNonNull(getId(row, "id"));
 		Id recipient = Objects.requireNonNull(getId(row, "recipient"));
-		Message.Type type = Message.Type.valueOf(row.getInteger("type"));
+		int type = row.getInteger("type");
 		Id fromId = getId(row, "from_id");
 		long createdAt = row.getLong("created_at");
+		String contentType = row.getString("content_type");
+		String contentDisposition = row.getString("content_disposition");
 		byte[] payloadBytes = getBytes(row, "payload");
 		long sentAt = row.getLong("sent_at");
 		long receivedAt = row.getLong("received_at");
 
-		// The payload column is nullable (BLOB/BYTEA DEFAULT NULL), so guard against a null payload
-		// rather than letting MessageContent.parse(null) throw.
-		MessageContent content = payloadBytes == null ? MessageContent.EMPTY : MessageContent.parse(payloadBytes);
-		return new PhotonMessage<>(rid, conversationId, version, id, recipient, type, fromId,
-				createdAt, content, sentAt, receivedAt);
+		// StoredMessage carries the raw payload bytes; parsing into MessageContent happens once in the
+		// repository layer (toMessage). The payload column is nullable (BLOB/BYTEA DEFAULT NULL).
+		return new StoredMessage(rid, id, conversationId, version, recipient, type, fromId,
+				createdAt, contentType, contentDisposition, payloadBytes, sentAt, receivedAt);
 	}
 
-	private Map<String, Object> paramsFromFriendRequest(PhotonFriendRequest request) {
-		Map<String, Object> params = new HashMap<>();
-		params.put("id", request.getUserId().bytesUnsafe());
-		params.put("initiator", request.getInitiatorId().bytesUnsafe());
-		params.put("hello", request.getHello());
-		params.put("createdAt", request.getCreatedAt());
-		params.put("updatedAt", request.getUpdatedAt());
-		params.put("accepted", request.isAccepted());
-		params.put("acceptedAt", request.getAcceptedAt());
+	private Map<String, @Nullable Object> paramsFromFriendRequest(StoredFriendRequest request) {
+		Map<String, @Nullable Object> params = new HashMap<>();
+		params.put("id", request.id().bytesUnsafe());
+		params.put("initiator", request.initiator().bytesUnsafe());
+		params.put("hello", request.hello());
+		params.put("createdAt", request.createdAt());
+		params.put("updatedAt", request.updatedAt());
+		params.put("accepted", request.accepted());
+		params.put("acceptedAt", request.acceptedAt());
 		return params;
 	}
 
-	private FriendRequest rowToFriendRequest(Row row) {
+	private StoredFriendRequest rowToFriendRequest(Row row) {
 		Id userId = Objects.requireNonNull(getId(row, "id"));
 		Id initiatorId = Objects.requireNonNull(getId(row, "initiator"));
 		String hello = row.getString("hello");
@@ -776,29 +765,29 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		boolean accepted = getBoolean(row, "accepted");
 		long acceptedAt = row.getLong("accepted_at");
 
-		return new PhotonFriendRequest(userId, initiatorId, hello, createdAt, updatedAt, accepted, acceptedAt);
+		return new StoredFriendRequest(userId, initiatorId, hello, createdAt, updatedAt, accepted, acceptedAt);
 	}
 
-	private Map<String, @Nullable Object> paramsFromContact(Contact contact) {
+	private Map<String, @Nullable Object> paramsFromContact(StoredContact contact) {
 		Map<String, @Nullable Object> params = new HashMap<>();
-		params.put("id", contact.getId().bytesUnsafe());
-		params.put("type", contact.getType().value());
-		params.put("sessionKey", contact instanceof PhotonContact ac ? ac.getSessionKey() : null);
-		params.put("name", contact.getName().orElse(null));
-		params.put("avatar", contact.getAvatar().orElse(null));
-		params.put("remark", contact.getRemark().orElse(null));
-		params.put("tags", contact.getTags().orElse(null));
-		params.put("muted", contact.isMuted());
-		params.put("blocked", contact.isBlocked());
-		params.put("revision", contact.getRevision());
-		params.put("createdAt", contact.getCreatedAt());
-		params.put("updatedAt", contact.getUpdatedAt());
+		params.put("id", contact.id().bytesUnsafe());
+		params.put("type", contact.type());
+		params.put("sessionKey", contact.sessionKey());
+		params.put("name", contact.name());
+		params.put("avatar", contact.avatar());
+		params.put("remark", contact.remark());
+		params.put("tags", contact.tags());
+		params.put("muted", contact.muted());
+		params.put("blocked", contact.blocked());
+		params.put("revision", contact.revision());
+		params.put("createdAt", contact.createdAt());
+		params.put("updatedAt", contact.updatedAt());
 		return params;
 	}
 
-	private Contact rowToContact(Row row) {
+	private StoredContact rowToContact(Row row) {
 		Id id = Objects.requireNonNull(getId(row, "id"));
-		Contact.Type type = Contact.Type.valueOf(row.getInteger("type"));
+		int type = row.getInteger("type");
 		byte[] sessionKey = getBytes(row, "session_key");
 		String name = row.getString("name");
 		String avatar = row.getString("avatar");
@@ -806,85 +795,75 @@ public abstract class Database implements VertxDatabase, MessagingRepository {
 		String tags = row.getString("tags");
 		boolean muted = getBoolean(row, "muted");
 		boolean blocked = getBoolean(row, "blocked");
+		int revision = row.getInteger("revision");
 		long createdAt = row.getLong("created_at");
 		long updatedAt = row.getLong("updated_at");
-		int revision = row.getInteger("revision");
 
-		return switch (type) {
-			case FRIEND ->
-					new Friend(id, Objects.requireNonNull(sessionKey), name, avatar, remark, tags, muted, blocked, createdAt, updatedAt, revision);
-			case CHANNEL -> {
-				Id owner = getId(row, "owner");
-				int permission = row.getInteger("permission");
-				String notice = row.getString("notice");
-				boolean announce = getBoolean(row, "announce");
-				PhotonChannel channel = new PhotonChannel(id, Objects.requireNonNull(sessionKey),
-						Objects.requireNonNull(owner), Channel.Permission.valueOf(permission),
-						name, notice, announce, remark, tags, muted, blocked, createdAt, updatedAt, revision);
-				channel.setMembersLoader(this::_getAllChannelMembers);
-				yield channel;
-			}
-			case AUTO -> new AutoContact(id, name, avatar, remark, tags, muted, blocked, createdAt, updatedAt);
-		};
+		StoredChannel channel = null;
+		if (type == Contact.Type.CHANNEL.value()) {
+			Id owner = getId(row, "owner");
+			int permission = row.getInteger("permission");
+			String notice = row.getString("notice");
+			boolean announce = getBoolean(row, "announce");
+			channel = new StoredChannel(id, Objects.requireNonNull(owner), permission, notice, announce);
+		}
+
+		return new StoredContact(id, type, sessionKey, name, avatar, remark, tags, muted, blocked,
+				revision, createdAt, updatedAt, channel);
 	}
 
-	private Map<String, Object> paramsFromChannel(Channel channel) {
-		Map<String, Object> params = new HashMap<>();
-		params.put("id", channel.getId().bytesUnsafe());
-		params.put("owner", channel.getOwnerId().bytesUnsafe());
-		params.put("permission", channel.getPermission().value());
-		params.put("notice", channel.getNotice().orElse(null));
-		params.put("announce", channel.isAnnounce());
-
-		if (channel instanceof PhotonChannel pc)
-			pc.setMembersLoader(this::_getAllChannelMembers);
+	private Map<String, @Nullable Object> paramsFromChannel(StoredChannel channel) {
+		Map<String, @Nullable Object> params = new HashMap<>();
+		params.put("id", channel.id().bytesUnsafe());
+		params.put("owner", channel.owner().bytesUnsafe());
+		params.put("permission", channel.permission());
+		params.put("notice", channel.notice());
+		params.put("announce", channel.announce());
 
 		return params;
 	}
 
-	private Map<String, Object> paramsFromChannelMember(Id channelId, Channel.Member member) {
+	private Map<String, Object> paramsFromChannelMember(Id channelId, StoredChannelMember member) {
 		Map<String, Object> params = new HashMap<>();
-		params.put("id", member.getId().bytesUnsafe());
+		params.put("id", member.id().bytesUnsafe());
 		params.put("channelId", channelId.bytesUnsafe());
-		params.put("role", member.getRole().value());
-		params.put("joined", member.getJoined());
+		params.put("role", member.role());
+		params.put("joined", member.joined());
 		return params;
 	}
 
-	private Channel.Member rowToChannelMember(Row row) {
+	private StoredChannelMember rowToChannelMember(Row row) {
 		Id id = Objects.requireNonNull(getId(row, "id"));
+		Id channelId = Objects.requireNonNull(getId(row, "channel_id"));
 		int role = row.getInteger("role");
 		long joined = row.getLong("joined");
-		return new ChannelMember(id, Channel.Role.valueOf(role), joined);
+		return new StoredChannelMember(id, channelId, role, joined);
 	}
 
-	private Conversation rowToConversation(Row row) {
-		Function<PhotonContact, SessionContext> sessionContextFactory = Objects.requireNonNull(
-				this.sessionContextFactory, "INTERNAL ERROR: sessionContextFactory is null. This should never happen.");
-
-		PhotonContact contact = (PhotonContact) rowToContact(row);
+	private StoredConversation rowToConversation(Row row) {
+		StoredContact contact = rowToContact(row);
 
 		Long msgRid = row.getLong("last_message_rid");
-		if (msgRid == null)
-			return new PhotonConversation(contact, null, sessionContextFactory);
-
 		int msgVersion = row.getInteger("last_message_version");
 		Id msgId = Objects.requireNonNull(getId(row, "last_message_id"));
-		Id msgConversationId = getId(row, "last_message_conversation_id");
+		Id msgConversationId = Objects.requireNonNull(getId(row, "last_message_conversation_id"));
 		Id msgRecipient = Objects.requireNonNull(getId(row, "last_message_recipient"));
-		Message.Type msgType = Message.Type.valueOf(row.getInteger("last_message_type"));
+		int msgType = row.getInteger("last_message_type");
 		Id msgFromId = getId(row, "last_message_from_id");
 		long msgCreatedAt = row.getLong("last_message_created_at");
+		String msgContentType = row.getString("last_message_content_type");
+		String msgContentDisposition = row.getString("last_message_content_disposition");
 		byte[] msgPayloadBytes = getBytes(row, "last_message_payload");
 		long msgSentAt = row.getLong("last_message_sent_at");
 		long msgReceivedAt = row.getLong("last_message_received_at");
 
-		// The payload column is nullable (BLOB/BYTEA DEFAULT NULL); guard against a null payload.
-		MessageContent content = msgPayloadBytes == null ? MessageContent.EMPTY : MessageContent.parse(msgPayloadBytes);
-		PhotonMessage<MessageContent> lastMessage = new PhotonMessage<>(msgRid, msgConversationId, msgVersion, msgId,
-				msgRecipient, msgType, msgFromId, msgCreatedAt, content, msgSentAt, msgReceivedAt);
+		// StoredMessage carries the raw payload bytes; parsing into MessageContent happens once in the
+		// repository layer (toMessage). The payload column is nullable (BLOB/BYTEA DEFAULT NULL).
+		StoredMessage lastMessage = new StoredMessage(msgRid, msgId, msgConversationId, msgVersion,
+				msgRecipient, msgType, msgFromId, msgCreatedAt, msgContentType, msgContentDisposition,
+				msgPayloadBytes, msgSentAt, msgReceivedAt);
 
-		return new PhotonConversation(contact, lastMessage, sessionContextFactory);
+		return new StoredConversation(contact, lastMessage);
 	}
 
 	////////////////////////////////////////////////////////////////////////////

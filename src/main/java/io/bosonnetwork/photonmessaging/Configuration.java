@@ -35,7 +35,7 @@ import org.jspecify.annotations.Nullable;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.crypto.Signature;
 import io.bosonnetwork.database.SqlSafety;
-import io.bosonnetwork.photonmessaging.impl.Database;
+import io.bosonnetwork.photonmessaging.impl.DatabaseStore;
 import io.bosonnetwork.utils.Base58;
 import io.bosonnetwork.utils.ConfigMap;
 import io.bosonnetwork.utils.FileUtils;
@@ -113,7 +113,7 @@ public class Configuration {
 		if (dataDir != null)
 			builder.dataDir(dataDir);
 
-		// Database
+		// DatabaseStore
 		ConfigMap database = cm.getObject("database");
 		if (database == null || database.isEmpty())
 			throw new IllegalArgumentException("Missing database configuration");
@@ -505,7 +505,7 @@ public class Configuration {
 		 */
 		public Builder databaseUri(String databaseUri) {
 			Objects.requireNonNull(databaseUri, "databaseUri");
-			if (!Database.supports(databaseUri))
+			if (!DatabaseStore.supports(databaseUri))
 				throw new IllegalArgumentException("Unsupported database URI: " + databaseUri);
 			this.databaseUri = databaseUri;
 			return this;
