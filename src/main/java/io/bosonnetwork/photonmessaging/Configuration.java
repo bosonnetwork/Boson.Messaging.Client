@@ -25,6 +25,7 @@ package io.bosonnetwork.photonmessaging;
 import java.net.URI;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -478,7 +479,7 @@ public class Configuration {
 		public Builder dataDir(String dataDir) {
 			Objects.requireNonNull(dataDir, "dataDir");
 			try {
-				return dataDir(Path.of(dataDir));
+				return dataDir(Paths.get(dataDir));
 			} catch (InvalidPathException e) {
 				throw new IllegalArgumentException("Invalid dataDir path", e);
 			}

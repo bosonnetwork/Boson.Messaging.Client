@@ -53,7 +53,7 @@ public class RpcCall<R> {
 	private final long timeout; // in milliseconds
 	private final Promise<@Nullable R> responsePromise;
 
-	private static final AtomicLong nextId = new AtomicLong(new Random().nextLong(8192, 65535));
+	private static final AtomicLong nextId = new AtomicLong(8192 + Math.abs(new Random().nextInt(32768)));
 
 	protected RpcCall(RpcRequest request, long timeout) {
 		this.request = request;

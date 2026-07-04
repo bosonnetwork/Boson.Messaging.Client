@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -191,7 +192,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				String databaseUri = config.getDatabaseUri();
 				// fix the sqlite database file location
 				if (databaseUri.startsWith(SqliteDatabase.CONNECTION_URI_PREFIX)) {
-					Path dbFile = Path.of(databaseUri.substring(SqliteDatabase.CONNECTION_URI_PREFIX.length()));
+					Path dbFile = Paths.get(databaseUri.substring(SqliteDatabase.CONNECTION_URI_PREFIX.length()));
 					if (!dbFile.isAbsolute())
 						databaseUri = SqliteDatabase.CONNECTION_URI_PREFIX + config.getDataDir().resolve(dbFile).toAbsolutePath();
 					else

@@ -35,8 +35,8 @@ import org.jspecify.annotations.Nullable;
 import io.bosonnetwork.Id;
 import io.bosonnetwork.Identity;
 import io.bosonnetwork.crypto.Hash;
+import io.bosonnetwork.json.Json;
 import io.bosonnetwork.utils.Bytes;
-import io.bosonnetwork.utils.Hex;
 
 /**
  * Represents an invitation ticket used to join a channel.
@@ -224,20 +224,41 @@ public class InviteTicket {
 	}
 
 	/**
-	 * Returns a human-readable representation of this ticket.
+	 * Deserializes a byte array into an {@code InviteTicket} object.
 	 *
-	 * @return a string representation of this ticket
+	 * @param bytes the byte array representing the serialized {@code InviteTicket}; must not be {@code null}
+	 * @return an {@code InviteTicket} instance deserialized from the provided byte array
+	 */
+	public static InviteTicket fromBytes(byte[] bytes) {
+		return Json.parse(bytes, InviteTicket.class);
+	}
+
+	/**
+	 * Serializes this {@code InviteTicket} into a byte array.
+	 *
+	 * @return a byte array representing the serialized form of this {@code InviteTicket}; never {@code null}
+	 */
+	public byte[] toBytes() {
+		return Json.toBytes(this);
+	}
+
+	/**
+	 * Deserializes a JSON string into an {@code InviteTicket} object.
+	 *
+	 * @param json the JSON string representing the {@code InviteTicket}; must not be {@code null}
+	 * @return an {@code InviteTicket} instance deserialized from the provided JSON string
+	 */
+	public static InviteTicket fromString(String json) {
+		return Json.parse(json, InviteTicket.class);
+	}
+
+	/**
+	 * Returns a JSON string representation of this object.
+	 *
+	 * @return a string containing the JSON representation of this {@code InviteTicket} instance
 	 */
 	@Override
 	public String toString() {
-		return "InviteTicket {" +
-				"channelId=" + channelId +
-				", sessionId=" + sessionId +
-				", inviter=" + inviter +
-				(invitee != null ? (", invitee=" + invitee) : "") +
-				", expiration=" + expiration +
-				", sig=" + Hex.encode(sig) +
-				", sessionKey=****" +
-				'}';
+		return Json.toString(this);
 	}
 }
