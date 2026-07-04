@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -41,7 +42,7 @@ import io.bosonnetwork.utils.FileUtils;
 @ExtendWith(VertxExtension.class)
 @SuppressWarnings("CodeBlock2Expr")
 public class DatabaseMessagingRepositoryTests {
-	private static final Path testRoot = Path.of(System.getProperty("java.io.tmpdir"), "boson");
+	private static final Path testRoot = Paths.get(System.getProperty("java.io.tmpdir"), "boson");
 	private static final Path testDir = testRoot.resolve("photon-messaging-client").resolve("DatabaseMessagingRepositoryTests");
 
 	private static PostgresqlServer pgServer;
