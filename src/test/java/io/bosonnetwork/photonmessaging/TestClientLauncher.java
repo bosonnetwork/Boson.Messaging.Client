@@ -72,8 +72,8 @@ public class TestClientLauncher {
 				}
 
 				@Override
-				public void onReady() {
-					System.out.println("Ready to send and receive messages");
+				public void onContactSynced() {
+					System.out.println("contact synced");
 				}
 
 				@Override

@@ -61,10 +61,10 @@ public class ConnectionListenerArray extends CopyOnWriteArrayList<ConnectionList
 	}
 
 	@Override
-	public void onReady() {
+	public void onContactSynced() {
 		for (ConnectionListener listener : this) {
 			try {
-				listener.onReady();
+				listener.onContactSynced();
 			} catch (Throwable t) {
 				log.error("Error dispatching onReady to listener: {}", listener, t);
 			}

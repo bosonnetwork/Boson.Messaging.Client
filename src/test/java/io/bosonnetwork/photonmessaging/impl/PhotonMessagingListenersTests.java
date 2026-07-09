@@ -46,8 +46,8 @@ public class PhotonMessagingListenersTests {
 		}
 
 		@Override
-		public void onReady() {
-			events.add("ready");
+		public void onContactSynced() {
+			events.add("contactSynced");
 		}
 
 		@Override
@@ -67,10 +67,10 @@ public class PhotonMessagingListenersTests {
 
 		listeners.onConnecting();
 		listeners.onConnected();
-		listeners.onReady();
+		listeners.onContactSynced();
 		listeners.onDisconnected();
 
-		assertEquals(List.of("connecting", "connected", "ready", "disconnected"), listener.events);
+		assertEquals(List.of("connecting", "connected", "contactSynced", "disconnected"), listener.events);
 	}
 
 	@Test
@@ -90,7 +90,7 @@ public class PhotonMessagingListenersTests {
 		PhotonMessagingListeners listeners = new PhotonMessagingListeners();
 		ConnectionListener throwing = new ConnectionListener() {
 			@Override
-			public void onReady() {
+			public void onContactSynced() {
 			}
 
 			@Override

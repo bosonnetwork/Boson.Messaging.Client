@@ -103,11 +103,11 @@ public class PhotonMessagingListeners implements ConnectionListener, MessageList
 	}
 
 	@Override
-	public void onReady() {
+	public void onContactSynced() {
 		ConnectionListener listener = connectionListener;
 		if (listener != null) {
 			try {
-				listener.onReady();
+				listener.onContactSynced();
 			} catch (Throwable t) {
 				log.error("Error dispatching onReady to listener: {}", listener, t);
 			}
