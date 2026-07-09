@@ -43,9 +43,9 @@ public interface ConnectionListener {
 	}
 
 	/**
-	 * Called when the connection is fully initialized and is ready for communication.
+	 * Called when the contact list has been successfully synchronized.
 	 */
-	void onReady();
+	void onContactSynced();
 
 	/**
 	 * Called when the connection has been closed or unexpectedly lost.

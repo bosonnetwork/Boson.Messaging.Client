@@ -2083,7 +2083,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 						if (!ready) {
 							log.info("Contact synchronization completed on startup, revision {}, client is ready", contactsRevision);
 							ready = true;
-							listeners.onReady();
+							listeners.onContactSynced();
 						}
 					}
 				});
