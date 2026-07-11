@@ -308,7 +308,6 @@ class MessagingRepository {
 				contact.getType().value(),
 				sessionKey,
 				contact.getName().orElse(null),
-				contact.getAvatar().orElse(null),
 				contact.getRemark().orElse(null),
 				contact.getTags().orElse(null),
 				contact.isMuted(),
@@ -354,14 +353,14 @@ class MessagingRepository {
 				Message.Type.valueOf(r.type()), r.from(), r.createdAt(), content, r.sentAt(), r.receivedAt());
 	}
 
-	// Several contact column values (name/avatar/remark/tags/notice) are nullable in the schema, but a
+	// Several contact column values (name/remark/tags/notice) are nullable in the schema, but a
 	// few impl constructors do not annotate those parameters @Nullable; the nulls are valid and stored
 	// as-is. Mirrors DatabaseStore.rowToContact, which relied on Vert.x's non-null-typed Row accessors.
 	@SuppressWarnings("NullAway")
 	private Contact toContact(StoredContact r) {
 		Contact.Type type = Contact.Type.valueOf(r.type());
 		return switch (type) {
-			case FRIEND -> new Friend(r.id(), Objects.requireNonNull(r.sessionKey()), r.name(), r.avatar(),
+			case FRIEND -> new Friend(r.id(), Objects.requireNonNull(r.sessionKey()), r.name(),
 					r.remark(), r.tags(), r.muted(), r.blocked(), r.createdAt(), r.updatedAt(), r.revision());
 			case CHANNEL -> {
 				StoredChannel ch = Objects.requireNonNull(r.channel(), "channel record missing for CHANNEL contact");
@@ -371,7 +370,7 @@ class MessagingRepository {
 				channel.setMembersLoader(this::loadMembers);
 				yield channel;
 			}
-			case AUTO -> new AutoContact(r.id(), r.name(), r.avatar(), r.remark(), r.tags(),
+			case AUTO -> new AutoContact(r.id(), r.name(), r.remark(), r.tags(),
 					r.muted(), r.blocked(), r.createdAt(), r.updatedAt());
 		};
 	}

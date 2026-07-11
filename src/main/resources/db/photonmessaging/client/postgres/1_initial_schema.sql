@@ -11,7 +11,6 @@ CREATE TABLE IF NOT EXISTS contacts (
     type SMALLINT NOT NULL,
     session_key BYTEA,
     name VARCHAR(256),
-    avatar VARCHAR(512),
     remark VARCHAR(256),
     tags VARCHAR(256),
     muted BOOLEAN NOT NULL DEFAULT FALSE,

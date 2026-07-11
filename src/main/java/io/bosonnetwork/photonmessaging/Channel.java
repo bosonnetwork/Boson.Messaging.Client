@@ -238,22 +238,6 @@ public interface Channel extends Contact {
 		long getJoined();
 
 		/**
-		 * Retrieves the contact information associated with this channel member.
-		 * The contact provides details such as identity, type, and contact-specific attributes.
-		 *
-		 * @return an {@link Optional} holding the {@code Contact} associated with this member,
-		 *         or an empty {@code Optional} if no contact information is available.
-		 */
-		Optional<Contact> getContact();
-
-		/**
-		 * Retrieves the display name associated with this member.
-		 *
-		 * @return the display name of the member as a string, or {@code null} if not available.
-		 */
-		String getDisplayName();
-
-		/**
 		 * Determines if the provided {@code Member} instance is the same as this instance.
 		 *
 		 * @param member The {@code Member} to compare with this instance. Must not be null.

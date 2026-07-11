@@ -148,9 +148,8 @@ public class PhotonConversation implements Conversation {
 	@Override
 	public String toString() {
 		return "Conversation: " +
-				getTitle() +
+				getId() +
 				'[' +
-				getId().toString() + ", " +
 				getPreview() + ", " +
 				getUpdatedAt() +
 				']';

@@ -33,9 +33,47 @@ import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.impl.ContactBuilder;
 
 /**
- * Represents a contact entry within the photon messaging.
- * This class serves as a data model for storing contact information, including
- * identity, session keys, profile details, and synchronization state.
+ * A contact entry in photon messaging: the local, user-owned relationship metadata for another
+ * party (a friend, an auto-added peer, or a channel), plus the state needed to synchronize that
+ * metadata across the user's own devices.
+ * <p>
+ * A contact owns only what the local user controls: the session key, the local {@link #getRemark()
+ * remark} (alias), {@link #getTags() tags}, {@link #isMuted() muted} / {@link #isBlocked() blocked}
+ * flags, and the {@code createdAt} / {@code updatedAt} / {@code revision} synchronization bookkeeping.
+ * Channel contacts additionally carry channel metadata (name, notice) because a channel is owned by a
+ * super node rather than a user, so that metadata is itself part of contact synchronization; for all
+ * other contact types {@link #getName()} is expected to be empty.
+ * <p>
+ * <b>Design boundary: contacts do not resolve, cache, or present user profiles.</b> A user's public
+ * profile (display name, avatar, bio, home node) is owned and published by that user, normally as a
+ * Boson Identity Card (DID document) on the DHT, and is intentionally NOT part of a contact or of
+ * contact synchronization. This library therefore exposes only the two profile inputs it legitimately
+ * owns (the local remark, and for channels the name); it does not hold a cached profile name or
+ * avatar and does not compute a display name. Resolving, caching, and presenting profiles is the
+ * application's responsibility, keyed by user {@link Id} rather than by {@code Contact}. The reasons:
+ * <ul>
+ *   <li><b>The "not a contact yet" cases are not exceptions.</b> Friend requests, channel members,
+ *       group-chat senders, search results, and inbound-message notifiers all present a user who may
+ *       not be a contact. If the name/avatar selection policy lived on {@code Contact}, every such
+ *       surface would need its own second copy of it and the two would drift. The natural key is the
+ *       user id, which every surface has - not the {@code Contact}, which many do not.</li>
+ *   <li><b>Names and avatars are different kinds of data.</b> A name is a small string; an avatar is
+ *       an asynchronously fetched, cached, and rendered image. Returning avatar bytes would duplicate
+ *       the application's image pipeline, and returning an avatar URL would need the application's
+ *       service endpoint regardless - neither belongs in a messaging library.</li>
+ *   <li><b>Resolution is reactive; this API is not.</b> Useful resolution is "show a fallback now,
+ *       upgrade when the real value arrives." Grafting that onto a synchronous, listener-based API
+ *       either loses the upgrade or re-implements the application's reactive resolver inside the
+ *       library.</li>
+ *   <li><b>Ownership and threading stay clean.</b> Profile resolution needs the application's
+ *       network, auth, and caching, run off the messaging event loop; keeping it in the application
+ *       avoids the library calling up into application services on its own event loop.</li>
+ *   <li><b>Short-id formatting is presentation.</b> How an unresolved id is abbreviated is a UI
+ *       decision that varies by surface and does not belong in a domain library.</li>
+ * </ul>
+ * In short: the library owns messaging, contact management, and contact synchronization; the
+ * application owns profile resolution, caching, and the selection of a display name and avatar
+ * (preference: remark, then resolved profile name, then a short id).
  */
 @JsonDeserialize(builder = ContactBuilder.class)
 public interface Contact extends Comparable<Contact> {
@@ -108,6 +146,7 @@ public interface Contact extends Comparable<Contact> {
 
 	/**
 	 * Returns the name of the contact.
+	 * The name for a channel contact is the channel name. For other contact types should be null.
 	 *
 	 * @return an {@link Optional} holding the contact name, or an empty {@code Optional} if
 	 *         no name is set.
@@ -164,32 +203,6 @@ public interface Contact extends Comparable<Contact> {
 	 * @return the current revision
 	 */
 	int getRevision();
-
-	/**
-	 * Retrieves the avatar URL associated with the contact.
-	 *
-	 * @return an {@link Optional} holding the avatar URL or identifier, or an empty
-	 *         {@code Optional} if no avatar is set.
-	 */
-	Optional<String> getAvatar();
-
-	/**
-	 * Checks if the contact has an avatar associated with it.
-	 *
-	 * @return true if the avatar is not null, false otherwise
-	 */
-	default boolean hasAvatar() {
-		return getAvatar().isPresent();
-	}
-
-	/**
-	 * Retrieves the display name of the contact. The display name is typically
-	 * derived from the contact's name or remark, providing a human-readable
-	 * identifier for the contact.
-	 *
-	 * @return the display name of the contact
-	 */
-	String getDisplayName();
 
 	/**
 	 * Compares the specified contact with the current contact to determine if they are the same.

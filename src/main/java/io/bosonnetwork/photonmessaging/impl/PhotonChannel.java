@@ -87,7 +87,7 @@ public class PhotonChannel extends PhotonContact implements Channel {
 	protected PhotonChannel(Id id, byte[] sessionKey, Id ownerId, Permission permission, String name, @Nullable String notice,
 	                        boolean announce, @Nullable String remark, @Nullable String tags, boolean muted, boolean blocked,
 	                        long createdAt, long updatedAt, int revision) {
-		super(id, Objects.requireNonNull(sessionKey, "sessionKey"), name, null, remark, tags,
+		super(id, Objects.requireNonNull(sessionKey, "sessionKey"), name, remark, tags,
 				muted, blocked, createdAt, updatedAt, revision);
 		this.ownerId = ownerId;
 		this.permission = permission;

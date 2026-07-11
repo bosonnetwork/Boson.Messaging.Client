@@ -774,7 +774,6 @@ public abstract class DatabaseStore implements VertxDatabase, MessagingStore {
 		params.put("type", contact.type());
 		params.put("sessionKey", contact.sessionKey());
 		params.put("name", contact.name());
-		params.put("avatar", contact.avatar());
 		params.put("remark", contact.remark());
 		params.put("tags", contact.tags());
 		params.put("muted", contact.muted());
@@ -790,7 +789,6 @@ public abstract class DatabaseStore implements VertxDatabase, MessagingStore {
 		int type = row.getInteger("type");
 		byte[] sessionKey = getBytes(row, "session_key");
 		String name = row.getString("name");
-		String avatar = row.getString("avatar");
 		String remark = row.getString("remark");
 		String tags = row.getString("tags");
 		boolean muted = getBoolean(row, "muted");
@@ -808,7 +806,7 @@ public abstract class DatabaseStore implements VertxDatabase, MessagingStore {
 			channel = new StoredChannel(id, Objects.requireNonNull(owner), permission, notice, announce);
 		}
 
-		return new StoredContact(id, type, sessionKey, name, avatar, remark, tags, muted, blocked,
+		return new StoredContact(id, type, sessionKey, name, remark, tags, muted, blocked,
 				revision, createdAt, updatedAt, channel);
 	}
 

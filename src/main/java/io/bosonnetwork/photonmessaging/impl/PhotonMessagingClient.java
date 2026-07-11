@@ -581,12 +581,13 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			Contact contact = friend.edit().setRevision(revision).build();
 			return repository.putContact(revision, contact).map(vv -> {
 				contactsRevision = revision;
-				// Notify listeners of the locally added contact. The cross-device sync path
-				// (applyContactMutation) only fires onContactAdded on the OTHER devices; the device
-				// that performs the add (friend request accept on both initiator and acceptor) must
-				// notify its own listeners here, otherwise its contact list stays stale until re-read.
+				// A locally triggered add deliberately does NOT fire onContactAdded: that callback is
+				// reserved for cross-device sync mutations, which raise it on the user's OTHER devices
+				// (see applyContactMutation). The initiating device already has the contact - it is the
+				// value this call resolves with - so notifying its own listeners here would be redundant.
+				// The cache is still invalidated (as every other mutation path does) so subsequent reads
+				// observe the newly added contact rather than a stale entry.
 				contactCache.synchronous().invalidate(contact.getId());
-				listeners.onContactAdded(contact);
 				return contact;
 			});
 		});

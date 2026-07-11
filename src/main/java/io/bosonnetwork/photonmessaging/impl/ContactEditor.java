@@ -168,14 +168,14 @@ public class ContactEditor implements Contact.Editor {
 			return origin;
 
 		if (origin instanceof Friend)
-			return new Friend(origin.getId(), sessionKey, name, origin.getAvatar().orElse(null), remark, tags,
+			return new Friend(origin.getId(), sessionKey, name, remark, tags,
 					muted, blocked, origin.getCreatedAt(), updatedAt, revision);
 		else if (origin instanceof PhotonChannel channel)
 			return new PhotonChannel(channel.getId(), sessionKey, channel.getOwnerId(), channel.getPermission(),
 					name, channel.getNotice().orElse(null), channel.isAnnounce(), remark, tags,
 					muted, blocked, channel.getCreatedAt(), updatedAt, revision);
 		else
-			return new AutoContact(origin.getId(), name, origin.getAvatar().orElse(null), remark, tags,
+			return new AutoContact(origin.getId(), name, remark, tags,
 					muted, blocked, origin.getCreatedAt(), updatedAt);
 	}
 }

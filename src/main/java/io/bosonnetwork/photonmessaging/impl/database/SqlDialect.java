@@ -46,13 +46,12 @@ public class SqlDialect {
 	// Contacts
 	public String upsertContact() {
 		return """
-				INSERT INTO contacts (id, type, session_key, name, avatar, remark, tags, muted, blocked, revision, created_at, updated_at)
-				VALUES (#{id}, #{type}, #{sessionKey}, #{name}, #{avatar}, #{remark}, #{tags}, #{muted}, #{blocked}, #{revision}, #{createdAt}, #{updatedAt})
+				INSERT INTO contacts (id, type, session_key, name, remark, tags, muted, blocked, revision, created_at, updated_at)
+				VALUES (#{id}, #{type}, #{sessionKey}, #{name}, #{remark}, #{tags}, #{muted}, #{blocked}, #{revision}, #{createdAt}, #{updatedAt})
 				ON CONFLICT (id) DO UPDATE SET
 					type = EXCLUDED.type,
 					session_key = EXCLUDED.session_key,
 					name = EXCLUDED.name,
-					avatar = EXCLUDED.avatar,
 					remark = EXCLUDED.remark,
 					tags = EXCLUDED.tags,
 					muted = EXCLUDED.muted,
