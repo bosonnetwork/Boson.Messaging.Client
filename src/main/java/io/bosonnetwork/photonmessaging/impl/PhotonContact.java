@@ -50,8 +50,6 @@ public abstract class PhotonContact implements Contact {
 	public static final int ENCRYPTED_SESSION_KEY_BYTES = Signature.PrivateKey.BYTES +
 			CryptoBox.MAC_BYTES + CryptoBox.Nonce.BYTES;
 
-	private static final long STALE_TIME = 6 * 60 * 60 * 1000; // 6 hours
-
 	@JsonProperty(value = "id", required = true)
 	private final Id id;
 
@@ -88,10 +86,13 @@ public abstract class PhotonContact implements Contact {
 	@JsonProperty("v")
 	private final int revision;
 
-	private final @Nullable String avatar;
-
-	private transient @Nullable String displayName;
-	private transient long lastRefresh;
+	private static final Comparator<Contact> COMPARATOR = Comparator.comparing(
+					(Contact c) -> c.getRemark().orElse(null),
+					Comparator.nullsLast(Comparator.naturalOrder()))
+			.thenComparing(
+					c -> c.getName().orElse(null),
+					Comparator.nullsLast(Comparator.naturalOrder()))
+			.thenComparing(Contact::getId);
 
 	/**
 	 * Full constructor to initialize all fields of a Contact.
@@ -107,12 +108,11 @@ public abstract class PhotonContact implements Contact {
 	 * @param updatedAt the timestamp of the last update
 	 * @param revision the synchronization revision number
 	 */
-	protected PhotonContact(Id id, byte @Nullable [] sessionKey, @Nullable String name, @Nullable String avatar,
+	protected PhotonContact(Id id, byte @Nullable [] sessionKey, @Nullable String name,
 							@Nullable String remark, @Nullable String tags,
 	                        boolean muted, boolean blocked, long createdAt, long updatedAt, int revision) {
 		this.id = id;
 		this.name = name;
-		this.avatar = avatar;
 		this.remark = remark;
 		this.tags = tags;
 		this.muted = muted;
@@ -243,40 +243,6 @@ public abstract class PhotonContact implements Contact {
 		return revision;
 	}
 
-	/**
-	 * Retrieves the avatar URL associated with the contact.
-	 *
-	 * @return a string representing the avatar URL or identifier
-	 */
-	public Optional<String> getAvatar() {
-		return Optional.ofNullable(avatar);
-	}
-
-	/**
-	 * Checks if the contact has an avatar associated with it.
-	 *
-	 * @return true if the avatar is not null, false otherwise
-	 */
-	public boolean hasAvatar() {
-		return avatar != null;
-	}
-
-	public String getDisplayName() {
-		String dn = displayName;
-		if (dn == null) {
-			if (remark != null && !remark.isEmpty())
-				dn = remark;
-			else if (name != null && !name.isEmpty())
-				dn = name;
-			else
-				dn = id.toAbbrString();
-
-			displayName = dn;
-		}
-
-		return dn;
-	}
-
 	public boolean is(PhotonContact contact) {
 		if (contact == this)
 			return true;
@@ -284,26 +250,9 @@ public abstract class PhotonContact implements Contact {
 		return Objects.equals(this.id, contact.id);
 	}
 
-	protected void refresh() {
-		lastRefresh = System.currentTimeMillis();
-	}
-
-	// TODO: refresh the contact data with the DHT lookup result?
-	protected void refresh(Object data) {
-		refresh();
-	}
-
-	public boolean isStaled() {
-		return System.currentTimeMillis() - lastRefresh > STALE_TIME;
-	}
-
 	@Override
 	public int compareTo(Contact contact) {
-		// Our getDisplayName() never returns null (it falls back to an abbreviated id), but Contact
-		// is a public interface, so compare defensively in case an external implementation does.
-		int rc = Comparator.nullsFirst(Comparator.<String>naturalOrder())
-				.compare(getDisplayName(), contact.getDisplayName());
-		return rc != 0 ? rc : getId().compareTo(contact.getId());
+		return COMPARATOR.compare(this, contact);
 	}
 
 	@Override

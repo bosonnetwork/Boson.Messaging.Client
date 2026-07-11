@@ -112,7 +112,6 @@ public interface MessagingStore {
 	 * @param type the contact type, carried as its stable integer value
 	 * @param sessionKey the session key bytes for the contact, or {@code null}
 	 * @param name the display name, or {@code null}
-	 * @param avatar the avatar reference, or {@code null}
 	 * @param remark the local remark/alias, or {@code null}
 	 * @param tags the tags assigned to the contact, or {@code null}
 	 * @param muted whether the contact is muted
@@ -127,7 +126,6 @@ public interface MessagingStore {
 			int type,
 			byte @Nullable [] sessionKey,
 			@Nullable String name,
-			@Nullable String avatar,
 			@Nullable String remark,
 			@Nullable String tags,
 			boolean muted,

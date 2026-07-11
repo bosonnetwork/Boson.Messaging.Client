@@ -169,8 +169,8 @@ public class ContactBuilder {
 			throw new IllegalArgumentException("Missing session key");
 
 		return switch (type) {
-			case AUTO -> new AutoContact(id, name, null, remark, tags, muted, blocked, createdAt, updatedAt);
-			case FRIEND -> new Friend(id, sessionKey, name, null, remark, tags, muted, blocked, createdAt, updatedAt, revision);
+			case AUTO -> new AutoContact(id, name, remark, tags, muted, blocked, createdAt, updatedAt);
+			case FRIEND -> new Friend(id, sessionKey, name, remark, tags, muted, blocked, createdAt, updatedAt, revision);
 			case CHANNEL -> new PhotonChannel(id, sessionKey, ownerId, permission, name, notice, announce, remark, tags,
 					muted, blocked, createdAt, updatedAt, revision);
 		};

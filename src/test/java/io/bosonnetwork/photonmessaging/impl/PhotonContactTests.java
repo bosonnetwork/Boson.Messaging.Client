@@ -41,7 +41,7 @@ public class PhotonContactTests {
 
 		// AutoContact
 		contacts.add(Arguments.of("AutoContact",
-				new AutoContact(Id.random(), "Auto Name", null, null,
+				new AutoContact(Id.random(), "Auto Name", null,
 						null, false, false, System.currentTimeMillis(), 0)));
 
 		return contacts.stream();
@@ -148,7 +148,7 @@ public class PhotonContactTests {
 	void testAutoContactPropertiesAndEditing() {
 		Id id = Id.random();
 		String name = "Auto Bot";
-		AutoContact auto = new AutoContact(id, name, null, null,
+		AutoContact auto = new AutoContact(id, name, null,
 				null, false, false, System.currentTimeMillis(), 0);
 
 		assertEquals(id, auto.getId());
@@ -177,7 +177,7 @@ public class PhotonContactTests {
 		CryptoContext ctx = identity.createCryptoContext(identity.getId());
 
 		byte[] sk = Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES);
-		Friend friend = new Friend(Id.random(), sk, "Alice", null, "Alice's remark", null,
+		Friend friend = new Friend(Id.random(), sk, "Alice", "Alice's remark", null,
 				false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
 
 		OpaqueContact opaque = friend.toOpaque(ctx);

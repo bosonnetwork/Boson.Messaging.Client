@@ -30,15 +30,15 @@ import org.jspecify.annotations.Nullable;
 import io.bosonnetwork.Id;
 
 public class Friend extends PhotonContact {
-	protected Friend(Id id, byte[] sessionKey, @Nullable String name, @Nullable String avatar, @Nullable String remark,
+	protected Friend(Id id, byte[] sessionKey, @Nullable String name, @Nullable String remark,
 					 @Nullable String tags, boolean muted, boolean blocked, long createdAt, long updatedAt, int revision) {
 		super(id, Objects.requireNonNull(sessionKey, "sessionKey"),
-				name, avatar, remark, tags, muted, blocked, createdAt, updatedAt, revision);
+				name, remark, tags, muted, blocked, createdAt, updatedAt, revision);
 	}
 
 	public Friend(Id id, byte[] sessionKey, @Nullable String remark) {
 		this(id, Objects.requireNonNull(sessionKey, "sessionKey"),
-				null, null, remark, null, false, false, System.currentTimeMillis(), 0, 0);
+				null, remark, null, false, false, System.currentTimeMillis(), 0, 0);
 	}
 
 	@Override

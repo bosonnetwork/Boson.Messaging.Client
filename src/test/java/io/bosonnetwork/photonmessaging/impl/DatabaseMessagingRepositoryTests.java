@@ -138,7 +138,7 @@ public class DatabaseMessagingRepositoryTests {
 	void testFriendLifecycle(String name, MessagingRepository repo, VertxTestContext context) {
 		Id friendId = Id.random();
 		Friend friend = new Friend(friendId, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES),
-				"Alice", null, "Remark", null, false, false,
+				"Alice", "Remark", null, false, false,
 				System.currentTimeMillis(), System.currentTimeMillis(), 1);
 
 		repo.putContactLocally(friend).onComplete(context.succeeding(v1 -> {
@@ -224,7 +224,7 @@ public class DatabaseMessagingRepositoryTests {
 	void testConversationJoin(String name, MessagingRepository repo, VertxTestContext context) {
 		Id contactId = Id.random();
 		Friend friend = new Friend(contactId, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES),
-				"Bob", null, null, null, false, false,
+				"Bob", null, null, false, false,
 				System.currentTimeMillis(), System.currentTimeMillis(), 1);
 
 		Id msgId = Id.random();
@@ -375,8 +375,8 @@ public class DatabaseMessagingRepositoryTests {
 	void testConversationManagement(String name, MessagingRepository repo, VertxTestContext context) {
 		Id c1Id = Id.random();
 		Id c2Id = Id.random();
-		Friend f1 = new Friend(c1Id, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Alice", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
-		Friend f2 = new Friend(c2Id, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Bob", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
+		Friend f1 = new Friend(c1Id, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Alice", null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
+		Friend f2 = new Friend(c2Id, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Bob", null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
 
 		repo.putContactLocally(f1)
 				.compose(v -> repo.putContactLocally(f2))
@@ -439,7 +439,7 @@ public class DatabaseMessagingRepositoryTests {
 	@Timeout(value = 10, timeUnit = TimeUnit.SECONDS)
 	void testConversationUpdateOnMessage(String name, MessagingRepository repo, VertxTestContext context) {
 		Id convId = Id.random();
-		Friend friend = new Friend(convId, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Alice", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
+		Friend friend = new Friend(convId, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Alice", null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
 		PhotonMessage<MessageContent> m1 = randomMessage(convId);
 		long time1 = m1.getReceivedAt();
 
@@ -513,7 +513,7 @@ public class DatabaseMessagingRepositoryTests {
 					return repo.putFriendRequest(fri);
 				})
 				.compose(v -> {
-					Friend friend = new Friend(userId, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Alice", null, null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
+					Friend friend = new Friend(userId, Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES), "Alice", null, null, false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
 					return repo.putContacts(2, List.of(friend));
 				})
 				.compose(v -> repo.getContact(userId))
@@ -554,8 +554,7 @@ public class DatabaseMessagingRepositoryTests {
 	// Helpers
 	static Friend randomFriend() {
 		return new Friend(Id.random(), Random.randomBytes(PhotonContact.ENCRYPTED_SESSION_KEY_BYTES),
-				faker.name().fullName(), faker.lorem().sentence(),
-				faker.internet().image(), faker.phoneNumber().phoneNumber(),
+				faker.name().fullName(), faker.name().name(), faker.olympicSport().ancientOlympics(),
 				false, false, System.currentTimeMillis(), System.currentTimeMillis(), 1);
 	}
 

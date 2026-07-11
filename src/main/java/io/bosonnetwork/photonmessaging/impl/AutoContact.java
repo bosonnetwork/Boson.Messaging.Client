@@ -31,12 +31,12 @@ import io.bosonnetwork.Id;
 @NullUnmarked
 public class AutoContact extends PhotonContact {
 	protected AutoContact(Id id) {
-		this(id, null, null, null, null, false, false, 0, 0);
+		this(id, null, null, null, false, false, 0, 0);
 	}
 
-	protected AutoContact(Id id, String name, String avatar, String remark, String tags,
+	protected AutoContact(Id id, String name, String remark, String tags,
 						  boolean muted, boolean blocked, long createdAt, long updatedAt) {
-		super(id, null, name, avatar, remark, tags, muted, blocked, createdAt, updatedAt, -1);
+		super(id, null, name, remark, tags, muted, blocked, createdAt, updatedAt, -1);
 	}
 
 	@Override
