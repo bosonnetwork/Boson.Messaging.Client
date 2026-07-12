@@ -27,6 +27,7 @@ public class InviteTicketTests {
 
 		// Wrong signature
 		InviteTicket invalidTicket = new InviteTicket(channelId, sessionId, inviterId, inviteeId, expiration, new byte[64], sessionKey);
+		System.out.println(ticket);
 		assertFalse(invalidTicket.isGenuine());
 	}
 
@@ -41,6 +42,7 @@ public class InviteTicketTests {
 		byte[] sessionKey = sessionIdentity.getKeyPair().privateKey().bytes();
 
 		InviteTicket ticket = InviteTicket.create(inviterIdentity, channelId, sessionId, null, expiration, sessionKey);
+		System.out.println(ticket);
 		assertTrue(ticket.isBearerTicket());
 		assertTrue(ticket.isGenuine());
 	}
