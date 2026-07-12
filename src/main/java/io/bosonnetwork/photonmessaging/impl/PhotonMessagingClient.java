@@ -1595,8 +1595,12 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					.setClientId(getDeviceId().toBase58String())
 					.setUsername(getUserId().toBase58String())
 					.setPassword(getPassword() + "?contactsRevision=" + revision)
-					.setMaxMessageSize(32 * 1024)
-					.setReceiveBufferSize(34 * 1024)
+					// Sized to carry a one-minute inline voice note (~120-150 KB Opus/Ogg) in a single
+					// message, with headroom for the envelope. This bounds what a client will both send
+					// and receive, so every client must share this cap; a smaller-cap receiver would
+					// drop a larger inbound publish. Still well under the service max message size (2 MB).
+					.setMaxMessageSize(256 * 1024)
+					.setReceiveBufferSize(264 * 1024)
 					.setKeepAliveInterval(60)
 					.setHostnameVerificationAlgorithm("")
 					.setCleanSession(false);
