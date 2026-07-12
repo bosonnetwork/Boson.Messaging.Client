@@ -99,6 +99,19 @@ public interface Message {
 	Id getId();
 
 	/**
+	 * Returns the store-assigned numeric identifier (rid) of this message.
+	 * <p>
+	 * Unlike {@link #getId()}, which is the sender-generated content id, the rid is the local
+	 * store's auto-incrementing sequence key and is the identifier accepted by
+	 * {@link MessagingClient#removeMessage(long)}. It is a device-local detail: the same message
+	 * may carry different rids on different devices, and a message that has not yet been persisted
+	 * (e.g. an outgoing message before it is stored) reports {@code 0}.
+	 *
+	 * @return the store-assigned rid, or {@code 0} if this message is not backed by a stored row
+	 */
+	long getRid();
+
+	/**
 	 * Retrieves the identifier of the conversation this message belongs to.
 	 *
 	 * @return an {@link Optional} holding the conversation ID, or an empty {@code Optional} if
