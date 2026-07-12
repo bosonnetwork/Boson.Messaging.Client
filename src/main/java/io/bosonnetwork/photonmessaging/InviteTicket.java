@@ -58,6 +58,7 @@ public class InviteTicket {
 	@JsonProperty(value = "i", required = true)
 	private final Id inviter;
 	@JsonProperty(value = "ie")
+	@JsonInclude(JsonInclude.Include.NON_NULL)
 	private final @Nullable Id invitee;
 	@JsonProperty(value = "e", required = true)
 	@JsonInclude(JsonInclude.Include.NON_DEFAULT)
