@@ -1110,6 +1110,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		runningCheck();
 		return ContextualFuture.of(contactCache.get(contactId).compose(c -> {
 			if (c instanceof PhotonChannel ch)
+				// TODO: should we call refreshChannel() here
 				return Future.fromCompletionStage(ch.loadMembers()).map(v -> Optional.of(ch));
 
 			return Future.succeededFuture(Optional.ofNullable(c));
@@ -2406,7 +2407,10 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				yield repository.putContacts(revision, List.of(contact)).onSuccess(v -> {
 					contactsRevision = revision;
 					contactCache.synchronous().invalidate(contact.getId());
-					listeners.onContactAdded(contact);
+					if (contact instanceof PhotonChannel ch)
+						refreshChannel(ch).andThen(v2 -> listeners.onContactAdded(contact));
+					else
+						listeners.onContactAdded(contact);
 				});
 			}
 
