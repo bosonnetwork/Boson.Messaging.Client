@@ -30,6 +30,7 @@ import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.photonmessaging.Contact;
 import io.bosonnetwork.photonmessaging.Conversation;
+import io.bosonnetwork.photonmessaging.InviteTicket;
 import io.bosonnetwork.photonmessaging.Message;
 
 public class PhotonConversation implements Conversation {
@@ -80,6 +81,8 @@ public class PhotonConversation implements Conversation {
 				snippet = "(Audio)";
 			} else if (contentType.startsWith("video/")) {
 				snippet = "(Video)";
+			} else if (contentType.startsWith(InviteTicket.CONTENT_TYPE)) {
+				snippet = "(Invitation)";
 			} else {
 				if (content.getContentDisposition().isPresent())
 					snippet = "(Attachment)";
