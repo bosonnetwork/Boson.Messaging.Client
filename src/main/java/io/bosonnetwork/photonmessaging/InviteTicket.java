@@ -51,6 +51,14 @@ public class InviteTicket {
 	 */
 	public static final long DEFAULT_EXPIRATION = Duration.ofDays(7).toMillis();
 
+	/**
+	 * Content type identifying a message that carries a channel invitation. The message body holds the
+	 * invite payload (the CBOR-encoded ticket, optionally with display metadata); the dedicated type
+	 * lets clients recognize and preview an invitation directly from the {@code Content-Type} header,
+	 * without inspecting the body or relying on a custom header.
+	 */
+	public static final String CONTENT_TYPE = "application/invite-ticket";
+
 	@JsonProperty(value = "c", required = true)
 	private final Id channelId;
 	@JsonProperty(value = "sid", required = true)
