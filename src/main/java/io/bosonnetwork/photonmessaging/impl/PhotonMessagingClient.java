@@ -27,6 +27,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -34,13 +35,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.time.Duration;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.netty.handler.codec.mqtt.MqttConnectReturnCode;
 import io.netty.handler.codec.mqtt.MqttQoS;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
@@ -50,6 +51,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.net.TrustOptions;
 import io.vertx.mqtt.MqttClient;
 import io.vertx.mqtt.MqttClientOptions;
+import io.vertx.mqtt.MqttConnectionException;
 import io.vertx.mqtt.messages.MqttPublishMessage;
 import io.vertx.mqtt.messages.MqttSubAckMessage;
 import org.jspecify.annotations.Nullable;
@@ -84,6 +86,7 @@ import io.bosonnetwork.photonmessaging.SessionInfo;
 import io.bosonnetwork.photonmessaging.SessionListener;
 import io.bosonnetwork.photonmessaging.exceptions.AlreadyMemberException;
 import io.bosonnetwork.photonmessaging.exceptions.ChannelNotExistsException;
+import io.bosonnetwork.photonmessaging.exceptions.ConnectionException;
 import io.bosonnetwork.photonmessaging.exceptions.ContactNotExistsException;
 import io.bosonnetwork.photonmessaging.exceptions.InsufficientPermissionException;
 import io.bosonnetwork.photonmessaging.exceptions.MessageTimeoutException;
@@ -1649,6 +1652,12 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					return Future.succeededFuture();
 				});
 			}, error -> {
+				// A rejected CONNACK fails the connect() future (Vert.x MqttClientImpl.handleConnack).
+				// For unrecoverable rejections, fail terminally and skip the retry loop.
+				Optional<Future<Void>> terminal = terminalConnectionFailure(error);
+				if (terminal.isPresent())
+					return terminal.get();
+
 				this.failures++;
 
 				if (running.get()) {
@@ -1663,6 +1672,48 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				return Future.succeededFuture();
 			});
 		});
+	}
+
+	/**
+	 * Maps an unrecoverable MQTT connection rejection to a terminal failed future so the caller
+	 * stops the retry loop and surfaces the failure to the application. Returns an empty optional
+	 * for recoverable or unknown errors (for example CONNECTION_REFUSED_SERVER_UNAVAILABLE), which
+	 * the caller should retry.
+	 */
+	private Optional<Future<Void>> terminalConnectionFailure(Throwable error) {
+		if (!(error instanceof MqttConnectionException mce))
+			return Optional.empty();
+
+		MqttConnectReturnCode rc = mce.code();
+		switch (rc) {
+			case CONNECTION_REFUSED_UNACCEPTABLE_PROTOCOL_VERSION -> {
+				log.error("Connection refused: unacceptable protocol version", error);
+				return Optional.of(Future.failedFuture(new ConnectionException(
+						ConnectionException.Reason.UNACCEPTABLE_PROTOCOL_VERSION,
+						"Connection refused: unacceptable protocol version", error)));
+			}
+			case CONNECTION_REFUSED_BAD_USER_NAME_OR_PASSWORD -> {
+				log.error("Connection refused: invalid client credentials", error);
+				return Optional.of(Future.failedFuture(new ConnectionException(
+						ConnectionException.Reason.INVALID_CREDENTIALS,
+						"Connection refused: invalid client credentials", error)));
+			}
+			case CONNECTION_REFUSED_NOT_AUTHORIZED -> {
+				log.error("Connection refused: client not authorized", error);
+				return Optional.of(Future.failedFuture(new ConnectionException(
+						ConnectionException.Reason.NOT_AUTHORIZED,
+						"Connection refused: client not authorized", error)));
+			}
+			case CONNECTION_REFUSED_QUOTA_EXCEEDED -> {
+				log.error("Connection refused: session limit exceeded", error);
+				return Optional.of(Future.failedFuture(new ConnectionException(
+						ConnectionException.Reason.SESSION_LIMIT_EXCEEDED,
+						"Connection refused: session limit exceeded", error)));
+			}
+			default -> {
+				return Optional.empty();
+			}
+		}
 	}
 
 	private Future<Void> disconnect() {
