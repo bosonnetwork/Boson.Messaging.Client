@@ -91,6 +91,7 @@ import io.bosonnetwork.photonmessaging.exceptions.ContactNotExistsException;
 import io.bosonnetwork.photonmessaging.exceptions.InsufficientPermissionException;
 import io.bosonnetwork.photonmessaging.exceptions.MessageTimeoutException;
 import io.bosonnetwork.photonmessaging.exceptions.NotChannelMemberException;
+import io.bosonnetwork.photonmessaging.exceptions.NotConnectedException;
 import io.bosonnetwork.photonmessaging.exceptions.RevisionNotMonotonicException;
 import io.bosonnetwork.photonmessaging.impl.database.SqliteDatabase;
 import io.bosonnetwork.photonmessaging.impl.dto.ChannelInfo;
@@ -1375,7 +1376,13 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			byte[] mqttPayload = serviceContext.encrypt(encrypted.serialize());
 			Buffer buffer = Buffer.buffer(mqttPayload);
 			message.prepareForSending();
-			MqttClient mqttClient = Objects.requireNonNull(this.mqttClient, "INTERNAL ERROR: MQTT client not initialized");
+			// The transport can drop between the caller's send() and here (a reconnect is in
+			// progress). Publishing on a disconnected MqttClient dereferences a null socket and
+			// throws a low-level NullPointerException; fail with a typed, retryable error instead so
+			// callers can surface a clean "not connected" message and retry once reconnected.
+			MqttClient mqttClient = this.mqttClient;
+			if (mqttClient == null || !mqttClient.isConnected())
+				return Future.<Integer>failedFuture(new NotConnectedException("Not connected to the messaging service"));
 			return mqttClient.publish(Topic.DEVICE_OUTBOX.toString(), buffer, MqttQoS.AT_LEAST_ONCE, false, false).andThen(ar -> {
 				if (ar.succeeded()) {
 					int packetId = ar.result();
