@@ -1383,7 +1383,20 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			MqttClient mqttClient = this.mqttClient;
 			if (mqttClient == null || !mqttClient.isConnected())
 				return Future.<Integer>failedFuture(new NotConnectedException("Not connected to the messaging service"));
-			return mqttClient.publish(Topic.DEVICE_OUTBOX.toString(), buffer, MqttQoS.AT_LEAST_ONCE, false, false).andThen(ar -> {
+			// Workaround for a Vert.x MQTT design issue: when the internal connection is unavailable,
+			// MqttClient.publish() should return a failed future, but instead it dereferences a null
+			// NetSocketInternal and throws a NullPointerException. isConnected() can also still report
+			// true while that socket is being torn down, so the NPE can surface either synchronously
+			// (before publish() returns) or asynchronously (the returned future fails). Translate both
+			// into a clean, retryable NotConnectedException rather than leaking a raw NPE to the UI.
+			// Remove once the upstream Vert.x behaviour is fixed to return a failed future.
+			Future<Integer> published;
+			try {
+				published = mqttClient.publish(Topic.DEVICE_OUTBOX.toString(), buffer, MqttQoS.AT_LEAST_ONCE, false, false);
+			} catch (Exception e) {
+				return Future.failedFuture(new NotConnectedException("Not connected to the messaging service"));
+			}
+			return published.andThen(ar -> {
 				if (ar.succeeded()) {
 					int packetId = ar.result();
 					log.debug("Sending message {} to {}, packetId {} ...", message.getId(), message.getRecipient(), packetId);
@@ -1391,7 +1404,9 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				} else {
 					log.error("Send message {} to {} failed", message.getId(), message.getRecipient(), ar.cause());
 				}
-			});
+			}).recover(cause -> cause instanceof NullPointerException
+					? Future.failedFuture(new NotConnectedException("Not connected to the messaging service"))
+					: Future.failedFuture(cause));
 		});
 	}
 
@@ -1612,7 +1627,12 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					// drop a larger inbound publish. Still well under the service max message size (2 MB).
 					.setMaxMessageSize(256 * 1024)
 					.setReceiveBufferSize(264 * 1024)
-					.setKeepAliveInterval(60)
+					// Keep the link warm well inside the broker's keep-alive grace (1.5x the interval).
+					// The connection was being dropped ~90s after connect (== 1.5 x 60s) whenever it went
+					// idle, i.e. the broker timed us out before a PINGREQ was due; a shorter interval with
+					// auto-ping explicitly enabled keeps an otherwise-idle session alive.
+					.setKeepAliveInterval(30)
+					.setAutoKeepAlive(true)
 					.setHostnameVerificationAlgorithm("")
 					.setCleanSession(false);
 
