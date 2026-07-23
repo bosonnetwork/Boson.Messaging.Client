@@ -23,12 +23,57 @@
 package io.bosonnetwork.photonmessaging.impl.dto;
 
 import java.util.List;
+import java.util.Objects;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Channel;
 
-public record ChannelMembersRole(@JsonProperty(value = "ids", required = true) List<Id> memberIds,
-                                 @JsonProperty(value = "r", required = true) Channel.Role role) {
+/**
+ * A plain class rather than a record: Jackson's record support calls
+ * {@code Class.getRecordComponents()}, which the Android runtime does not implement, so a record
+ * wire type fails to deserialize on-device. Accessors keep the record-style names so call sites
+ * are unaffected.
+ */
+public final class ChannelMembersRole {
+	@JsonProperty(value = "ids", required = true)
+	private final List<Id> memberIds;
+	@JsonProperty(value = "r", required = true)
+	private final Channel.Role role;
+
+	@JsonCreator
+	public ChannelMembersRole(@JsonProperty(value = "ids", required = true) List<Id> memberIds,
+			@JsonProperty(value = "r", required = true) Channel.Role role) {
+		this.memberIds = memberIds;
+		this.role = role;
+	}
+
+	public List<Id> memberIds() {
+		return memberIds;
+	}
+
+	public Channel.Role role() {
+		return role;
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o)
+			return true;
+		if (!(o instanceof ChannelMembersRole that))
+			return false;
+		return Objects.equals(memberIds, that.memberIds) && Objects.equals(role, that.role);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(memberIds, role);
+	}
+
+	@Override
+	public String toString() {
+		return "ChannelMembersRole[memberIds=" + memberIds + ", role=" + role + "]";
+	}
 }

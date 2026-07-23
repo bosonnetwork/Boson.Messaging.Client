@@ -22,10 +22,56 @@
 
 package io.bosonnetwork.photonmessaging.impl.dto;
 
+import java.util.Objects;
+
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import io.bosonnetwork.Id;
 
-public record ChannelSessionKeyRotation(@JsonProperty(value = "sid", required = true) Id sessionId,
-                                        @JsonProperty(value = "sk", required = true) byte[] sessionKey) {
+/**
+ * A plain class rather than a record: Jackson's record support calls
+ * {@code Class.getRecordComponents()}, which the Android runtime does not implement, so a record
+ * wire type fails to deserialize on-device. Accessors keep the record-style names so call sites
+ * are unaffected.
+ */
+public final class ChannelSessionKeyRotation {
+	@JsonProperty(value = "sid", required = true)
+	private final Id sessionId;
+	@JsonProperty(value = "sk", required = true)
+	private final byte[] sessionKey;
+
+	@JsonCreator
+	public ChannelSessionKeyRotation(@JsonProperty(value = "sid", required = true) Id sessionId,
+			@JsonProperty(value = "sk", required = true) byte[] sessionKey) {
+		this.sessionId = sessionId;
+		this.sessionKey = sessionKey;
+	}
+
+	public Id sessionId() {
+		return sessionId;
+	}
+
+	public byte[] sessionKey() {
+		return sessionKey;
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o)
+			return true;
+		if (!(o instanceof ChannelSessionKeyRotation that))
+			return false;
+		return Objects.equals(sessionId, that.sessionId) && Objects.equals(sessionKey, that.sessionKey);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(sessionId, sessionKey);
+	}
+
+	@Override
+	public String toString() {
+		return "ChannelSessionKeyRotation[sessionId=" + sessionId + ", sessionKey=" + sessionKey + "]";
+	}
 }

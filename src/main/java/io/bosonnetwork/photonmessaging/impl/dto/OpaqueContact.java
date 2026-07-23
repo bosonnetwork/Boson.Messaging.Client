@@ -22,6 +22,9 @@
 
 package io.bosonnetwork.photonmessaging.impl.dto;
 
+import java.util.Objects;
+
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import io.bosonnetwork.Id;
@@ -32,8 +35,57 @@ import io.bosonnetwork.Id;
  * The contact data is opaque to the synchronization service; it is created and interpreted
  * exclusively by the messaging client. The service provides the mechanism to synchronize
  * this data across a user's various devices.
+ * <p>
+ * A plain class rather than a record: Jackson's record support calls
+ * {@code Class.getRecordComponents()}, which the Android runtime does not implement, so a
+ * record wire type fails to deserialize on-device. Accessors keep the record-style names so
+ * call sites are unaffected.
  */
-public record OpaqueContact(@JsonProperty(value = "id", required = true) Id id,
-                            @JsonProperty(value = "v", required = true) int revision,
-                            @JsonProperty(value = "d", required = true) byte[] data) {
+public final class OpaqueContact {
+	@JsonProperty(value = "id", required = true)
+	private final Id id;
+	@JsonProperty(value = "v", required = true)
+	private final int revision;
+	@JsonProperty(value = "d", required = true)
+	private final byte[] data;
+
+	@JsonCreator
+	public OpaqueContact(@JsonProperty(value = "id", required = true) Id id,
+			@JsonProperty(value = "v", required = true) int revision,
+			@JsonProperty(value = "d", required = true) byte[] data) {
+		this.id = id;
+		this.revision = revision;
+		this.data = data;
+	}
+
+	public Id id() {
+		return id;
+	}
+
+	public int revision() {
+		return revision;
+	}
+
+	public byte[] data() {
+		return data;
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o)
+			return true;
+		if (!(o instanceof OpaqueContact that))
+			return false;
+		return revision == that.revision && Objects.equals(id, that.id) && Objects.equals(data, that.data);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(id, revision, data);
+	}
+
+	@Override
+	public String toString() {
+		return "OpaqueContact[id=" + id + ", revision=" + revision + ", data=" + data + "]";
+	}
 }

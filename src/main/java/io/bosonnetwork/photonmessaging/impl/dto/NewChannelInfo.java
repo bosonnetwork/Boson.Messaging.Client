@@ -22,16 +22,93 @@
 
 package io.bosonnetwork.photonmessaging.impl.dto;
 
+import java.util.Objects;
+
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.jspecify.annotations.Nullable;
 
 import io.bosonnetwork.Id;
 import io.bosonnetwork.photonmessaging.Channel;
 
-public record NewChannelInfo(@JsonProperty(value = "sid", required = true) Id sessionId,
-                             @JsonProperty(value = "sk", required = true) byte[] sessionKey,
-                             @JsonProperty(value = "p", required = true) Channel.Permission permission,
-                             @JsonProperty("n") String name,
-                             @JsonProperty("nt") @Nullable String notice,
-                             @JsonProperty("a") boolean announce) {
+/**
+ * A plain class rather than a record: Jackson's record support calls
+ * {@code Class.getRecordComponents()}, which the Android runtime does not implement, so a record
+ * wire type fails to deserialize on-device. Accessors keep the record-style names so call sites
+ * are unaffected.
+ */
+public final class NewChannelInfo {
+	@JsonProperty(value = "sid", required = true)
+	private final Id sessionId;
+	@JsonProperty(value = "sk", required = true)
+	private final byte[] sessionKey;
+	@JsonProperty(value = "p", required = true)
+	private final Channel.Permission permission;
+	@JsonProperty("n")
+	private final String name;
+	@JsonProperty("nt")
+	private final @Nullable String notice;
+	@JsonProperty("a")
+	private final boolean announce;
+
+	@JsonCreator
+	public NewChannelInfo(@JsonProperty(value = "sid", required = true) Id sessionId,
+			@JsonProperty(value = "sk", required = true) byte[] sessionKey,
+			@JsonProperty(value = "p", required = true) Channel.Permission permission,
+			@JsonProperty("n") String name,
+			@JsonProperty("nt") @Nullable String notice,
+			@JsonProperty("a") boolean announce) {
+		this.sessionId = sessionId;
+		this.sessionKey = sessionKey;
+		this.permission = permission;
+		this.name = name;
+		this.notice = notice;
+		this.announce = announce;
+	}
+
+	public Id sessionId() {
+		return sessionId;
+	}
+
+	public byte[] sessionKey() {
+		return sessionKey;
+	}
+
+	public Channel.Permission permission() {
+		return permission;
+	}
+
+	public String name() {
+		return name;
+	}
+
+	public @Nullable String notice() {
+		return notice;
+	}
+
+	public boolean announce() {
+		return announce;
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o)
+			return true;
+		if (!(o instanceof NewChannelInfo that))
+			return false;
+		return announce == that.announce && Objects.equals(sessionId, that.sessionId)
+				&& Objects.equals(sessionKey, that.sessionKey) && Objects.equals(permission, that.permission)
+				&& Objects.equals(name, that.name) && Objects.equals(notice, that.notice);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(sessionId, sessionKey, permission, name, notice, announce);
+	}
+
+	@Override
+	public String toString() {
+		return "NewChannelInfo[sessionId=" + sessionId + ", permission=" + permission + ", name=" + name
+				+ ", notice=" + notice + ", announce=" + announce + "]";
+	}
 }
