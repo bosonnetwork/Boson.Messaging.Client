@@ -141,6 +141,14 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private volatile boolean connected;
 	private volatile boolean ready;
 
+	// -1 means "no readiness watchdog scheduled" (see periodicTimer note on the sentinel). Armed when
+	// the MQTT connection is established (CONNACK) and cancelled once the mandatory startup contact-sync
+	// has completed. The service re-pushes contact-sync on every healthy (re)connect, so a connection
+	// that is established yet never delivers the sync is half-open/unhealthy; when this fires we force a
+	// reconnect to re-establish a live channel that re-triggers the push. Confined to the event-loop
+	// context (armed/cancelled only from the MQTT lifecycle callbacks), so a plain long is safe.
+	private long readinessWatchdogTimer = -1;
+
 	// Lifecycle gate and running status in one. The client is restartable: start() flips
 	// false -> true and stop() flips true -> false via compareAndSet, so both are atomic and
 	// idempotent (extra/concurrent calls are no-ops). A fresh start() after a completed stop() is
@@ -156,6 +164,13 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	// and are never touched again; it does not need to be frequent (and a tight loop wastes wakeups,
 	// notably on Android). The 5-minute access TTL makes a 1-minute sweep more than adequate.
 	private static final long CACHE_MAINTENANCE_INTERVAL_MS = Duration.ofMinutes(1).toMillis();
+
+	// How long to wait, after the MQTT connection is established (CONNACK), for the mandatory startup
+	// contact-sync to arrive before treating the channel as unhealthy and forcing a reconnect. The
+	// window spans the SUB/SUBACK round-trip plus the sync push; a healthy link completes it in well
+	// under a second, so this only affects the pathological half-open case. Kept below the 30s
+	// keep-alive so recovery beats the ping timeout.
+	private static final long READINESS_WATCHDOG_TIMEOUT_MS = Duration.ofSeconds(20).toMillis();
 
 	public PhotonMessagingClient(@Nullable Vertx vertx, @Nullable Node node, Configuration config) {
 		// Resolve the Vert.x instance: use the provided one, the current context, or the node's instance
@@ -1655,6 +1670,10 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 			return client.connect(serviceEndpoint.getPort(), serviceEndpoint.getHost()).compose(ack -> {
 				log.info("Connected to the messaging server {} @ {}", homePeerId, serviceEndpoint);
+				// Start the readiness watchdog now that the connection is established: the whole
+				// subscription-setup + contact-sync exchange must complete within the window, else the
+				// channel is half-open and we reconnect (see armReadinessWatchdog).
+				armReadinessWatchdog(client);
 				Map<String, Integer> topics = Map.of(
 						Topic.USER_INBOX.toString(), MqttQoS.AT_LEAST_ONCE.value(),
 						Topic.USER_OUTBOX.toString(), MqttQoS.AT_LEAST_ONCE.value(),
@@ -1666,6 +1685,9 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					return Future.succeededFuture();
 				}, error -> {
 					this.failures++;
+					// This branch already drives its own reconnect, so drop the readiness watchdog armed
+					// at CONNACK to avoid a second, racing reconnect.
+					cancelReadinessWatchdog();
 
 					if (running.get()) {
 						long delay = getRetryInterval();
@@ -1750,11 +1772,41 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		return mqttClient.disconnect();
 	}
 
+	// Arm the readiness watchdog as soon as the MQTT connection is established (CONNACK), NOT on the
+	// SUB/SUBACK: subscription setup and the contact-sync push both happen within this window, and on
+	// a resumed session the push can even precede the SUBACK. Readiness is the mandatory startup
+	// contact-sync ([ready]); if it has not arrived by the timeout the channel is half-open, so force
+	// a reconnect on [client] (its close handler -> onClose() schedules a fresh reconnect, on which the
+	// service re-runs the subscription setup and re-pushes contact-sync). Arming with the connection's
+	// own client makes recovery work even if the SUBACK never lands and [mqttClient] was never set.
+	private void armReadinessWatchdog(MqttClient client) {
+		cancelReadinessWatchdog();
+		readinessWatchdogTimer = vertx.setTimer(READINESS_WATCHDOG_TIMEOUT_MS, tid -> {
+			readinessWatchdogTimer = -1;
+			if (!running.get() || ready)
+				return;
+
+			log.warn("Connected to {} but the startup contact sync did not arrive within {} ms; the "
+					+ "channel looks half-open, forcing a reconnect to re-trigger the sync",
+					homePeerId, READINESS_WATCHDOG_TIMEOUT_MS);
+			if (client.isConnected())
+				client.disconnect();
+		});
+	}
+
+	private void cancelReadinessWatchdog() {
+		if (readinessWatchdogTimer != -1) {
+			vertx.cancelTimer(readinessWatchdogTimer);
+			readinessWatchdogTimer = -1;
+		}
+	}
+
 	private void onClose() {
 		log.debug("Disconnected from the messaging server {} @ {}", homePeerId, serviceEndpoint);
 
 		this.connected = false;
 		this.ready = false;
+		cancelReadinessWatchdog();
 
 		listeners.onDisconnected();
 
@@ -2167,6 +2219,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 						if (!ready) {
 							log.info("Contact synchronization completed on startup, revision {}, client is ready", contactsRevision);
 							ready = true;
+							cancelReadinessWatchdog();
 							listeners.onContactSynced();
 						}
 					}
