@@ -22,6 +22,9 @@
 
 package io.bosonnetwork.photonmessaging;
 
+import java.util.Objects;
+
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -30,14 +33,68 @@ import io.bosonnetwork.Id;
 /**
  * Represents session information for a device, including its identifier,
  * online status, and last activity timestamp.
- *
- * @param deviceId    The unique identifier of the device session.
- * @param online      Indicates whether the device is currently online.
- * @param lastActive  The timestamp of the last activity in milliseconds since epoch.
- * @param lastAddress The last known address of the device.
+ * <p>
+ * A plain class rather than a record: Jackson's record support calls
+ * {@code Class.getRecordComponents()}, which the Android runtime does not implement, so a
+ * record wire type fails to deserialize on-device. Accessors keep the record-style names so
+ * call sites are unaffected.
  */
-public record SessionInfo(@JsonProperty(value = "id", required = true) Id deviceId,
-                          @JsonProperty("o") boolean online,
-                          @JsonProperty("lt") long lastActive,
-                          @JsonProperty("la") @JsonInclude(JsonInclude.Include.NON_EMPTY) String lastAddress) {
+public final class SessionInfo {
+	@JsonProperty(value = "id", required = true)
+	private final Id deviceId;
+	@JsonProperty("o")
+	private final boolean online;
+	@JsonProperty("lt")
+	private final long lastActive;
+	@JsonProperty("la")
+	@JsonInclude(JsonInclude.Include.NON_EMPTY)
+	private final String lastAddress;
+
+	@JsonCreator
+	public SessionInfo(@JsonProperty(value = "id", required = true) Id deviceId,
+			@JsonProperty("o") boolean online,
+			@JsonProperty("lt") long lastActive,
+			@JsonProperty("la") String lastAddress) {
+		this.deviceId = deviceId;
+		this.online = online;
+		this.lastActive = lastActive;
+		this.lastAddress = lastAddress;
+	}
+
+	public Id deviceId() {
+		return deviceId;
+	}
+
+	public boolean online() {
+		return online;
+	}
+
+	public long lastActive() {
+		return lastActive;
+	}
+
+	public String lastAddress() {
+		return lastAddress;
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o)
+			return true;
+		if (!(o instanceof SessionInfo that))
+			return false;
+		return online == that.online && lastActive == that.lastActive
+				&& Objects.equals(deviceId, that.deviceId) && Objects.equals(lastAddress, that.lastAddress);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(deviceId, online, lastActive, lastAddress);
+	}
+
+	@Override
+	public String toString() {
+		return "SessionInfo[deviceId=" + deviceId + ", online=" + online
+				+ ", lastActive=" + lastActive + ", lastAddress=" + lastAddress + "]";
+	}
 }
