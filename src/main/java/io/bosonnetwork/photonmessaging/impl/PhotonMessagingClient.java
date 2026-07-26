@@ -31,6 +31,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -126,13 +127,19 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	private volatile int contactsRevision;
 	private final AsyncCache<Id, PhotonContact> contactCache;
 	private final AsyncCache<Id, PhotonConversation> conversationCache;
-	// Thread-confinement invariant: these maps are accessed ONLY on this verticle's
+	// Thread-confinement invariant: these collections are accessed ONLY on this verticle's
 	// event-loop context (from sendMessageInternal/sendRpcCall, which public methods reach
 	// via runOnContext, and from the MQTT publish/response handlers which run on the same
-	// context). They are therefore intentionally plain HashMaps, not concurrent maps. Do not
-	// touch them from any other thread without marshaling onto vertxContext first.
+	// context). They are therefore intentionally plain HashMaps/HashSets, not concurrent
+	// collections. Do not touch them from any other thread without marshaling onto vertxContext first.
 	private final Map<Integer, PhotonMessage<?>> inflightMessages;
 	private final Map<Long, RpcCall<?>> inflightRpcCalls;
+
+	// Packet ids whose broker acknowledgement arrived before the publish itself had been recorded in
+	// [inflightMessages]. A message can only be registered once publish() hands back its packet id, so
+	// an acknowledgement that overtakes that would otherwise find nothing to complete and the send would
+	// hang forever. Parking the id here lets the registration see it and complete the message at once.
+	private final Set<Integer> earlyAcknowledgements;
 
 	// -1 means "no maintenance timer scheduled". Vert.x timer ids are non-negative and start at 0,
 	// so 0 is a valid id and cannot be used as the unset sentinel.
@@ -172,6 +179,12 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	// keep-alive so recovery beats the ping timeout.
 	private static final long READINESS_WATCHDOG_TIMEOUT_MS = Duration.ofSeconds(20).toMillis();
 
+	// Seconds to wait for a QoS-1 publish acknowledgement before failing the message. Applies to publish
+	// acknowledgements only - CONNACK and SUBACK are not covered by it - so connection setup is
+	// unaffected. Set well above any healthy round trip (a 256 KB payload on a poor link still lands
+	// inside it): this is a backstop against an indefinite wait, not a latency budget.
+	private static final int ACK_TIMEOUT = 60;
+
 	public PhotonMessagingClient(@Nullable Vertx vertx, @Nullable Node node, Configuration config) {
 		// Resolve the Vert.x instance: use the provided one, the current context, or the node's instance
 		Vertx v = vertx;
@@ -200,6 +213,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 		this.inflightMessages = new HashMap<>();
 		this.inflightRpcCalls = new HashMap<>();
+		this.earlyAcknowledgements = new HashSet<>();
 
 		// Prepare directories with plain NIO so the constructor does not depend on a Vert.x
 		// instance (the internal Vertx, if any, does not exist until start()).
@@ -1415,7 +1429,12 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				if (ar.succeeded()) {
 					int packetId = ar.result();
 					log.debug("Sending message {} to {}, packetId {} ...", message.getId(), message.getRecipient(), packetId);
-					inflightMessages.put(packetId, message);
+					// The broker's acknowledgement can in principle overtake this registration; if it
+					// already did, complete the message here instead of leaving it pending forever.
+					if (earlyAcknowledgements.remove(packetId))
+						message.sent();
+					else
+						inflightMessages.put(packetId, message);
 				} else {
 					log.error("Send message {} to {} failed", message.getId(), message.getRecipient(), ar.cause());
 				}
@@ -1648,6 +1667,13 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					// auto-ping explicitly enabled keeps an otherwise-idle session alive.
 					.setKeepAliveInterval(30)
 					.setAutoKeepAlive(true)
+					// Bound the wait for a publish acknowledgement. Vert.x leaves this disabled by
+					// default, which means a QoS-1 publish whose PUBACK never arrives would leave the
+					// send pending forever. A dropped connection is already handled (onClose fails the
+					// in-flight messages); this covers the case with no close to react to - a link that
+					// stalls with the socket still open, which a mobile TCP stack can take minutes to
+					// notice and which no PINGRESP timeout catches either.
+					.setAckTimeout(ACK_TIMEOUT)
 					.setHostnameVerificationAlgorithm("")
 					.setCleanSession(false);
 
@@ -1807,6 +1833,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		this.connected = false;
 		this.ready = false;
 		cancelReadinessWatchdog();
+		failInflightMessages();
 
 		listeners.onDisconnected();
 
@@ -1837,13 +1864,39 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		// nothing to do
 	}
 
+	/**
+	 * Fails every message that was published but not yet acknowledged, because the connection carrying
+	 * it is gone.
+	 * <p>
+	 * Without this a send could hang indefinitely: a message is only completed by the broker's
+	 * acknowledgement, and an acknowledgement for a connection that no longer exists is never coming.
+	 * The caller would sit on a future that neither succeeds nor fails - a message stuck "sending"
+	 * forever, with no failure to report and nothing to retry. A publish that the broker did receive
+	 * before the drop is redelivered by the session anyway, so failing here at worst asks the caller to
+	 * re-send something that also went through; leaving it pending has no upside at all.
+	 */
+	private void failInflightMessages() {
+		if (inflightMessages.isEmpty() && earlyAcknowledgements.isEmpty())
+			return;
+
+		log.debug("Failing {} in-flight message(s) on disconnect", inflightMessages.size());
+		// Drain first: failing a message runs the caller's handlers, which may send again.
+		List<PhotonMessage<?>> pending = new ArrayList<>(inflightMessages.values());
+		inflightMessages.clear();
+		earlyAcknowledgements.clear();
+		for (PhotonMessage<?> message : pending)
+			message.failed(new NotConnectedException("Connection lost before the message was acknowledged"));
+	}
+
 	private void onPublishCompletion(int packetId) {
 		log.trace("Received publish completion for packetId {}", packetId);
 
 		PhotonMessage<?> message = inflightMessages.remove(packetId);
 		if (message == null) {
-			// noinspection LoggingSimilarMessage
-			log.error("INTERNAL ERROR: no message associated with packet {}", packetId);
+			// The acknowledgement beat the registration in sendMessageInternal; park it so that
+			// registration completes the message the moment it runs, instead of stranding it.
+			log.debug("Publish completion for packet {} arrived before its registration", packetId);
+			earlyAcknowledgements.add(packetId);
 			return;
 		}
 
