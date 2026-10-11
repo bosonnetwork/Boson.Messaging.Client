@@ -12,16 +12,20 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.core.internal.ContextInternal;
+import io.vertx.core.internal.VertxInternal;
 import net.datafaker.Faker;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -73,7 +77,7 @@ public class DatabaseMessagingRepositoryTests {
 		if (pgServer != null) {
 			DatabaseStore pgStore = new PostgresDatabase(pgServer.getDatabaseUri(), 4, "photon_test");
 			postgres = new MessagingRepository(pgStore);
-			f1 = postgres.initialize(vertx, c -> null)
+			f1 = postgres.initialize(vertx, null, c -> null)
 					.onSuccess(v -> dbs.add(Arguments.of("postgres", postgres)));
 		} else {
 			f1 = Future.succeededFuture(0);
@@ -83,7 +87,7 @@ public class DatabaseMessagingRepositoryTests {
 		String sqliteUri = "jdbc:sqlite:" + testDir.resolve("client.db");
 		DatabaseStore sqliteStore = new SqliteDatabase(sqliteUri, 1);
 		sqlite = new MessagingRepository(sqliteStore);
-		Future<Integer> f2 = sqlite.initialize(vertx, c -> null)
+		Future<Integer> f2 = sqlite.initialize(vertx, null, c -> null)
 				.onSuccess(v -> dbs.add(Arguments.of("sqlite", sqlite)));
 
 		Future.all(f1, f2).onComplete(context.succeedingThenComplete());
@@ -187,6 +191,36 @@ public class DatabaseMessagingRepositoryTests {
 								context.completeNow();
 							}));
 				}));
+	}
+
+	// A channel the repository hands out loads its members on the client's context, whichever thread
+	// asks: the channel's own bookkeeping is then updated there, beside the client's other work on it.
+	@Test
+	void channelMembersLoadOnTheClientContext(Vertx vertx) throws Exception {
+		ContextInternal client = ((VertxInternal) vertx).createEventLoopContext();
+		DatabaseStore store = new SqliteDatabase("jdbc:sqlite:" + testDir.resolve("client-context.db"), 1);
+		MessagingRepository repo = new MessagingRepository(store);
+		try {
+			await(repo.initialize(vertx, client, c -> null));
+
+			PhotonChannel channel = randomChannel();
+			Channel.Member owner = new ChannelMember(channel.getOwnerId(), Channel.Role.OWNER, System.currentTimeMillis());
+			await(repo.putContactLocally(channel).compose(v -> repo.putChannelMembers(channel.getId(), List.of(owner))));
+			PhotonChannel stored = (PhotonChannel) await(repo.getContact(channel.getId()));
+			assertNotNull(stored);
+
+			// Asked from this (plain) thread; the load and its completion happen on the client's context.
+			CompletableFuture<Boolean> onClient = new CompletableFuture<>();
+			stored.tryLoadMembers().onComplete(ar -> onClient.complete(ar.succeeded() && client.isRunningOnContext()));
+			assertTrue(onClient.get(10, TimeUnit.SECONDS), "the members were not loaded on the client's context");
+			assertEquals(1, stored.size());
+		} finally {
+			await(repo.close());
+		}
+	}
+
+	private static <T> T await(Future<T> future) throws Exception {
+		return future.toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
 	}
 
 	@ParameterizedTest(name = "{0}")

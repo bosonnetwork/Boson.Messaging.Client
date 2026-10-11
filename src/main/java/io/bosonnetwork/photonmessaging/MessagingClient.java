@@ -64,6 +64,10 @@ import io.bosonnetwork.photonmessaging.impl.PhotonMessagingClient;
  * are signalled synchronously with {@link NullPointerException} /
  * {@link IllegalArgumentException}, and calling a method while the client is not running
  * fails fast with {@link IllegalStateException}.
+ * <p>
+ * <b>Threading.</b> The methods may be called from any thread. The client does its work on its own
+ * Vert.x context; a call made on a Vert.x context completes on that context, and a call made from any
+ * other thread completes on a Vert.x event loop. Listeners are called on the client's context.
  */
 public interface MessagingClient {
 	/**

@@ -25,7 +25,14 @@ package io.bosonnetwork.photonmessaging.impl;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import io.vertx.core.Future;
@@ -50,6 +57,47 @@ public class PhotonChannelMembersTests {
 	private List<ChannelMember> membersWithJoiner() {
 		return List.of(new ChannelMember(ownerId, Channel.Role.OWNER, System.currentTimeMillis()),
 				new ChannelMember(Id.random(), Channel.Role.MEMBER, System.currentTimeMillis()));
+	}
+
+	// Apps call loadMembers() from their own threads, while loads complete (and invalidations arrive) on
+	// the client's context: callers arriving together share one load, and every one of them sees the
+	// members. Repeated, since a race in the in-flight bookkeeping shows only now and then.
+	@Test
+	void concurrentCallersShareOneLoad() throws Exception {
+		final int callers = 32;
+		final int rounds = 500;
+		ExecutorService threads = Executors.newFixedThreadPool(callers);
+		ScheduledExecutorService completer = Executors.newSingleThreadScheduledExecutor();
+		try {
+			AtomicInteger loads = new AtomicInteger();
+			PhotonChannel channel = newChannel();
+			channel.setMembersLoader(id -> {
+				loads.incrementAndGet();
+				Promise<List<ChannelMember>> promise = Promise.promise();
+				completer.schedule(() -> promise.complete(members()), 0, TimeUnit.MILLISECONDS);
+				return promise.future();
+			});
+
+			for (int round = 1; round <= rounds; round++) {
+				channel.invalidateMembers();
+				CyclicBarrier together = new CyclicBarrier(callers);
+				List<java.util.concurrent.Future<CompletableFuture<Void>>> calls = new ArrayList<>();
+				for (int i = 0; i < callers; i++) {
+					calls.add(threads.submit(() -> {
+						together.await();
+						return channel.loadMembers();
+					}));
+				}
+				for (java.util.concurrent.Future<CompletableFuture<Void>> call : calls)
+					call.get(10, TimeUnit.SECONDS).get(10, TimeUnit.SECONDS);
+
+				assertEquals(round, loads.get(), "round " + round + ": the callers did not share one load");
+				assertEquals(1, channel.size());
+			}
+		} finally {
+			threads.shutdownNow();
+			completer.shutdownNow();
+		}
 	}
 
 	// The loader completes before tryLoadMembers() publishes the in-flight future.

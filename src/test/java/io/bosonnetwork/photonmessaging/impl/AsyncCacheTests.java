@@ -32,15 +32,45 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
+import io.vertx.core.Vertx;
+import io.vertx.core.internal.ContextInternal;
+import io.vertx.core.internal.VertxInternal;
 
 import org.junit.jupiter.api.Test;
 
 class AsyncCacheTests {
 	private record Removal(String key, String value, AsyncCache.RemovalCause cause) {
+	}
+
+	// An entry that another context loaded is answered on the caller's own context: the client's code,
+	// reading an entry an app's thread loaded, carried on on that thread's event loop.
+	@Test
+	void answersOnTheCallersContext() throws Exception {
+		Vertx vertx = Vertx.vertx();
+		try {
+			ContextInternal loader = ((VertxInternal) vertx).createEventLoopContext();
+			ContextInternal caller;
+			do {
+				caller = ((VertxInternal) vertx).createEventLoopContext();
+			} while (caller.nettyEventLoop() == loader.nettyEventLoop());
+			ContextInternal asking = caller;
+
+			Promise<String> value = loader.promise();
+			AsyncCache<String, String> cache = AsyncCache.<String, String>newBuilder().build(k -> value.future());
+			CompletableFuture<Boolean> where = new CompletableFuture<>();
+			asking.runOnContext(v -> cache.get("k").onComplete(ar -> where.complete(asking.isRunningOnContext())));
+			loader.runOnContext(v -> value.complete("v"));
+
+			assertTrue(where.get(10, TimeUnit.SECONDS), "the answer came back on the loader's context");
+		} finally {
+			vertx.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
+		}
 	}
 
 	@Test
