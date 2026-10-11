@@ -81,10 +81,13 @@ public class PhotonChannel extends PhotonContact implements Channel {
 	private volatile @Nullable Map<Id, ChannelMember> _members;
 	private @Nullable Function<Id, Future<List<ChannelMember>>> membersLoader;
 	// In-flight load, used to dedupe concurrent loadMembers() calls so they share one DB load
-	// instead of each triggering a separate query. Confined to the Verticle's event loop.
+	// instead of each triggering a separate query. Guarded by this channel's lock: apps call
+	// loadMembers() from their own threads, while loads complete and invalidations arrive on the
+	// client's context.
 	private @Nullable Future<Void> membersLoading;
 	// Bumped by invalidateMembers(), so a load that is already running when the members are
-	// invalidated does not install the snapshot it read before the change.
+	// invalidated does not install the snapshot it read before the change. Guarded by this
+	// channel's lock.
 	private int membersEpoch;
 
 	// Constructor for database OR mapping
@@ -183,45 +186,63 @@ public class PhotonChannel extends PhotonContact implements Channel {
 		if (loader == null)
 			return Future.failedFuture(new IllegalStateException("Members loader not set"));
 
-		// Reuse an in-flight load if one is already running; cleared on completion so a later
-		// reload (e.g.; after invalidateMembers()) or a retry-after-failure can run again.
-		if (membersLoading != null)
-			return membersLoading;
-
-		int epoch = membersEpoch;
 		Promise<Void> promise = Promise.promise();
 		Future<Void> loading = promise.future();
-		// Publish the in-flight future BEFORE starting the load: a loader that hands back an
-		// already completed future runs the completion handler below - including its reset -
-		// inline, so assigning the built chain afterwards would leave a completed future parked
-		// here forever. The next call after an invalidateMembers() would then hand out that
-		// completed future without loading anything, and the caller would see the members as
-		// still missing.
-		membersLoading = loading;
+		int epoch;
+		synchronized (this) {
+			// Checked again under the lock: a load that completed since the check above has both
+			// installed the members and cleared the in-flight future.
+			if (_members != null)
+				return Future.succeededFuture();
+
+			// Reuse an in-flight load if one is already running; cleared on completion so a later
+			// reload (e.g.; after invalidateMembers()) or a retry-after-failure can run again.
+			if (membersLoading != null)
+				return membersLoading;
+
+			epoch = membersEpoch;
+			// Publish the in-flight future BEFORE starting the load: a loader that hands back an
+			// already completed future runs the completion handler below - including its reset -
+			// inline, so assigning the built chain afterwards would leave a completed future parked
+			// here forever. The next call after an invalidateMembers() would then hand out that
+			// completed future without loading anything, and the caller would see the members as
+			// still missing.
+			membersLoading = loading;
+		}
+
+		// The loader runs outside the lock: it may complete inline, and the handler takes the lock.
 		loader.apply(getId()).onComplete(ar -> {
-			if (membersLoading == loading)
-				membersLoading = null;
+			boolean invalidated = false;
+			RuntimeException rejected = null;
+			synchronized (this) {
+				if (membersLoading == loading)
+					membersLoading = null;
+
+				if (ar.succeeded()) {
+					// Checked and installed under the lock, so that no invalidation lands in between.
+					if (epoch != membersEpoch) {
+						invalidated = true;
+					} else {
+						try {
+							setMembers(ar.result());
+						} catch (RuntimeException e) {
+							rejected = e;
+						}
+					}
+				}
+			}
 
 			if (ar.failed()) {
 				promise.fail(ar.cause());
-				return;
-			}
-
-			if (epoch != membersEpoch) {
+			} else if (invalidated) {
 				// Invalidated while this load was running: the snapshot it read may predate the
 				// change that triggered the invalidation, so drop it and load again.
 				tryLoadMembers().onComplete(promise);
-				return;
+			} else if (rejected != null) {
+				promise.fail(rejected);
+			} else {
+				promise.complete();
 			}
-
-			try {
-				setMembers(ar.result());
-			} catch (RuntimeException e) {
-				promise.fail(e);
-				return;
-			}
-
-			promise.complete();
 		});
 		return loading;
 	}
@@ -243,7 +264,7 @@ public class PhotonChannel extends PhotonContact implements Channel {
 		this._members = Collections.unmodifiableMap(members);
 	}
 
-	void invalidateMembers() {
+	synchronized void invalidateMembers() {
 		_members = null;
 		membersEpoch++;
 	}

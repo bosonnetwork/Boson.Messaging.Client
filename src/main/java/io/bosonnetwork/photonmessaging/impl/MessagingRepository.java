@@ -28,6 +28,7 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import org.jspecify.annotations.Nullable;
@@ -46,6 +47,7 @@ import io.bosonnetwork.photonmessaging.MessagingStore.StoredContact;
 import io.bosonnetwork.photonmessaging.MessagingStore.StoredConversation;
 import io.bosonnetwork.photonmessaging.MessagingStore.StoredFriendRequest;
 import io.bosonnetwork.photonmessaging.MessagingStore.StoredMessage;
+import io.bosonnetwork.vertx.ContextualFuture;
 
 /**
  * The internal messaging repository, expressed in impl domain types. It is implemented by adapting a
@@ -60,13 +62,17 @@ import io.bosonnetwork.photonmessaging.MessagingStore.StoredMessage;
 class MessagingRepository {
 	private final MessagingStore store;
 	private @Nullable Function<PhotonContact, SessionContext> sessionContextFactory;
+	// The client's context, which a channel's member state is confined to.
+	private @Nullable Context clientContext;
 
 	MessagingRepository(MessagingStore store) {
 		this.store = Objects.requireNonNull(store, "store");
 	}
 
-	public Future<Integer> initialize(Vertx vertx, Function<PhotonContact, SessionContext> sessionContextFactory) {
+	public Future<Integer> initialize(Vertx vertx, @Nullable Context clientContext,
+									  Function<PhotonContact, SessionContext> sessionContextFactory) {
 		this.sessionContextFactory = Objects.requireNonNull(sessionContextFactory);
+		this.clientContext = clientContext;
 		if (store instanceof DatabaseStore dbStore)
 			return dbStore.open(vertx);
 		else
@@ -367,7 +373,7 @@ class MessagingRepository {
 				PhotonChannel channel = new PhotonChannel(r.id(), Objects.requireNonNull(r.sessionKey()),
 						ch.owner(), Channel.Permission.valueOf(ch.permission()), r.name(), ch.notice(), ch.announce(),
 						r.remark(), r.tags(), r.muted(), r.blocked(), r.createdAt(), r.updatedAt(), r.revision());
-				channel.setMembersLoader(this::loadMembers);
+				channel.setMembersLoader(this::loadMembersOnContext);
 				yield channel;
 			}
 			case AUTO -> new AutoContact(r.id(), r.name(), r.remark(), r.tags(),
@@ -399,7 +405,12 @@ class MessagingRepository {
 	// the underlying write failed.
 	private void wireMembersLoader(Contact contact) {
 		if (contact instanceof PhotonChannel pc)
-			pc.setMembersLoader(this::loadMembers);
+			pc.setMembersLoader(this::loadMembersOnContext);
+	}
+
+	private Future<List<ChannelMember>> loadMembersOnContext(Id channelId) {
+		return clientContext == null ? loadMembers(channelId) :
+				ContextualFuture.callOnContext(clientContext, () -> loadMembers(channelId));
 	}
 
 	private Future<List<ChannelMember>> loadMembers(Id channelId) {

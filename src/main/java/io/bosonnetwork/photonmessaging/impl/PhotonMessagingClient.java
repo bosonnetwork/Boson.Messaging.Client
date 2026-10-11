@@ -375,7 +375,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		if (!running.compareAndSet(false, true))
 			return ContextualFuture.succeededFuture();
 
-		return ContextualFuture.of(vertx.deployVerticle(this).<Void>mapEmpty()
+		return ContextualFuture.ofCaller(vertx.deployVerticle(this).<Void>mapEmpty()
 				.onFailure(e -> {
 					// Roll back so the client can be started again; don't leak the internal Vertx.
 					running.set(false);
@@ -390,7 +390,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 		Future<Void> future = vertx.undeploy(deploymentID())
 				.andThen(ar -> selfContext.resetNonce());
-		return ContextualFuture.of(future);
+		return ContextualFuture.ofCaller(future);
 	}
 
 	@Override
@@ -423,7 +423,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 	public ContextualFuture<Optional<Conversation>> getConversation(Id conversationId) {
 		Objects.requireNonNull(conversationId, "conversationId");
 		runningCheck();
-		return ContextualFuture.of(conversationCache.get(conversationId).map(Optional::ofNullable));
+		return ContextualFuture.ofCaller(conversationCache.get(conversationId).map(Optional::ofNullable));
 	}
 
 	@Override
@@ -443,7 +443,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			return new ArrayList<>(conversations.values());
 		});
 
-		return ContextualFuture.of(future);
+		return ContextualFuture.ofCaller(future);
 	}
 
 	@Override
@@ -456,7 +456,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		Future<Boolean> future = repository.removeConversations(conversationIds).onSuccess(removed ->
 				conversationIds.forEach(id -> conversationCache.synchronous().invalidate(id))
 		);
-		return ContextualFuture.of(future);
+		return ContextualFuture.ofCaller(future);
 	}
 
 	@Override
@@ -465,7 +465,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		if (limit <= 0 || offset < 0)
 			throw new IllegalArgumentException("limit and offset must be positive");
 		runningCheck();
-		return ContextualFuture.of(repository.getMessagesBefore(conversationId, until, limit, offset).map(List::copyOf));
+		return ContextualFuture.ofCaller(repository.getMessagesBefore(conversationId, until, limit, offset).map(List::copyOf));
 	}
 
 	@Override
@@ -474,7 +474,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		if (begin > end)
 			throw new IllegalArgumentException("begin must be less than or equal to end");
 		runningCheck();
-		return ContextualFuture.of(repository.getMessagesInRange(conversationId, begin, end).map(List::copyOf));
+		return ContextualFuture.ofCaller(repository.getMessagesInRange(conversationId, begin, end).map(List::copyOf));
 	}
 
 	@Override
@@ -483,14 +483,14 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		if (messageIds.isEmpty())
 			return ContextualFuture.succeededFuture(true);
 		runningCheck();
-		return ContextualFuture.of(repository.removeMessages(messageIds));
+		return ContextualFuture.ofCaller(repository.removeMessages(messageIds));
 	}
 
 	@Override
 	public ContextualFuture<Boolean> removeMessages(Id conversationId) {
 		Objects.requireNonNull(conversationId, "conversationId");
 		runningCheck();
-		return ContextualFuture.of(repository.removeMessagesByConversation(conversationId));
+		return ContextualFuture.ofCaller(repository.removeMessagesByConversation(conversationId));
 	}
 
 	@Override
@@ -500,7 +500,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		RpcCall<List<SessionInfo>> call = RpcCall.listSessions();
 		Promise<List<SessionInfo>> promise = Promise.promise();
 		runOnContext(v -> sendRpcCall(homePeerId, call).onComplete(promise));
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	@Override
@@ -511,7 +511,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		RpcCall<Void> call = RpcCall.revokeSession(deviceId);
 		Promise<Void> promise = Promise.promise();
 		runOnContext(v -> sendRpcCall(homePeerId, call).onComplete(promise));
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	@Override
@@ -543,7 +543,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 						});
 			}).onComplete(promise);
 		});
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	@Override
@@ -596,27 +596,27 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			return promise.future();
 		});
 
-		return ContextualFuture.of(future);
+		return ContextualFuture.ofCaller(future);
 	}
 
 	@Override
 	public ContextualFuture<Optional<FriendRequest>> getFriendRequest(Id userId) {
 		Objects.requireNonNull(userId, "userId");
 		runningCheck();
-		return ContextualFuture.of(repository.getFriendRequest(userId).map(fr -> Optional.ofNullable(fr)));
+		return ContextualFuture.ofCaller(repository.getFriendRequest(userId).map(fr -> Optional.ofNullable(fr)));
 	}
 
 	@Override
 	public ContextualFuture<List<FriendRequest>> getFriendRequests() {
 		runningCheck();
-		return ContextualFuture.of(repository.getFriendRequests());
+		return ContextualFuture.ofCaller(repository.getFriendRequests());
 	}
 
 	@Override
 	public ContextualFuture<Boolean> removeFriendRequest(Id userId) {
 		Objects.requireNonNull(userId, "userId");
 		runningCheck();
-		return ContextualFuture.of(repository.removeFriendRequest(userId));
+		return ContextualFuture.ofCaller(repository.removeFriendRequest(userId));
 	}
 
 	@Override
@@ -627,13 +627,13 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		if (userIds.isEmpty())
 			return ContextualFuture.succeededFuture(false);
 
-		return ContextualFuture.of(repository.removeFriendRequests(userIds));
+		return ContextualFuture.ofCaller(repository.removeFriendRequests(userIds));
 	}
 
 	@Override
 	public ContextualFuture<Void> clearFriendRequests() {
 		runningCheck();
-		return ContextualFuture.of(repository.clearFriendRequests());
+		return ContextualFuture.ofCaller(repository.clearFriendRequests());
 	}
 
 	private Future<Contact> addFriendInternal(Id id, byte[] sessionKey, @Nullable String remark) {
@@ -683,7 +683,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		byte[] sk = selfContext.encrypt(sessionKey);
 		Promise<Contact> promise = Promise.promise();
 		runOnContext(v -> addFriendInternal(id, sk, remark).onComplete(promise));
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	@Override
@@ -696,7 +696,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 
 		Promise<Contact> promise = Promise.promise();
 		runOnContext(v -> blockUserInternal(id).onComplete(promise));
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	private Future<Contact> blockUserInternal(Id id) {
@@ -775,7 +775,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	@Override
@@ -808,7 +808,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	@Override
@@ -882,7 +882,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	@Override
@@ -913,7 +913,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	@Override
@@ -973,7 +973,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	@Override
@@ -1008,7 +1008,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	@Override
@@ -1045,7 +1045,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	@Override
@@ -1084,7 +1084,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	@Override
@@ -1121,7 +1121,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	@Override
@@ -1158,7 +1158,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	@Override
@@ -1195,7 +1195,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	@Override
@@ -1232,14 +1232,14 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	@Override
 	public ContextualFuture<Optional<Contact>> getContact(Id contactId) {
 		Objects.requireNonNull(contactId, "contactId");
 		runningCheck();
-		return ContextualFuture.of(contactCache.get(contactId).compose(c -> {
+		return ContextualFuture.ofCaller(contactCache.get(contactId).compose(c -> {
 			if (c instanceof PhotonChannel ch)
 				// TODO: should we call refreshChannel() here
 				return Future.fromCompletionStage(ch.loadMembers()).map(v -> Optional.of(ch));
@@ -1263,7 +1263,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 			// Return a **mutable** list
 			return new ArrayList<>(result.values());
 		});
-		return ContextualFuture.of(future);
+		return ContextualFuture.ofCaller(future);
 	}
 
 	@Override
@@ -1307,7 +1307,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 				});
 			}).onComplete(promise);
 		});
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	@Override
@@ -1322,7 +1322,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		runOnContext(v -> {
 			removeContactsInternal(ids).map(true).onComplete(promise);
 		});
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	private Future<Void> removeContactsInternal(List<Id> contactIds) {
@@ -1350,7 +1350,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 					})
 			).onComplete((Promise<@Nullable Void>) promise);
 		});
-		return ContextualFuture.of(promise.future());
+		return ContextualFuture.ofCaller(promise.future());
 	}
 
 	private SessionContext sessionContextFactory(PhotonContact contact) {
@@ -1378,7 +1378,7 @@ public class PhotonMessagingClient extends BosonVerticle implements MessagingCli
 		this.connected = false;
 		this.ready = false;
 
-		return repository.initialize(vertx, this::sessionContextFactory)
+		return repository.initialize(vertx, vertxContext, this::sessionContextFactory)
 				.compose(v -> connect())
 				.onSuccess(v -> { periodicTimer = vertx.setPeriodic(CACHE_MAINTENANCE_INTERVAL_MS, this::periodicCheck); });
 	}

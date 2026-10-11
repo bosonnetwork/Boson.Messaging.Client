@@ -35,6 +35,8 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.bosonnetwork.vertx.ContextualFuture;
+
 /**
  * A small Caffeine-like asynchronous loading cache backed by Vert.x {@link Future} and
  * {@link ConcurrentHashMap}.
@@ -99,8 +101,11 @@ public final class AsyncCache<K, V> {
 	 * Returns the cached value future for {@code key}, loading it if absent or expired. This mirrors
 	 * Caffeine's {@code AsyncLoadingCache.get} return type for existing client code.
 	 */
+	// Answered on the caller's context. An entry's future belongs to the context that loaded it (an app's
+	// thread, or the client's own), and every caller of that entry would otherwise carry on there: the
+	// client's own code, reading an entry the app loaded, ran on the app's event loop.
 	public Future<V> get(K key) {
-		return getEntry(key).future;
+		return ContextualFuture.onCaller(getEntry(key).future);
 	}
 
 	private CacheEntry<V> getEntry(K key) {
