@@ -248,10 +248,11 @@ public class MessageContentTests {
 		Pojo pojo = new Pojo("name", 123);
 
 		String json = Json.toString(pojo);
-		byte[] cbor = Json.toBytes(pojo);
 
 		MessageContent objContent = MessageContent.object(pojo);
-		assertArrayEquals(cbor, objContent.asBinary());
+		// The body is a JSON tree, and its CBOR need not be byte-identical to the POJO's:
+		// Jackson 2.21 writes a tree's map with a definite length, a POJO's with an indefinite one.
+		assertEquals(pojo, Json.parse(objContent.asBinary(), Pojo.class));
 		assertEquals(json, objContent.asText());
 		assertEquals(pojo, objContent.asObject(Pojo.class));
 	}
