@@ -77,7 +77,7 @@ public class SqliteDatabase extends DatabaseStore {
 
 	@Override
 	protected Path getMigrationPath() {
-		URL migrationResource = getClass().getResource("/db/photonmessaging/client/sqlite");
+		URL migrationResource = getClass().getResource("/io/bosonnetwork/photonmessaging/db/sqlite");
 		if (migrationResource == null || migrationResource.getPath() == null)
 			throw new IllegalStateException("Migration path not exists");
 

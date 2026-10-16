@@ -82,7 +82,7 @@ public class PostgresDatabase extends DatabaseStore {
 
 	@Override
 	protected Path getMigrationPath() {
-		URL migrationResource = getClass().getResource("/db/photonmessaging/client/postgres");
+		URL migrationResource = getClass().getResource("/io/bosonnetwork/photonmessaging/db/postgres");
 		if (migrationResource == null || migrationResource.getPath() == null)
 			throw new IllegalStateException("Migration path not exists");
 
